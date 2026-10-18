@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ok: #16a34a;
+  --color-warn: #d97706;
+  --color-bad: #dc2626;
+}
+
+html, body {
+  background: #f1f5f9;
+  color: #0f172a;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font-size: 18px;
+}
+
+/* Botones: feedback visual al presionar, sin depender del teclado */
+button:not(:disabled), a.btn {
+  cursor: pointer;
+  transition: transform .08s ease, box-shadow .15s ease, background-color .15s ease;
+}
+button:not(:disabled):active, a.btn:active { transform: scale(0.98); }
+button:disabled { cursor: not-allowed; }
+
+/* Foco visible y grueso para quien sí navega con teclado o lector de pantalla */
+:focus-visible { outline: 4px solid #2563eb; outline-offset: 3px; border-radius: 12px; }

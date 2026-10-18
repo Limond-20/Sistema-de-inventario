@@ -1,0 +1,83 @@
+<!-- ===================== SALUDO ===================== -->
+<section class="mb-6">
+  <h1 class="text-3xl font-extrabold">☀️ Buenas tardes, Doña Lupe</h1>
+  <p class="text-lg text-slate-600">Esto es lo que necesita tu atención hoy. Toca cualquier tarjeta o botón para empezar.</p>
+</section>
+
+<!-- ===================== ALERTAS DEL DÍA ===================== -->
+<section class="mb-8" aria-labelledby="alertas-title">
+  <div class="flex items-center justify-between mb-3">
+    <h2 id="alertas-title" class="text-2xl font-extrabold">🔔 Alertas del Día <span class="text-slate-500 font-semibold">({{ alerts().length }})</span></h2>
+    <div class="hidden md:flex gap-2 text-sm font-bold">
+      <span class="px-3 py-1 rounded-full bg-red-600 text-white">Rojo = perdiendo dinero</span>
+      <span class="px-3 py-1 rounded-full bg-amber-600 text-white">Ámbar = revisar hoy</span>
+      <span class="px-3 py-1 rounded-full bg-blue-600 text-white">Azul = pedir pronto</span>
+    </div>
+  </div>
+
+  @if (alerts().length === 0) {
+    <div class="rounded-2xl border-4 border-green-600 bg-green-50 p-6 text-2xl font-extrabold text-green-800">✅ ¡Todo en orden! No hay alertas pendientes.</div>
+  } @else {
+    <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      @for (a of alerts(); track a.id) {
+        @let s = styleFor(a.kind);
+        <article class="rounded-2xl border-4 p-5 flex flex-col gap-3 shadow-sm {{ s.card }}">
+          <span class="self-start px-3 py-1 rounded-full text-white text-sm font-bold {{ s.tag }}">{{ s.tagText }}</span>
+          <h3 class="text-xl font-extrabold leading-snug"><span aria-hidden="true">{{ a.icon }}</span> {{ a.title }}</h3>
+          <p class="text-base text-slate-700 flex-1">{{ a.detail }}</p>
+          <a [routerLink]="a.route" class="btn min-h-[56px] rounded-xl border-2 text-white text-lg font-bold flex items-center justify-center {{ s.btn }}">
+            {{ a.actionLabel }} ➡️
+          </a>
+        </article>
+      }
+    </div>
+  }
+</section>
+
+<!-- ===================== ACCIONES PRINCIPALES ===================== -->
+<section aria-labelledby="acciones-title">
+  <h2 id="acciones-title" class="text-2xl font-extrabold mb-3">👇 ¿Qué quieres hacer?</h2>
+  <div class="grid md:grid-cols-2 gap-5">
+
+    <a routerLink="/recepcion" class="btn relative min-h-[160px] rounded-3xl border-4 border-green-800 bg-green-600 hover:bg-green-700 text-white p-6 flex items-center gap-5 shadow-lg">
+      <span class="text-7xl" aria-hidden="true">📥</span>
+      <span>
+        <span class="block text-3xl font-extrabold">Recibir Mercancía</span>
+        <span class="block text-lg text-green-100 mt-1">Revisa la nota del proveedor y cuida tu ganancia</span>
+      </span>
+      @if (inv.ocrNote()) {
+        <span class="absolute top-4 right-4 px-3 py-1 rounded-full bg-white text-green-800 font-extrabold text-sm border-2 border-green-800">1 nota nueva</span>
+      }
+    </a>
+
+    <a routerLink="/auditoria" class="btn relative min-h-[160px] rounded-3xl border-4 border-amber-800 bg-amber-600 hover:bg-amber-700 text-white p-6 flex items-center gap-5 shadow-lg">
+      <span class="text-7xl" aria-hidden="true">📋</span>
+      <span>
+        <span class="block text-3xl font-extrabold">Auditoría Exprés de Pasillo</span>
+        <span class="block text-lg text-amber-100 mt-1">Compara lo que contaste contra lo que dice el sistema</span>
+      </span>
+      @if (inv.pendingAuditCount() > 0) {
+        <span class="absolute top-4 right-4 px-3 py-1 rounded-full bg-white text-amber-800 font-extrabold text-sm border-2 border-amber-800">{{ inv.pendingAuditCount() }} diferencias</span>
+      }
+    </a>
+
+    <a routerLink="/catalogo" class="btn min-h-[160px] rounded-3xl border-4 border-blue-900 bg-blue-700 hover:bg-blue-800 text-white p-6 flex items-center gap-5 shadow-lg">
+      <span class="text-7xl" aria-hidden="true">📦</span>
+      <span>
+        <span class="block text-3xl font-extrabold">Catálogo y Precios</span>
+        <span class="block text-lg text-blue-100 mt-1">{{ inv.products().length }} productos · existencias, costos y ganancia</span>
+      </span>
+    </a>
+
+    <a routerLink="/mermas" class="btn relative min-h-[160px] rounded-3xl border-4 border-red-800 bg-red-600 hover:bg-red-700 text-white p-6 flex items-center gap-5 shadow-lg">
+      <span class="text-7xl" aria-hidden="true">🗑️</span>
+      <span>
+        <span class="block text-3xl font-extrabold">Revisar Mermas</span>
+        <span class="block text-lg text-red-100 mt-1">Productos rotos o caducados registrados desde el celular</span>
+      </span>
+      @if (inv.pendingShrinkCount() > 0) {
+        <span class="absolute top-4 right-4 px-3 py-1 rounded-full bg-white text-red-800 font-extrabold text-sm border-2 border-red-800">{{ inv.pendingShrinkCount() }} por revisar</span>
+      }
+    </a>
+  </div>
+</section>

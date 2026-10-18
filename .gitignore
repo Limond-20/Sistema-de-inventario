@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+abarrotes-app/node_modules/
+
+# Compilados y temporales
+dist/
+abarrotes-app/dist/
+tmp/
+.angular/
+abarrotes-app/.angular/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.tmp
+*.tmp.html

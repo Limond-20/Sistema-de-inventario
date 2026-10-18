@@ -1,0 +1,188 @@
+<!-- ===================== ENCABEZADO ===================== -->
+<section class="mb-5">
+  <h1 class="text-3xl font-extrabold">📥 Recibir Mercancía</h1>
+  <p class="text-lg text-slate-600">Revisa lo que llegó. Si un producto <b class="text-red-700">subió de costo</b>, el sistema te avisa para que no pierdas ganancia.</p>
+</section>
+
+<!-- ===================== SELECTOR DE MODO ===================== -->
+<div class="grid md:grid-cols-2 gap-4 mb-6" role="tablist" aria-label="Forma de capturar la nota">
+  <button type="button" role="tab" [attr.aria-selected]="mode() === 'ocr'" (click)="setMode('ocr')"
+    class="min-h-[72px] rounded-2xl border-4 px-5 text-xl font-extrabold flex items-center gap-3"
+    [class]="mode() === 'ocr' ? 'border-blue-800 bg-blue-600 text-white shadow-lg' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'">
+    <span class="text-3xl">📱</span> Cargar Nota recibida del Celular (OCR)
+  </button>
+  <button type="button" role="tab" [attr.aria-selected]="mode() === 'manual'" (click)="setMode('manual')"
+    class="min-h-[72px] rounded-2xl border-4 px-5 text-xl font-extrabold flex items-center gap-3"
+    [class]="mode() === 'manual' ? 'border-blue-800 bg-blue-600 text-white shadow-lg' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'">
+    <span class="text-3xl">✍️</span> Captura Manual
+  </button>
+</div>
+
+<!-- ===================== ÉXITO ===================== -->
+@if (savedSummary(); as s) {
+  <section class="rounded-3xl border-4 border-green-600 bg-green-50 p-8 text-center flex flex-col items-center gap-3">
+    <div class="text-7xl">✅</div>
+    <h2 class="text-3xl font-extrabold text-green-800">¡Mercancía guardada en tu inventario!</h2>
+    <p class="text-xl text-slate-700">Nota <b>{{ s.folio }}</b> · {{ s.lines }} productos · Total <b>{{ s.total | currency:'MXN':'symbol-narrow' }}</b></p>
+    @if (s.adjusted > 0) {
+      <p class="text-lg text-green-800 font-semibold">🛡️ Protegiste tu ganancia en {{ s.adjusted }} producto(s) al ajustar su precio.</p>
+    }
+    <div class="grid sm:grid-cols-2 gap-4 mt-4 w-full max-w-2xl">
+      <a routerLink="/" class="btn min-h-[64px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold flex items-center justify-center hover:bg-green-700">🏠 Volver al Inicio</a>
+      <a routerLink="/catalogo" class="btn min-h-[64px] rounded-2xl border-4 border-blue-800 bg-white text-blue-800 text-xl font-extrabold flex items-center justify-center hover:bg-blue-50">📦 Ver precios nuevos</a>
+    </div>
+  </section>
+} @else {
+
+  <!-- ===================== MODO OCR: DATOS DE LA NOTA ===================== -->
+  @if (mode() === 'ocr') {
+    @if (inv.ocrNote(); as note) {
+      <section class="rounded-2xl border-2 border-slate-300 bg-white p-5 mb-5 grid md:grid-cols-4 gap-4 items-center">
+        <div class="md:col-span-3 grid sm:grid-cols-3 gap-3">
+          <div><p class="text-sm text-slate-500">Proveedor</p><p class="text-lg font-bold">🚚 {{ note.supplier }}</p></div>
+          <div><p class="text-sm text-slate-500">Nota / Fecha</p><p class="text-lg font-bold">#{{ note.folio }} · {{ note.date }}</p></div>
+          <div><p class="text-sm text-slate-500">Llegó desde</p><p class="text-lg font-bold">📱 {{ note.receivedFrom }}</p></div>
+        </div>
+        <div class="text-right">
+          <p class="text-sm text-slate-500">Total de la nota</p>
+          <p class="text-3xl font-extrabold">{{ total() | currency:'MXN':'symbol-narrow' }}</p>
+        </div>
+      </section>
+    } @else {
+      <section class="rounded-2xl border-4 border-slate-300 bg-white p-8 text-center flex flex-col items-center gap-4">
+        <div class="text-6xl">📭</div>
+        <p class="text-2xl font-extrabold">No hay notas nuevas del celular</p>
+        <p class="text-lg text-slate-600">Pídele a quien recibe que toque <b>"📸 Fotografiar Nota de Proveedor"</b> en el celular.</p>
+        <button type="button" (click)="reloadNote()" class="min-h-[64px] px-8 rounded-2xl border-4 border-blue-800 bg-blue-600 text-white text-xl font-extrabold hover:bg-blue-700">🔄 Simular nota nueva (#DB-20931)</button>
+      </section>
+    }
+  }
+
+  <!-- ===================== MODO MANUAL: FORMULARIO ===================== -->
+  @if (mode() === 'manual') {
+    <section class="rounded-2xl border-2 border-slate-300 bg-white p-5 mb-5">
+      <h2 class="text-xl font-extrabold mb-4">✍️ Agrega cada producto que llegó</h2>
+      <div class="grid lg:grid-cols-12 gap-4 items-end">
+        <label class="lg:col-span-5 flex flex-col gap-1">
+          <span class="font-bold">1. ¿Qué producto llegó?</span>
+          <select [ngModel]="manualSku" (ngModelChange)="onManualSkuChange($event)"
+            class="min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 text-lg">
+            <option value="" disabled>— Toca para elegir —</option>
+            @for (p of inv.products(); track p.sku) {
+              <option [value]="p.sku">{{ p.emoji }} {{ p.name }}</option>
+            }
+          </select>
+        </label>
+        <div class="lg:col-span-3 flex flex-col gap-1">
+          <span class="font-bold">2. ¿Cuántos {{ selectedProduct()?.purchaseUnit === 'Costal' ? 'costales' : (selectedProduct()?.purchaseUnit === 'Charola' ? 'charolas' : (selectedProduct()?.purchaseUnit === 'Paquete' ? 'paquetes' : 'cajas')) }}?</span>
+          <div class="flex items-center gap-2">
+            <button type="button" (click)="changeManualQty(-1)" aria-label="Quitar uno" class="w-16 min-h-[56px] rounded-xl border-2 border-slate-500 bg-white text-3xl font-bold hover:bg-slate-100">−</button>
+            <span class="flex-1 text-center text-3xl font-extrabold">{{ manualQty }}</span>
+            <button type="button" (click)="changeManualQty(1)" aria-label="Agregar uno" class="w-16 min-h-[56px] rounded-xl border-2 border-slate-500 bg-white text-3xl font-bold hover:bg-slate-100">+</button>
+          </div>
+        </div>
+        <label class="lg:col-span-2 flex flex-col gap-1">
+          <span class="font-bold">3. Costo por {{ (selectedProduct()?.purchaseUnit ?? 'caja').toLowerCase() }}</span>
+          <input type="number" min="0" step="0.5" [(ngModel)]="manualCost" placeholder="$0.00"
+            class="min-h-[56px] rounded-xl border-2 border-slate-400 px-3 text-xl font-bold" />
+        </label>
+        <button type="button" (click)="addManualLine()" [disabled]="!manualSku || !manualCost"
+          class="lg:col-span-2 min-h-[56px] rounded-xl border-2 border-green-800 bg-green-600 text-white text-lg font-extrabold hover:bg-green-700 disabled:bg-slate-300 disabled:border-slate-400 disabled:text-slate-500">
+          ➕ Agregar
+        </button>
+      </div>
+      @if (selectedProduct(); as p) {
+        <p class="mt-3 text-slate-600">ℹ️ Cada {{ p.purchaseUnit.toLowerCase() }} trae <b>{{ p.unitsPerPurchase }} {{ p.saleUnit === 'Kg' ? 'kg' : 'unidades' }}</b>. Costo anterior: <b>{{ p.newCost * p.unitsPerPurchase | currency:'MXN':'symbol-narrow' }}</b> por {{ p.purchaseUnit.toLowerCase() }}.</p>
+      }
+    </section>
+
+    @if (lines().length === 0) {
+      <section class="rounded-2xl border-4 border-dashed border-slate-300 bg-white p-8 text-center">
+        <p class="text-2xl font-bold text-slate-600">📝 Aquí aparecerán los productos que agregues.</p>
+        <p class="text-lg text-slate-500 mt-1">Ejemplo: 2 cajas de Aceite Nutrioli 850ml a $564.00 cada caja.</p>
+      </section>
+    }
+  }
+
+  <!-- ===================== TABLA DE PRODUCTOS ===================== -->
+  @if (lines().length > 0) {
+    <section class="rounded-2xl border-2 border-slate-300 bg-white overflow-hidden mb-5">
+      <table class="w-full text-left">
+        <thead class="bg-slate-800 text-white text-base">
+          <tr>
+            <th class="p-4">Producto</th>
+            <th class="p-4">Llegaron</th>
+            <th class="p-4 text-right">Costo antes</th>
+            <th class="p-4 text-right">Costo ahora</th>
+            <th class="p-4 text-right">Precio venta</th>
+            <th class="p-4">Ganancia</th>
+            @if (mode() === 'manual') { <th class="p-4"></th> }
+          </tr>
+        </thead>
+        <tbody>
+          @for (l of lines(); track l.sku) {
+            <tr class="border-b-2 align-top"
+              [class]="l.broken ? 'bg-red-50 border-red-200' : (l.resolved ? 'bg-green-50 border-green-200' : 'border-slate-200')">
+              <td class="p-4" [class.border-l-8]="l.broken || l.resolved" [class.border-l-red-600]="l.broken" [class.border-l-green-600]="l.resolved">
+                <p class="text-lg font-bold">{{ l.emoji }} {{ l.name }}</p>
+                <p class="text-sm text-slate-500">SKU {{ l.sku }}</p>
+              </td>
+              <td class="p-4">
+                <p class="text-lg font-bold">{{ l.qtyPurchase }} {{ l.purchaseUnit }}{{ l.qtyPurchase > 1 ? (l.purchaseUnit === 'Costal' ? 'es' : 's') : '' }}</p>
+                <p class="text-sm text-slate-500">= {{ l.qtyPurchase * l.unitsPerPurchase }} {{ l.saleUnit === 'Kg' ? 'kg' : l.saleUnit.toLowerCase() + 's' }}</p>
+              </td>
+              <td class="p-4 text-right text-lg">{{ l.historicCost | currency:'MXN':'symbol-narrow' }}</td>
+              <td class="p-4 text-right text-lg font-bold" [class.text-red-700]="l.costUp">
+                {{ l.newCost | currency:'MXN':'symbol-narrow' }}
+                @if (l.costUp) { <span class="block text-sm">🔺 +{{ l.newCost - l.historicCost | currency:'MXN':'symbol-narrow' }}</span> }
+              </td>
+              <td class="p-4 text-right text-xl font-extrabold">{{ l.salePrice | currency:'MXN':'symbol-narrow' }}</td>
+              <td class="p-4 min-w-[300px]">
+                @if (l.broken) {
+                  <div class="flex flex-col gap-2">
+                    <span class="self-start px-3 py-1 rounded-lg bg-red-600 text-white font-extrabold">
+                      ⚠️ ¡Subió el costo! Margen cayó al {{ l.margin | number:'1.0-0' }}%
+                    </span>
+                    <span class="text-sm text-red-800">Tu mínimo es {{ l.targetMargin }}%. Con el precio actual ganas solo {{ l.salePrice - l.newCost | currency:'MXN':'symbol-narrow' }} por {{ l.saleUnit === 'Kg' ? 'kilo' : 'pieza' }}.</span>
+                    <button type="button" (click)="applySuggested(l)"
+                      class="min-h-[56px] rounded-xl border-4 border-green-800 bg-amber-400 hover:bg-amber-300 text-slate-900 text-lg font-extrabold px-4">
+                      💲 Ajustar Precio Sugerido a {{ l.suggested | currency:'MXN':'symbol-narrow' }}
+                    </button>
+                    <span class="text-sm text-slate-600">Con ese precio vuelves a ganar {{ l.suggestedMargin | number:'1.0-0' }}%.</span>
+                  </div>
+                } @else if (l.resolved) {
+                  <span class="inline-block px-3 py-2 rounded-lg bg-green-600 text-white font-extrabold">✔️ Precio ajustado · Ganas {{ l.margin | number:'1.0-0' }}%</span>
+                } @else {
+                  <span class="inline-block px-3 py-2 rounded-lg bg-green-100 text-green-800 border-2 border-green-600 font-bold">✔️ Ganancia sana · {{ l.margin | number:'1.0-0' }}%</span>
+                }
+              </td>
+              @if (mode() === 'manual') {
+                <td class="p-4">
+                  <button type="button" (click)="removeManualLine(l.sku)" class="min-h-[56px] px-4 rounded-xl border-2 border-slate-400 bg-white font-bold hover:bg-slate-100">✖️ Quitar</button>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ===================== BARRA DE GUARDADO ===================== -->
+    <section class="rounded-2xl border-4 p-5 flex flex-col lg:flex-row items-center gap-5"
+      [class]="canSave() ? 'border-green-600 bg-green-50' : 'border-red-600 bg-red-50'">
+      <div class="flex-1">
+        @if (canSave()) {
+          <p class="text-2xl font-extrabold text-green-800">✅ Todo listo para guardar</p>
+          <p class="text-lg text-slate-700">{{ lines().length }} productos · Total {{ total() | currency:'MXN':'symbol-narrow' }}. Todos los precios te dejan buena ganancia.</p>
+        } @else {
+          <p class="text-2xl font-extrabold text-red-700">🔒 Aún no puedes guardar</p>
+          <p class="text-lg text-slate-700">Faltan <b>{{ pendingCount() }} producto(s) en rojo</b>. Toca el botón amarillo <b>"Ajustar Precio Sugerido"</b> en cada uno para no vender perdiendo.</p>
+        }
+      </div>
+      <button type="button" (click)="save()" [disabled]="!canSave()"
+        class="min-h-[80px] w-full lg:w-auto px-10 rounded-2xl border-4 text-2xl font-extrabold shadow-lg border-green-800 bg-green-600 text-white hover:bg-green-700 disabled:bg-slate-300 disabled:border-slate-400 disabled:text-slate-500 disabled:shadow-none">
+        @if (canSave()) { 💾 Guardar Entrada en Inventario } @else { 🔒 Guardar Entrada en Inventario }
+      </button>
+    </section>
+  }
+}

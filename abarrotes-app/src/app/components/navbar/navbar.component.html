@@ -1,0 +1,87 @@
+<header class="bg-blue-900 text-white shadow-lg sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center gap-4">
+    <!-- Logo / Título -->
+    <a routerLink="/" class="flex items-center gap-3 shrink-0" aria-label="Ir a la pantalla de inicio">
+      <span class="text-4xl" aria-hidden="true">🏪</span>
+      <span>
+        <span class="block text-2xl font-extrabold leading-tight">{{ inv.storeName }}</span>
+        <span class="block text-sm text-blue-200">Sistema de Inventario · {{ inv.today }}</span>
+      </span>
+    </a>
+
+    <div class="flex-1"></div>
+
+    @if (!isHome()) {
+      <a routerLink="/" class="btn min-h-[56px] px-5 rounded-xl border-2 border-white/70 bg-blue-800 hover:bg-blue-700 text-lg font-bold flex items-center gap-2">
+        🏠 Volver al Inicio
+      </a>
+    }
+
+    <!-- Estado del celular -->
+    @if (inv.phoneLinked()) {
+      <div class="min-h-[56px] px-4 rounded-xl border-2 border-green-300 bg-green-700 flex items-center gap-2 font-bold">
+        <span class="w-3 h-3 rounded-full bg-green-200 animate-pulse"></span> 📱 Celular conectado
+      </div>
+    } @else {
+      <button type="button" (click)="openQr()"
+        class="min-h-[56px] px-5 rounded-xl border-2 border-green-200 bg-green-600 hover:bg-green-500 text-lg font-extrabold shadow-md flex items-center gap-2">
+        📱 Vincular Celular (Código QR)
+      </button>
+    }
+  </div>
+</header>
+
+<!-- ===================== MODAL QR ===================== -->
+@if (qrOpen()) {
+  <div class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6" role="dialog" aria-modal="true" aria-labelledby="qr-title">
+    <div class="bg-white text-slate-900 rounded-3xl shadow-2xl w-full max-w-3xl border-4 border-green-600 overflow-hidden">
+      <div class="bg-green-600 text-white px-6 py-4 flex items-center justify-between">
+        <h2 id="qr-title" class="text-2xl font-extrabold">📱 Vincular tu Celular con esta Computadora</h2>
+      </div>
+
+      <div class="p-6 grid md:grid-cols-2 gap-6 items-center">
+        <!-- QR simulado -->
+        <div class="flex flex-col items-center gap-2">
+          <div class="p-4 bg-white border-4 border-slate-900 rounded-2xl">
+            <svg [attr.viewBox]="'0 0 ' + qr.length + ' ' + qr.length" class="w-72 h-72" shape-rendering="crispEdges" role="img" aria-label="Código QR para vincular el celular">
+              @for (row of qr; track $index; let r = $index) {
+                @for (cell of row; track $index; let c = $index) {
+                  @if (cell) { <rect [attr.x]="c" [attr.y]="r" width="1" height="1" fill="#0f172a" /> }
+                }
+              }
+            </svg>
+          </div>
+          <p class="text-sm text-slate-500">Código de tienda: <b>LUPE-4821</b></p>
+        </div>
+
+        <!-- Instrucciones -->
+        <div class="flex flex-col gap-4">
+          <div class="flex gap-4 items-start">
+            <span class="shrink-0 w-12 h-12 rounded-full bg-blue-600 text-white text-2xl font-extrabold flex items-center justify-center">1</span>
+            <p class="text-xl leading-snug">Abre la <b>cámara</b> de tu celular y <b>apunta a este cuadro</b> negro.</p>
+          </div>
+          <div class="flex gap-4 items-start">
+            <span class="shrink-0 w-12 h-12 rounded-full bg-blue-600 text-white text-2xl font-extrabold flex items-center justify-center">2</span>
+            <p class="text-xl leading-snug">Toca el <b>aviso que aparece</b> en tu pantalla. Cuando veas <span class="text-green-700 font-bold">🟢 Conectado</span>, ¡ya quedó!</p>
+          </div>
+          <div class="rounded-xl bg-slate-100 border-2 border-slate-300 p-3 text-sm text-slate-600">
+            💡 Ambos aparatos deben estar en el mismo <b>Wi-Fi de la tienda</b>.<br />
+            Dirección para prueba: <span class="font-mono break-all">{{ mobileUrl }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 pb-6 grid sm:grid-cols-3 gap-3">
+        <button type="button" (click)="closeQr()" class="min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold hover:bg-slate-100">
+          ✖️ Cerrar
+        </button>
+        <a [href]="mobileUrl" target="_blank" rel="noopener" class="btn min-h-[56px] rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-800 text-lg font-bold flex items-center justify-center hover:bg-blue-100">
+          🖥️ Abrir celular aquí
+        </a>
+        <button type="button" (click)="simulateLink()" class="min-h-[56px] rounded-xl border-2 border-green-800 bg-green-600 text-white text-lg font-extrabold hover:bg-green-500">
+          ✅ Ya lo escaneé
+        </button>
+      </div>
+    </div>
+  </div>
+}

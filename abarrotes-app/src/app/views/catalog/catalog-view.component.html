@@ -1,0 +1,84 @@
+<section class="mb-5">
+  <h1 class="text-3xl font-extrabold">📦 Catálogo y Precios</h1>
+  <p class="text-lg text-slate-600">Todos tus productos con existencias, costo, precio y cuánto ganas.</p>
+</section>
+
+<!-- Búsqueda -->
+<section class="flex flex-col md:flex-row gap-3 mb-4">
+  <label class="flex-1 flex items-center gap-3 min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-4">
+    <span class="text-2xl" aria-hidden="true">🔎</span>
+    <span class="sr-only">Buscar producto</span>
+    <input type="text" [value]="search()" (input)="onSearch($event)" placeholder="Escribe el nombre (ej. Nutrioli) o el código de barras"
+      class="flex-1 text-lg outline-none bg-transparent min-h-[52px]" />
+  </label>
+  @if (search()) {
+    <button type="button" (click)="clearSearch()" class="min-h-[56px] px-6 rounded-xl border-2 border-slate-400 bg-white text-lg font-bold hover:bg-slate-100">✖️ Borrar búsqueda</button>
+  }
+</section>
+
+<!-- Categorías -->
+<section class="flex flex-wrap gap-2 mb-5" aria-label="Filtrar por categoría">
+  @for (c of categories(); track c) {
+    <button type="button" (click)="category.set(c)" [attr.aria-pressed]="category() === c"
+      class="min-h-[56px] px-5 rounded-xl border-2 text-lg font-bold"
+      [class]="category() === c ? 'border-blue-800 bg-blue-600 text-white' : 'border-slate-300 bg-white hover:bg-slate-50'">
+      {{ c }}
+    </button>
+  }
+</section>
+
+<!-- Leyenda -->
+<div class="flex flex-wrap gap-3 mb-3 text-sm font-semibold">
+  <span class="px-3 py-1 rounded-full bg-green-100 text-green-800 border-2 border-green-600">Verde = ganancia sana</span>
+  <span class="px-3 py-1 rounded-full bg-red-100 text-red-800 border-2 border-red-600">Rojo = ganas menos de tu mínimo</span>
+  <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 border-2 border-amber-600">Ámbar = caduca en 3 días o menos</span>
+</div>
+
+<section class="rounded-2xl border-2 border-slate-300 bg-white overflow-hidden">
+  <table class="w-full text-left">
+    <thead class="bg-slate-800 text-white">
+      <tr>
+        <th class="p-4">Producto</th>
+        <th class="p-4">Se compra / se vende</th>
+        <th class="p-4 text-right">Hay</th>
+        <th class="p-4 text-right">Costo</th>
+        <th class="p-4 text-right">Precio</th>
+        <th class="p-4">Ganancia</th>
+        <th class="p-4">Caduca</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (p of rows(); track p.sku) {
+        <tr class="border-b-2 border-slate-200">
+          <td class="p-4">
+            <p class="text-lg font-bold">{{ p.emoji }} {{ p.name }}</p>
+            <p class="text-sm text-slate-500">{{ p.category }} · {{ p.barcode }}</p>
+          </td>
+          <td class="p-4">{{ p.purchaseUnit }} de {{ p.unitsPerPurchase }} → {{ p.saleUnit }}</td>
+          <td class="p-4 text-right">
+            <span class="text-xl font-extrabold" [class.text-blue-700]="p.low">{{ p.stock | number:'1.0-1' }}</span>
+            @if (p.low) { <span class="block text-sm font-bold text-blue-700">📉 Pedir pronto</span> }
+          </td>
+          <td class="p-4 text-right text-lg">{{ p.newCost | currency:'MXN':'symbol-narrow' }}</td>
+          <td class="p-4 text-right text-xl font-extrabold">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</td>
+          <td class="p-4">
+            <span class="inline-block px-3 py-1 rounded-lg font-extrabold border-2"
+              [class]="p.margin >= p.targetMargin ? 'bg-green-100 text-green-800 border-green-600' : 'bg-red-100 text-red-800 border-red-600'">
+              {{ p.margin | number:'1.0-0' }}% <span class="font-semibold text-sm">(mín. {{ p.targetMargin }}%)</span>
+            </span>
+          </td>
+          <td class="p-4">
+            @if (p.daysLeft <= 3) {
+              <span class="inline-block px-3 py-1 rounded-lg bg-amber-500 text-white font-extrabold">⚠️ {{ fmtDate(p.expiry) }}</span>
+              <span class="block text-sm text-amber-800 font-bold">{{ p.daysLeft <= 1 ? 'Caduca mañana' : 'En ' + p.daysLeft + ' días' }} · Cambio físico</span>
+            } @else {
+              <span class="text-lg">{{ fmtDate(p.expiry) }}</span>
+            }
+          </td>
+        </tr>
+      } @empty {
+        <tr><td colspan="7" class="p-8 text-center text-xl text-slate-600">🤷 No encontramos "{{ search() }}". Revisa cómo lo escribiste o toca "Borrar búsqueda".</td></tr>
+      }
+    </tbody>
+  </table>
+</section>
