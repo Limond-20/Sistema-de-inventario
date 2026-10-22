@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#1e3a8a" />
   <title>Abarrotes Doña Lupe · Celular</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Librerías reales de producción para Código de Barras (EAN-13 / QR) y OCR en Español -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     html, body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
     .btn-press:active { transform: scale(0.97); }
@@ -26,14 +29,14 @@
     <div class="flex items-center justify-between">
       <div>
         <p class="text-xs uppercase tracking-wide text-blue-200">Abarrotes Doña Lupe</p>
-        <p class="text-lg font-bold leading-tight">Celular de Apoyo</p>
+        <p class="text-lg font-bold leading-tight">Celular de Apoyo · Lab OCR/EAN</p>
       </div>
       <div class="flex items-center gap-2 bg-green-600 rounded-full px-3 py-1.5 border-2 border-green-300">
         <span class="w-3 h-3 rounded-full bg-green-200 animate-pulse"></span>
         <span class="text-sm font-bold">Conectado</span>
       </div>
     </div>
-    <p class="mt-2 text-sm text-green-200 font-semibold">🟢 Conectado a la PC de la Tienda (Caja 1)</p>
+    <p class="mt-2 text-sm text-green-200 font-semibold">🟢 Conectado a la PC de la Tienda (Sync en Vivo)</p>
   </header>
 
   <main class="flex-1 flex flex-col">
@@ -43,15 +46,23 @@
       <h1 class="text-2xl font-extrabold">¿Qué quieres hacer?</h1>
       <p class="text-base text-slate-600 -mt-2">Toca uno de los botones grandes.</p>
 
-      <button onclick="goTo('screen-ocr')" class="btn-press w-full min-h-[110px] rounded-2xl border-4 border-blue-700 bg-blue-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-lg">
+      <button onclick="goTo('screen-ocr')" class="btn-press w-full min-h-[104px] rounded-2xl border-4 border-blue-700 bg-blue-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-lg">
         <span class="text-5xl">📸</span>
         <span>
-          <span class="block text-xl font-extrabold leading-tight">Fotografiar Nota de Proveedor (OCR)</span>
-          <span class="block text-sm text-blue-100 mt-1">Toma foto a la nota que te dejó el repartidor</span>
+          <span class="block text-xl font-extrabold leading-tight">Fotografiar Nota de Proveedor (OCR Real)</span>
+          <span class="block text-sm text-blue-100 mt-1">Lee tickets con Tesseract.js y detecta subidas de costo</span>
         </span>
       </button>
 
-      <button onclick="startAudit()" class="btn-press w-full min-h-[110px] rounded-2xl border-4 border-amber-700 bg-amber-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-lg">
+      <button onclick="openBarcodeScreen()" class="btn-press w-full min-h-[104px] rounded-2xl border-4 border-emerald-800 bg-emerald-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-lg">
+        <span class="text-5xl">▮▯▮</span>
+        <span>
+          <span class="block text-xl font-extrabold leading-tight">Lector de Código de Barras (EAN-13)</span>
+          <span class="block text-sm text-emerald-100 mt-1">Cámara en vivo o captura por foto (HTTP sin SSL)</span>
+        </span>
+      </button>
+
+      <button onclick="startAudit()" class="btn-press w-full min-h-[104px] rounded-2xl border-4 border-amber-700 bg-amber-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-lg">
         <span class="text-5xl">🔍</span>
         <span>
           <span class="block text-xl font-extrabold leading-tight">Contar Pasillo (Auditoría Exprés)</span>
@@ -59,7 +70,7 @@
         </span>
       </button>
 
-      <button onclick="startMerma()" class="btn-press w-full min-h-[110px] rounded-2xl border-4 border-red-800 bg-red-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-lg">
+      <button onclick="startMerma()" class="btn-press w-full min-h-[104px] rounded-2xl border-4 border-red-800 bg-red-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-lg">
         <span class="text-5xl">⚠️</span>
         <span>
           <span class="block text-xl font-extrabold leading-tight">Registrar Producto Roto o Caducado (Merma)</span>
@@ -67,67 +78,151 @@
         </span>
       </button>
 
-      <div class="mt-2 rounded-xl border-2 border-slate-300 bg-white p-4">
-        <p class="font-bold text-slate-700">📋 Último envío a la PC</p>
-        <p id="last-sync" class="text-slate-600 text-sm mt-1">Hoy 7:42 a.m. · Nota Lala #LA-48213 (12 productos)</p>
+      <div class="mt-1 rounded-xl border-2 border-slate-300 bg-white p-4">
+        <p class="font-bold text-slate-700">📋 Último envío a la PC (BroadcastChannel / LocalStorage)</p>
+        <p id="last-sync" class="text-slate-600 text-sm mt-1">Listo para sincronizar con la pestaña de la PC</p>
       </div>
     </section>
 
-    <!-- ===================== PANTALLA 2: FOTOGRAFIAR NOTA (OCR) ===================== -->
+    <!-- ===================== PANTALLA LECTOR DE CÓDIGO DE BARRAS DUAL ===================== -->
+    <section id="screen-barcode" class="screen flex-col gap-4 p-4">
+      <button onclick="leaveBarcodeScreen()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
+        ⬅️ Regresar al Menú
+      </button>
+
+      <h2 class="text-2xl font-extrabold text-emerald-800">▮▯▮ Lector EAN-13 Dual</h2>
+      <p class="text-base text-slate-600 -mt-2">Funciona con cámara en vivo (HTTPS/localhost) o tomando foto en redes HTTP locales.</p>
+
+      <!-- Modo 1: Cámara en vivo -->
+      <div class="rounded-2xl border-4 border-emerald-700 bg-white p-4 flex flex-col gap-3">
+        <p class="font-extrabold text-lg">1. Escaneo en Tiempo Real (Cámara)</p>
+        <div id="barcode-live-reader" class="w-full rounded-xl overflow-hidden bg-slate-900 min-h-[60px]"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btn-start-cam" onclick="startLiveBarcodeScanner('barcode-live-reader', onBarcodeDecoded)"
+            class="btn-press min-h-[60px] rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white font-extrabold text-base px-3">
+            🎥 Iniciar Cámara
+          </button>
+          <button id="btn-stop-cam" onclick="stopLiveBarcodeScanner()"
+            class="btn-press min-h-[60px] rounded-xl border-2 border-slate-400 bg-slate-100 text-slate-700 font-bold text-base px-3">
+            ⏹️ Detener Cámara
+          </button>
+        </div>
+      </div>
+
+      <!-- Modo 2: Captura por foto (ideal para HTTP sin SSL) -->
+      <div class="rounded-2xl border-4 border-blue-700 bg-white p-4 flex flex-col gap-3">
+        <p class="font-extrabold text-lg">2. Captura por Foto (Redes HTTP sin SSL)</p>
+        <label for="barcode-photo-input" class="btn-press w-full min-h-[68px] rounded-2xl border-4 border-blue-800 bg-blue-600 text-white text-lg font-extrabold flex items-center justify-center gap-2 cursor-pointer shadow">
+          📷 Tomar / Subir Foto del Código
+        </label>
+        <input id="barcode-photo-input" type="file" accept="image/*" capture="environment" class="hidden" onchange="onBarcodePhotoSelected(event, 'barcode')" />
+        <div id="barcode-file-reader-tmp" class="hidden"></div>
+      </div>
+
+      <!-- Botones rápidos de prueba con los 5 EAN-13 oficiales -->
+      <div class="rounded-2xl border-2 border-slate-300 bg-slate-100 p-4 flex flex-col gap-2">
+        <p class="font-extrabold text-base text-slate-700">🧪 Probar decodificación rápida (5 códigos base):</p>
+        <div class="grid grid-cols-1 gap-2">
+          <button onclick="onBarcodeDecoded('7501020515350')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
+            <span><b class="font-mono text-sm text-emerald-700">7501020515350</b><br/><span class="font-bold">🥛 Leche Lala Entera 1L</span></span>
+            <span class="font-extrabold text-lg">$26.00</span>
+          </button>
+          <button onclick="onBarcodeDecoded('7501039121122')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
+            <span><b class="font-mono text-sm text-emerald-700">7501039121122</b><br/><span class="font-bold">🫒 Aceite Nutrioli 850ml</span></span>
+            <span class="font-extrabold text-lg">$42.00</span>
+          </button>
+          <button onclick="onBarcodeDecoded('7501045403014')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
+            <span><b class="font-mono text-sm text-emerald-700">7501045403014</b><br/><span class="font-bold">🐟 Atún Dolores en Agua 140g</span></span>
+            <span class="font-extrabold text-lg">$21.00</span>
+          </button>
+          <button onclick="onBarcodeDecoded('2000001000014')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
+            <span><b class="font-mono text-sm text-emerald-700">2000001000014</b><br/><span class="font-bold">🫘 Frijol Negro Granel (1 kg)</span></span>
+            <span class="font-extrabold text-lg">$36.00</span>
+          </button>
+          <button onclick="onBarcodeDecoded('2000002000013')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
+            <span><b class="font-mono text-sm text-emerald-700">2000002000013</b><br/><span class="font-bold">🧀 Queso Fresco Local (1 kg)</span></span>
+            <span class="font-extrabold text-lg">$95.00</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Resultado con letras grandes -->
+      <div id="barcode-result-card" class="hidden rounded-3xl border-4 border-green-600 bg-green-50 p-5 flex-col gap-3 shadow-lg">
+        <p class="text-sm font-extrabold uppercase tracking-wide text-green-800">✅ Producto Encontrado</p>
+        <p id="bc-res-code" class="font-mono text-base font-bold text-slate-600"></p>
+        <p id="bc-res-name" class="text-3xl font-extrabold text-slate-900 leading-tight"></p>
+        <div class="grid grid-cols-2 gap-3 bg-white rounded-2xl p-3 border-2 border-green-300">
+          <div>
+            <p class="text-xs text-slate-500 font-bold">PRECIO VENTA ACTUAL</p>
+            <p id="bc-res-price" class="text-3xl font-extrabold text-green-700"></p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 font-bold">COSTO HISTÓRICO</p>
+            <p id="bc-res-cost" class="text-2xl font-bold text-slate-700"></p>
+          </div>
+        </div>
+        <button onclick="sendDecodedBarcodeToPC()" class="btn-press w-full min-h-[68px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold shadow-lg">
+          📤 Enviar Producto a la PC Ahora
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================== PANTALLA 2: FOTOGRAFIAR NOTA (OCR REAL TESSERACT.JS) ===================== -->
     <section id="screen-ocr" class="screen flex-col gap-4 p-4">
       <button onclick="goTo('screen-menu')" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
         ⬅️ Regresar al Menú
       </button>
 
-      <h2 class="text-2xl font-extrabold">📸 Foto de la Nota</h2>
+      <h2 class="text-2xl font-extrabold">📸 Escáner OCR de Ticket</h2>
+      <p class="text-base text-slate-600 -mt-2">Toma foto de la nota, sube una imagen o pega texto crudo para analizar con Tesseract.js.</p>
 
-      <ol class="space-y-2 text-base">
-        <li class="flex gap-3 items-start"><span class="shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center">1</span><span>Pon la nota sobre el mostrador, con buena luz.</span></li>
-        <li class="flex gap-3 items-start"><span class="shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center">2</span><span>Toca el botón azul y toma la foto completa.</span></li>
-      </ol>
-
+      <!-- Opción A: Cámara o imagen -->
       <label for="ocr-file" class="btn-press w-full min-h-[72px] rounded-2xl border-4 border-blue-800 bg-blue-600 text-white text-xl font-extrabold flex items-center justify-center gap-3 cursor-pointer shadow-lg">
-        📷 Abrir Cámara y Tomar Foto
+        📷 Tomar Foto / Subir Imagen de Ticket
       </label>
       <input id="ocr-file" type="file" accept="image/*" capture="environment" class="hidden" onchange="onOcrPhoto(event)" />
 
-      <button onclick="useSampleNote()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-blue-600 bg-blue-50 text-blue-800 text-lg font-bold">
-        🧾 Usar nota de ejemplo (Prueba)
-      </button>
+      <!-- Barra de progreso grande de Tesseract -->
+      <div id="ocr-progress-box" class="hidden rounded-2xl border-4 border-blue-600 bg-blue-50 p-4 flex-col gap-2">
+        <div class="flex justify-between items-center">
+          <span id="ocr-status-label" class="font-extrabold text-lg text-blue-900">🔎 Leyendo ticket con OCR (Español)...</span>
+          <span id="ocr-progress-pct" class="text-2xl font-extrabold text-blue-700">0%</span>
+        </div>
+        <div class="w-full h-7 bg-blue-200 rounded-full overflow-hidden border-2 border-blue-400">
+          <div id="ocr-progress-bar" class="h-full bg-blue-600 transition-all duration-200" style="width: 0%"></div>
+        </div>
+      </div>
 
-      <!-- Vista previa -->
+      <!-- Opción B: Pegar texto crudo o cargar tickets de prueba -->
+      <div class="rounded-2xl border-2 border-slate-300 bg-white p-4 flex flex-col gap-3">
+        <p class="font-extrabold text-lg">📝 O pega / prueba texto crudo de ticket:</p>
+        <div class="grid grid-cols-1 gap-2">
+          <button onclick="loadSampleOcrText('inflacion')" class="btn-press min-h-[56px] rounded-xl border-2 border-red-600 bg-red-50 text-red-800 font-extrabold text-sm px-3 py-2 text-left">
+            🔺 Cargar Ticket con Subida de Costo (Rompe Margen + Errores OCR 'O'/'0')
+          </button>
+          <button onclick="loadSampleOcrText('normal')" class="btn-press min-h-[56px] rounded-xl border-2 border-green-600 bg-green-50 text-green-800 font-extrabold text-sm px-3 py-2 text-left">
+            ✔️ Cargar Ticket sin Subida de Costos (Márgenes Sanos)
+          </button>
+        </div>
+        <textarea id="ocr-raw-textarea" rows="5"
+          placeholder="Ejemplo:&#10;1O Leche Lala Entera 1L $24.5O&#10;12 Aceite Nutrioli 850ml $39.OO&#10;24 Atun Dolores en Agua 140g $16.50"
+          class="w-full rounded-xl border-2 border-slate-400 p-3 font-mono text-sm"></textarea>
+        <button onclick="runRawTextOcrParse()" class="btn-press w-full min-h-[60px] rounded-xl border-4 border-indigo-800 bg-indigo-600 text-white text-lg font-extrabold">
+          ⚙️ Procesar Texto con parseTicketOCR()
+        </button>
+      </div>
+
+      <!-- Vista previa y Resultados del Parser -->
       <div id="ocr-preview-wrap" class="hidden flex-col gap-3">
-        <p class="font-bold text-lg">Así se ve tu foto:</p>
-        <div class="relative rounded-xl overflow-hidden border-4 border-slate-300 bg-white">
-          <img id="ocr-photo" class="hidden w-full" alt="Foto de la nota del proveedor" />
-          <!-- Nota simulada -->
-          <div id="ocr-sample" class="hidden p-4 font-mono text-[12px] leading-snug bg-[#fffdf3]">
-            <div class="text-center border-b-2 border-dashed border-slate-400 pb-2 mb-2">
-              <p class="font-bold text-sm">DISTRIBUIDORA DEL BAJÍO S.A. DE C.V.</p>
-              <p>NOTA DE REMISIÓN No. DB-20931</p>
-              <p>17/10/2026 · Ruta 14 · Repartidor: J. Ramírez</p>
-              <p>Cliente: ABARROTES DOÑA LUPE</p>
-            </div>
-            <table class="w-full">
-              <thead><tr class="text-left"><th>CANT</th><th>DESCRIPCIÓN</th><th class="text-right">IMPORTE</th></tr></thead>
-              <tbody>
-                <tr><td>2 CJ</td><td>ACEITE NUTRIOLI 850ML C/12</td><td class="text-right">$1,128.00</td></tr>
-                <tr><td>3 CJ</td><td>ATUN DOLORES AGUA 140G C/24</td><td class="text-right">$1,476.00</td></tr>
-                <tr><td>1 CS</td><td>FRIJOL NEGRO GRANEL 50KG</td><td class="text-right">$1,450.00</td></tr>
-                <tr><td>2 CJ</td><td>ARROZ SOS 900G C/20</td><td class="text-right">$1,104.00</td></tr>
-                <tr><td>1 CJ</td><td>PASTA LA MODERNA 200G C/40</td><td class="text-right">$396.00</td></tr>
-                <tr><td>2 CJ</td><td>AZUCAR ZULKA 1KG C/10</td><td class="text-right">$636.00</td></tr>
-              </tbody>
-            </table>
-            <div class="border-t-2 border-dashed border-slate-400 mt-2 pt-2 text-right font-bold">TOTAL: $6,190.00</div>
-          </div>
-          <div id="ocr-scanline" class="scan-line absolute left-0 right-0 h-1 bg-green-500/80 shadow-[0_0_12px_#16a34a]"></div>
+        <img id="ocr-photo" class="hidden w-full rounded-xl border-4 border-slate-300" alt="Foto de la nota del proveedor" />
+
+        <div class="rounded-2xl bg-white border-4 border-green-600 p-4 flex flex-col gap-2">
+          <p id="ocr-summary-badge" class="font-extrabold text-lg text-green-800"></p>
+          <ul id="ocr-parsed-list" class="divide-y divide-slate-200 text-sm"></ul>
         </div>
-        <div class="rounded-xl bg-green-50 border-2 border-green-600 p-3 text-green-800 font-semibold">
-          ✔️ Se leyeron <b>6 productos</b> · Total <b>$6,190.00</b>
-        </div>
+
         <button onclick="retakePhoto()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold">
-          🔄 Tomar otra foto
+          🔄 Limpiar / Tomar otra foto
         </button>
         <button onclick="sendOcr()" class="btn-press w-full min-h-[72px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold shadow-lg">
           ✅ Enviar Nota a la Computadora
@@ -191,7 +286,7 @@
 
     <!-- ===================== PANTALLA 4: MERMA ===================== -->
     <section id="screen-merma" class="screen flex-col gap-4 p-4">
-      <button onclick="goTo('screen-menu')" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
+      <button onclick="leaveMermaScreen()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
         ⬅️ Regresar al Menú
       </button>
       <h2 class="text-2xl font-extrabold text-red-700">⚠️ Registrar Merma</h2>
@@ -199,13 +294,16 @@
       <!-- Paso 1 -->
       <div id="merma-step1" class="rounded-2xl border-4 border-slate-300 bg-white p-4 flex flex-col gap-3">
         <p class="font-extrabold text-lg"><span class="inline-flex w-8 h-8 rounded-full bg-red-600 text-white items-center justify-center mr-2">1</span>¿Qué producto se dañó?</p>
-        <div id="merma-scanner" class="hidden relative h-40 rounded-xl bg-slate-900 overflow-hidden flex items-center justify-center">
-          <div class="w-3/4 h-20 border-4 border-white/70 rounded-lg"></div>
-          <div class="scan-line absolute left-[12%] right-[12%] h-1 bg-red-500 shadow-[0_0_12px_#dc2626]"></div>
-          <p class="absolute bottom-2 text-white text-sm">Apunta al código de barras…</p>
-        </div>
-        <button id="merma-scan-btn" onclick="scanMerma()" class="btn-press w-full min-h-[72px] rounded-2xl border-4 border-slate-700 bg-slate-800 text-white text-xl font-extrabold">
-          ▮▯▮▮ Escanear Código de Barras
+        <div id="merma-live-reader" class="hidden w-full rounded-xl overflow-hidden bg-slate-900"></div>
+        <button id="merma-scan-btn" onclick="scanMermaCamera()" class="btn-press w-full min-h-[68px] rounded-2xl border-4 border-slate-700 bg-slate-800 text-white text-lg font-extrabold">
+          🎥 Escanear Código con Cámara
+        </button>
+        <label for="merma-barcode-photo" class="btn-press w-full min-h-[60px] rounded-2xl border-2 border-blue-700 bg-blue-50 text-blue-900 text-base font-extrabold flex items-center justify-center gap-2 cursor-pointer">
+          📷 O Tomar Foto al Código (HTTP sin SSL)
+        </label>
+        <input id="merma-barcode-photo" type="file" accept="image/*" capture="environment" class="hidden" onchange="onBarcodePhotoSelected(event, 'merma')" />
+        <button onclick="scanMermaSimulated()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-slate-100 text-slate-700 text-base font-bold">
+          🧪 Simular lectura (Leche Lala 7501020515350)
         </button>
         <div id="merma-product" class="hidden rounded-xl bg-slate-100 border-2 border-slate-400 p-3"></div>
       </div>
@@ -279,19 +377,96 @@
 </div>
 
 <script>
-  // =========================== DATOS SIMULADOS ===========================
+  // =========================== CATÁLOGO BASE OFICIAL (5 EAN-13 DE PRUEBA + EXTRAS) ===========================
+  const BASE_CATALOG = [
+    {
+      sku: 'LAC-LAL-1L',
+      barcode: '7501020515350',
+      name: 'Leche Lala Entera 1L',
+      emoji: '🥛',
+      purchaseUnit: 'Pieza',
+      unitsPerPurchase: 1,
+      saleUnit: 'Pieza',
+      historicCost: 21.00,
+      salePrice: 26.00,
+      targetMargin: 20,
+      keywords: ['leche', 'lala', 'entera', '1l']
+    },
+    {
+      sku: 'ACE-NUT-850',
+      barcode: '7501039121122',
+      name: 'Aceite Nutrioli 850ml',
+      emoji: '🫒',
+      purchaseUnit: 'Pieza',
+      unitsPerPurchase: 1,
+      saleUnit: 'Pieza',
+      historicCost: 34.00,
+      salePrice: 42.00,
+      targetMargin: 18,
+      keywords: ['aceite', 'nutrioli', '850', '850ml']
+    },
+    {
+      sku: 'ATU-DOL-140',
+      barcode: '7501045403014',
+      name: 'Atún Dolores en Agua 140g',
+      emoji: '🐟',
+      purchaseUnit: 'Lata',
+      unitsPerPurchase: 1,
+      saleUnit: 'Lata',
+      historicCost: 16.50,
+      salePrice: 21.00,
+      targetMargin: 20,
+      keywords: ['atun', 'atún', 'dolores', '140', '140g']
+    },
+    {
+      sku: 'FRI-NEG-1K',
+      barcode: '2000001000014',
+      name: 'Frijol Negro Granel (1 kg)',
+      emoji: '🫘',
+      purchaseUnit: 'Kg',
+      unitsPerPurchase: 1,
+      saleUnit: 'Kg',
+      historicCost: 28.00,
+      salePrice: 36.00,
+      targetMargin: 22,
+      keywords: ['frijol', 'negro', 'granel']
+    },
+    {
+      sku: 'QUE-FRE-1K',
+      barcode: '2000002000013',
+      name: 'Queso Fresco Local (1 kg)',
+      emoji: '🧀',
+      purchaseUnit: 'Kg',
+      unitsPerPurchase: 1,
+      saleUnit: 'Kg',
+      historicCost: 75.00,
+      salePrice: 95.00,
+      targetMargin: 20,
+      keywords: ['queso', 'fresco', 'local']
+    }
+  ];
+
+  // Canal de sincronización en tiempo real con Angular (misma máquina / pestañas)
+  const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('abarrotes_lan_sync') : null;
+
+  function broadcastToPC(payload) {
+    const message = { ...payload, timestamp: new Date().toISOString() };
+    if (syncChannel) {
+      syncChannel.postMessage(message);
+    }
+    try {
+      localStorage.setItem('abarrotes_lan_last_event', JSON.stringify(message));
+    } catch (e) {
+      console.warn('No se pudo guardar en localStorage:', e);
+    }
+  }
+
   const AUDIT_ITEMS = [
     { sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml',           loc: 'Anaquel B · Repisa 2', unit: 'pzas' },
     { sku: 'ATU-DOL-140', name: 'Atún Dolores en Agua 140g',       loc: 'Anaquel B · Repisa 3', unit: 'latas' },
-    { sku: 'FRI-NEG-GRA', name: 'Frijol Negro Granel (costal abierto)', loc: 'Piso · Junto a báscula', unit: 'kg' },
-    { sku: 'ARR-SOS-900', name: 'Arroz SOS Súper Extra 900g',      loc: 'Anaquel C · Repisa 1', unit: 'pzas' },
-    { sku: 'CHI-LAC-220', name: 'Chiles Jalapeños La Costeña 220g', loc: 'Anaquel C · Repisa 2', unit: 'latas' },
-  ];
-
-  const MERMA_PRODUCTS = [
-    { name: 'Leche Lala Entera 1L',         barcode: '7501020515343', cost: 24.50 },
-    { name: 'Huevo Blanco Bachoco 18 pzas', barcode: '7501069210117', cost: 58.00 },
-    { name: 'Yoghurt Yoplait Fresa 1kg',    barcode: '7501032394820', cost: 41.30 },
+    { sku: 'FRI-NEG-1K',  name: 'Frijol Negro Granel (1 kg)',      loc: 'Piso · Junto a báscula', unit: 'kg' },
+    { sku: 'LAC-LAL-1L',  name: 'Leche Lala Entera 1L',            loc: 'Refrigerador 1 · Puerta 1', unit: 'pzas' },
+    { sku: 'QUE-FRE-1K',  name: 'Queso Fresco Local (1 kg)',       loc: 'Vitri-mostrador Lácteos', unit: 'kg' },
   ];
 
   // =========================== NAVEGACIÓN ===========================
@@ -318,38 +493,424 @@
   }
   function vibrate(ms = 40) { if (navigator.vibrate) navigator.vibrate(ms); }
 
-  // =========================== PANTALLA 2: OCR ===========================
-  function showPreview() {
-    const w = document.getElementById('ocr-preview-wrap');
-    w.classList.remove('hidden'); w.classList.add('flex');
-    document.getElementById('ocr-scanline').classList.remove('hidden');
-    setTimeout(() => document.getElementById('ocr-scanline').classList.add('hidden'), 2200);
-    setTimeout(() => w.scrollIntoView({ behavior: 'smooth' }), 50);
+  // =========================== 1. LECTOR DE CÓDIGO DE BARRAS DUAL (HTML5-QRCODE) ===========================
+  let activeHtml5QrCode = null;
+  let lastDecodedProduct = null;
+
+  function openBarcodeScreen() {
+    document.getElementById('barcode-result-card').classList.add('hidden');
+    document.getElementById('barcode-result-card').classList.remove('flex');
+    goTo('screen-barcode');
   }
-  function onOcrPhoto(e) {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
+
+  async function leaveBarcodeScreen() {
+    await stopLiveBarcodeScanner();
+    goTo('screen-menu');
+  }
+
+  async function startLiveBarcodeScanner(elementId, onSuccessCallback) {
+    await stopLiveBarcodeScanner();
+    if (typeof Html5Qrcode === 'undefined') {
+      alert('La librería Html5Qrcode no está disponible. Verifica tu conexión a internet.');
+      return;
+    }
+    const container = document.getElementById(elementId);
+    container.classList.remove('hidden');
+    activeHtml5QrCode = new Html5Qrcode(elementId);
+    try {
+      await activeHtml5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 120 } },
+        (decodedText) => {
+          vibrate(100);
+          stopLiveBarcodeScanner();
+          onSuccessCallback(decodedText);
+        },
+        () => {}
+      );
+    } catch (err) {
+      console.warn('No se pudo abrir la cámara en vivo (posible red HTTP sin SSL):', err);
+      alert('En conexiones HTTP sin SSL el navegador bloquea el video en vivo. Usa el botón azul "📷 Tomar / Subir Foto del Código".');
+    }
+  }
+
+  async function stopLiveBarcodeScanner() {
+    if (activeHtml5QrCode) {
+      try {
+        if (activeHtml5QrCode.isScanning) {
+          await activeHtml5QrCode.stop();
+        }
+        activeHtml5QrCode.clear();
+      } catch (e) {
+        console.warn(e);
+      }
+      activeHtml5QrCode = null;
+    }
+  }
+
+  async function onBarcodePhotoSelected(event, targetContext) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    await stopLiveBarcodeScanner();
+
+    if (typeof Html5Qrcode === 'undefined') {
+      alert('La librería Html5Qrcode no se cargó.');
+      return;
+    }
+
+    const helperId = 'barcode-file-reader-tmp';
+    const fileScanner = new Html5Qrcode(helperId);
+    try {
+      const decodedText = await fileScanner.scanFile(file, true);
+      vibrate(100);
+      if (targetContext === 'merma') {
+        applyMermaBarcode(decodedText);
+      } else {
+        onBarcodeDecoded(decodedText);
+      }
+    } catch (err) {
+      alert('No se detectó un código EAN-13 claro en la foto. Intenta acercar más el código con buena luz o usa los botones de prueba.');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  function findProductByBarcode(rawCode) {
+    const clean = String(rawCode).trim().replace(/\D/g, '');
+    return BASE_CATALOG.find(p => p.barcode === clean) || null;
+  }
+
+  function onBarcodeDecoded(code) {
+    const cleanCode = String(code).trim();
+    const found = findProductByBarcode(cleanCode);
+    const card = document.getElementById('barcode-result-card');
+    card.classList.remove('hidden');
+    card.classList.add('flex');
+
+    if (found) {
+      lastDecodedProduct = found;
+      document.getElementById('bc-res-code').textContent = `EAN-13: ${found.barcode} · SKU: ${found.sku}`;
+      document.getElementById('bc-res-name').textContent = `${found.emoji} ${found.name}`;
+      document.getElementById('bc-res-price').textContent = `$${found.salePrice.toFixed(2)}`;
+      document.getElementById('bc-res-cost').textContent = `$${found.historicCost.toFixed(2)}`;
+      // Auto-transmitir evento de escaneo a la PC al instante
+      broadcastToPC({
+        type: 'BARCODE_SCANNED',
+        barcode: found.barcode,
+        product: found
+      });
+      document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Código ${found.barcode} (${found.name}) enviado a PC`;
+    } else {
+      lastDecodedProduct = {
+        sku: 'DESC-' + cleanCode.slice(-4),
+        barcode: cleanCode,
+        name: `Código leído: ${cleanCode} (No registrado en los 5 base)`,
+        emoji: '📦',
+        historicCost: 20.00,
+        salePrice: 25.00,
+        targetMargin: 20
+      };
+      document.getElementById('bc-res-code').textContent = `Código leído: ${cleanCode}`;
+      document.getElementById('bc-res-name').textContent = `📦 Producto código ${cleanCode}`;
+      document.getElementById('bc-res-price').textContent = `$25.00`;
+      document.getElementById('bc-res-cost').textContent = `$20.00`;
+      broadcastToPC({
+        type: 'BARCODE_SCANNED',
+        barcode: cleanCode,
+        product: lastDecodedProduct
+      });
+    }
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth' }), 60);
+  }
+
+  function sendDecodedBarcodeToPC() {
+    if (!lastDecodedProduct) return;
+    vibrate(80);
+    broadcastToPC({
+      type: 'BARCODE_SCANNED',
+      barcode: lastDecodedProduct.barcode,
+      product: lastDecodedProduct
+    });
+    document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Código ${lastDecodedProduct.barcode} (${lastDecodedProduct.name})`;
+    showModal('✅', '¡Enviado a la PC!', `Se envió <b>${lastDecodedProduct.emoji} ${lastDecodedProduct.name}</b> (${lastDecodedProduct.barcode}) con precio <b>$${lastDecodedProduct.salePrice.toFixed(2)}</b> a la pantalla de Recepción en la computadora.`);
+  }
+
+  // =========================== 2. ESCÁNER OCR REAL (TESSERACT.JS + PARSER) ===========================
+  let currentParsedLines = [];
+
+  const SAMPLE_TICKETS = {
+    inflacion: [
+      'DISTRIBUIDORA DEL BAJIO S.A. DE C.V.',
+      'FOLIO: DB-20931',
+      '1O Leche Lala Entera 1L $24.5O',
+      '12 Aceite Nutrioli 850ml $39.OO',
+      '24 Atun Dolores en Agua 140g $16.50',
+      '15 Frijol Negro Granel 1 kg $32.OO',
+      '5 Queso Fresco Local 1 kg $75.00'
+    ].join('\n'),
+    normal: [
+      'NOTA DE PROVEEDOR #NP-1042',
+      '10 Leche Lala Entera 1L $21.00',
+      '12 Aceite Nutrioli 850ml $34.00',
+      '24 Atun Dolores en Agua 140g $16.50',
+      '10 Frijol Negro Granel 1 kg $28.00',
+      '4 Queso Fresco Local 1 kg $75.00'
+    ].join('\n')
+  };
+
+  function normalizeText(str) {
+    return String(str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+
+  /**
+   * Limpia errores comunes de OCR en un token numérico:
+   * - Cambia 'O' / 'o' por '0'
+   * - Cambia 'l' / 'I' / '|' por '1'
+   * - Cambia 'S' inicial pegada a dígitos por '$'
+   */
+  function cleanOcrNumber(token) {
+    if (!token) return NaN;
+    let cleaned = String(token).trim();
+    cleaned = cleaned.replace(/^[Ss$]+/, '');
+    cleaned = cleaned
+      .replace(/[Oo]/g, '0')
+      .replace(/[lI|]/g, '1')
+      .replace(/,/g, '.');
+    cleaned = cleaned.replace(/[^0-9.]/g, '');
+    const parts = cleaned.split('.');
+    if (parts.length > 2) {
+      cleaned = parts.slice(0, -1).join('') + '.' + parts[parts.length - 1];
+    }
+    return parseFloat(cleaned);
+  }
+
+  function matchProductFromDescription(desc) {
+    const norm = normalizeText(desc);
+    // Buscar coincidencia por código de barras si viene incluido
+    for (const item of BASE_CATALOG) {
+      if (norm.includes(item.barcode)) return item;
+    }
+    // Buscar el producto con mayor cantidad de palabras clave coincidentes
+    let bestMatch = null;
+    let bestScore = 0;
+    for (const item of BASE_CATALOG) {
+      let score = 0;
+      for (const kw of item.keywords) {
+        if (norm.includes(kw)) score++;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = item;
+      }
+    }
+    return bestMatch;
+  }
+
+  /**
+   * parseTicketOCR(rawText):
+   * Busca líneas con el patrón [Cantidad] [Descripción] [Costo Unitario o Total],
+   * limpia errores comunes de OCR ('O' -> '0', 'l' -> '1') y cruza contra el catálogo base.
+   */
+  function parseTicketOCR(rawText) {
+    if (!rawText) return [];
+    const lines = String(rawText).split(/\r?\n/);
+    const parsedResults = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.length < 5) continue;
+
+      // Ignorar encabezados o totales generales
+      const upper = line.toUpperCase();
+      if (
+        upper.startsWith('TOTAL') ||
+        upper.startsWith('SUBTOTAL') ||
+        upper.startsWith('FOLIO') ||
+        upper.startsWith('DISTRIBUIDORA') ||
+        upper.startsWith('NOTA ') ||
+        upper.startsWith('FECHA') ||
+        upper.startsWith('CLIENTE')
+      ) {
+        continue;
+      }
+
+      // Patrón: [Cantidad al inicio] [Descripción al centro] [Precio al final]
+      const match = line.match(/^([0-9OoIl|]+(?:[.,][0-9OoIl|]+)?)\s+(?:(?:PZ|PZA|PZAS|CJ|CAJA|KG|LT|LATA|LATAS)\b\s*)?(.+?)\s+([Ss$]?\s*[0-9OoIl|]+(?:[.,][0-9OoIl|]{1,2})?)\s*$/i);
+      if (!match) continue;
+
+      const qty = cleanOcrNumber(match[1]);
+      const rawDesc = match[2].trim();
+      const rawAmount = cleanOcrNumber(match[3]);
+
+      if (isNaN(qty) || qty <= 0 || isNaN(rawAmount) || rawAmount <= 0) continue;
+
+      const product = matchProductFromDescription(rawDesc);
+      if (!product) continue;
+
+      // Determinar si el monto capturado es Costo Unitario o Total de la Línea
+      let unitNewCost = rawAmount;
+      let lineTotal = +(qty * rawAmount).toFixed(2);
+
+      if (qty > 1 && rawAmount > product.historicCost * 2.2) {
+        const candidateUnit = rawAmount / qty;
+        if (Math.abs(candidateUnit - product.historicCost) < Math.abs(rawAmount - product.historicCost)) {
+          unitNewCost = +candidateUnit.toFixed(2);
+          lineTotal = +rawAmount.toFixed(2);
+        }
+      }
+
+      parsedResults.push({
+        sku: product.sku,
+        barcode: product.barcode,
+        name: product.name,
+        emoji: product.emoji,
+        qtyPurchase: qty,
+        purchaseUnit: product.purchaseUnit,
+        unitsPerPurchase: product.unitsPerPurchase,
+        saleUnit: product.saleUnit,
+        lineTotal: lineTotal,
+        historicCost: product.historicCost,
+        newCost: +unitNewCost.toFixed(2),
+        salePrice: product.salePrice,
+        targetMargin: product.targetMargin,
+        resolved: false
+      });
+    }
+
+    return parsedResults;
+  }
+
+  async function onOcrPhoto(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
     const img = document.getElementById('ocr-photo');
-    img.src = URL.createObjectURL(f);
+    img.src = URL.createObjectURL(file);
     img.classList.remove('hidden');
-    document.getElementById('ocr-sample').classList.add('hidden');
-    showPreview();
+
+    const progressBox = document.getElementById('ocr-progress-box');
+    const progressBar = document.getElementById('ocr-progress-bar');
+    const progressPct = document.getElementById('ocr-progress-pct');
+    const statusLabel = document.getElementById('ocr-status-label');
+
+    progressBox.classList.remove('hidden');
+    progressBox.classList.add('flex');
+    progressBar.style.width = '5%';
+    progressPct.textContent = '5%';
+    statusLabel.textContent = '🔎 Iniciando motor OCR en español...';
+
+    try {
+      const result = await Tesseract.recognize(file, 'spa', {
+        logger: (m) => {
+          if (m && typeof m.progress === 'number') {
+            const pct = Math.max(5, Math.round(m.progress * 100));
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+            statusLabel.textContent = m.status === 'recognizing text'
+              ? '📖 Leyendo renglones del ticket...'
+              : '⚙️ Preparando imagen...';
+          }
+        }
+      });
+
+      const rawText = (result && result.data && result.data.text) ? result.data.text : '';
+      document.getElementById('ocr-raw-textarea').value = rawText;
+      renderParsedTicketLines(parseTicketOCR(rawText));
+    } catch (err) {
+      console.error('Error en Tesseract OCR:', err);
+      alert('No se pudo procesar la imagen con OCR. Puedes pegar o editar el texto manualmente abajo.');
+    } finally {
+      setTimeout(() => {
+        progressBox.classList.add('hidden');
+        progressBox.classList.remove('flex');
+      }, 500);
+    }
   }
-  function useSampleNote() {
-    document.getElementById('ocr-photo').classList.add('hidden');
-    document.getElementById('ocr-sample').classList.remove('hidden');
-    showPreview();
+
+  function loadSampleOcrText(type) {
+    const txt = SAMPLE_TICKETS[type] || SAMPLE_TICKETS.inflacion;
+    document.getElementById('ocr-raw-textarea').value = txt;
+    runRawTextOcrParse();
   }
+
+  function runRawTextOcrParse() {
+    const rawText = document.getElementById('ocr-raw-textarea').value;
+    const lines = parseTicketOCR(rawText);
+    renderParsedTicketLines(lines);
+  }
+
+  function renderParsedTicketLines(lines) {
+    currentParsedLines = lines;
+    const wrap = document.getElementById('ocr-preview-wrap');
+    const badge = document.getElementById('ocr-summary-badge');
+    const list = document.getElementById('ocr-parsed-list');
+
+    wrap.classList.remove('hidden');
+    wrap.classList.add('flex');
+    list.innerHTML = '';
+
+    if (!lines.length) {
+      badge.className = 'font-extrabold text-lg text-red-700';
+      badge.textContent = '⚠️ No se detectaron productos del catálogo en el texto. Revisa el formato [Cantidad] [Producto] [Costo].';
+      return;
+    }
+
+    const totalAmount = lines.reduce((acc, l) => acc + l.lineTotal, 0);
+    const alertsCount = lines.filter(l => ((l.salePrice - l.newCost) / l.salePrice) * 100 < l.targetMargin).length;
+
+    badge.className = 'font-extrabold text-lg ' + (alertsCount > 0 ? 'text-red-700' : 'text-green-800');
+    badge.innerHTML = `✔️ Se leyeron <b>${lines.length} productos</b> · Total <b>$${totalAmount.toFixed(2)}</b>` +
+      (alertsCount > 0 ? `<br/><span class="text-red-600">🔺 ¡Atención! ${alertsCount} producto(s) subieron de costo y rompen el margen.</span>` : '');
+
+    lines.forEach(l => {
+      const margin = ((l.salePrice - l.newCost) / l.salePrice) * 100;
+      const broken = margin < l.targetMargin;
+      const li = document.createElement('li');
+      li.className = 'py-2.5 flex items-center justify-between gap-2 ' + (broken ? 'text-red-700 font-bold' : 'text-slate-800');
+      li.innerHTML = `
+        <div>
+          <p class="font-extrabold text-base">${l.emoji} ${l.qtyPurchase} × ${l.name}</p>
+          <p class="text-xs text-slate-500">Costo Ant: $${l.historicCost.toFixed(2)} → <b>Nuevo: $${l.newCost.toFixed(2)}</b> (Margen: ${Math.round(margin)}%)</p>
+        </div>
+        <div class="text-right">
+          <p class="font-extrabold text-base">$${l.lineTotal.toFixed(2)}</p>
+          ${broken ? '<span class="inline-block px-2 py-0.5 text-xs bg-red-600 text-white rounded-full">⚠️ Margen caído</span>' : '<span class="inline-block px-2 py-0.5 text-xs bg-green-600 text-white rounded-full">OK</span>'}
+        </div>
+      `;
+      list.appendChild(li);
+    });
+
+    setTimeout(() => wrap.scrollIntoView({ behavior: 'smooth' }), 60);
+  }
+
   function retakePhoto() {
     const w = document.getElementById('ocr-preview-wrap');
     w.classList.add('hidden'); w.classList.remove('flex');
+    document.getElementById('ocr-photo').classList.add('hidden');
     document.getElementById('ocr-file').value = '';
+    currentParsedLines = [];
   }
+
   function sendOcr() {
+    if (!currentParsedLines.length) {
+      alert('Primero escanea una foto o procesa un texto de ticket.');
+      return;
+    }
     vibrate(80);
-    document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Nota Distribuidora del Bajío #DB-20931 (6 productos)`;
+    const folio = 'OCR-' + String(Date.now()).slice(-5);
+    broadcastToPC({
+      type: 'OCR_TICKET_PARSED',
+      folio: folio,
+      supplier: 'Ticket Escaneado por OCR (Celular)',
+      lines: currentParsedLines,
+      rawText: document.getElementById('ocr-raw-textarea').value
+    });
+    document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Ticket #${folio} (${currentParsedLines.length} productos) enviado a PC`;
     retakePhoto();
-    showModal('✅', '¡Nota enviada!', 'La computadora ya recibió la nota <b>#DB-20931</b>.<br/>Ve a la PC y abre <b>"📥 Recibir Mercancía"</b> para revisar los precios.');
+    showModal('✅', '¡Ticket OCR enviado a la PC!', `La computadora ya recibió los <b>${currentParsedLines.length} productos</b> del ticket <b>#${folio}</b>.<br/>En la pantalla de Recepción verás en <b>ROJO</b> los que subieron de costo.`);
   }
 
   // =========================== PANTALLA 3: CONTEO CIEGO ===========================
@@ -463,7 +1024,7 @@
   function startMerma() {
     Object.assign(merma, { product: null, reason: null, qty: 1, photo: false });
     document.getElementById('merma-product').classList.add('hidden');
-    document.getElementById('merma-scanner').classList.add('hidden');
+    document.getElementById('merma-live-reader').classList.add('hidden');
     document.getElementById('merma-scan-btn').classList.remove('hidden');
     document.getElementById('merma-qty').textContent = '1';
     document.querySelectorAll('.reason-btn').forEach(b => { b.classList.remove('border-red-600', 'bg-red-50', 'ring-4', 'ring-red-200'); b.classList.add('border-slate-400', 'bg-white'); });
@@ -474,22 +1035,35 @@
     updateMermaSubmit();
     goTo('screen-merma');
   }
-  function scanMerma() {
-    document.getElementById('merma-scan-btn').classList.add('hidden');
-    const sc = document.getElementById('merma-scanner'); sc.classList.remove('hidden'); sc.classList.add('flex');
-    setTimeout(() => {
-      vibrate(120);
-      sc.classList.add('hidden'); sc.classList.remove('flex');
-      merma.product = MERMA_PRODUCTS[0];
-      const p = document.getElementById('merma-product');
-      p.innerHTML = `<p class="text-sm text-slate-500">Código: ${merma.product.barcode}</p>
-        <p class="text-xl font-extrabold">🥛 ${merma.product.name}</p>
-        <p class="text-sm text-slate-600">Costo por pieza: $${merma.product.cost.toFixed(2)}</p>
-        <button onclick="startMerma()" class="btn-press mt-2 w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white font-bold">🔄 No es este, escanear otro</button>`;
-      p.classList.remove('hidden');
-      setStepEnabled('merma-step2', true);
-      updateMermaSubmit();
-    }, 1400);
+  async function leaveMermaScreen() {
+    await stopLiveBarcodeScanner();
+    goTo('screen-menu');
+  }
+  function scanMermaCamera() {
+    startLiveBarcodeScanner('merma-live-reader', (decodedText) => {
+      applyMermaBarcode(decodedText);
+    });
+  }
+  function scanMermaSimulated() {
+    vibrate(80);
+    applyMermaBarcode('7501020515350');
+  }
+  function applyMermaBarcode(code) {
+    const found = findProductByBarcode(code) || BASE_CATALOG[0];
+    merma.product = {
+      name: found.name,
+      barcode: found.barcode,
+      cost: found.historicCost,
+      emoji: found.emoji
+    };
+    const p = document.getElementById('merma-product');
+    p.innerHTML = `<p class="text-sm text-slate-500">Código EAN-13: ${merma.product.barcode}</p>
+      <p class="text-xl font-extrabold">${merma.product.emoji} ${merma.product.name}</p>
+      <p class="text-sm text-slate-600">Costo unitario: $${merma.product.cost.toFixed(2)}</p>
+      <button onclick="startMerma()" class="btn-press mt-2 w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white font-bold">🔄 No es este, escanear otro</button>`;
+    p.classList.remove('hidden');
+    setStepEnabled('merma-step2', true);
+    updateMermaSubmit();
   }
   function pickReason(btn) {
     vibrate(20);

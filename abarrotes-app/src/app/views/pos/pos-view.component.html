@@ -1,0 +1,653 @@
+<!-- ===================== ENCABEZADO SUPERIOR COMPACTO ===================== -->
+<section class="mb-5 flex flex-wrap items-center justify-between gap-4">
+  <div>
+    <div class="flex items-center gap-2.5">
+      <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold uppercase tracking-wider border border-emerald-300">
+        Punto de Venta Conectado
+      </span>
+      <span class="px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-bold border border-indigo-200">
+        📡 Escáner Celular Activo (BroadcastChannel)
+      </span>
+    </div>
+    <h1 class="text-3xl font-black text-slate-900 mt-1">🛒 Mostrador: Cobrar y Libreta de Fiado</h1>
+  </div>
+
+  <!-- Mini resumen de Caja en Vivo -->
+  <div class="flex flex-wrap items-center gap-3">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-3">
+      <span class="text-2xl">💵</span>
+      <div>
+        <p class="text-xs font-bold uppercase text-slate-500">Efectivo en Cajón Hoy</p>
+        <p class="text-xl font-black text-emerald-700">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</p>
+      </div>
+    </div>
+
+    <button type="button" (click)="openCreditModal()"
+      class="h-14 px-5 rounded-2xl border-2 border-amber-500 bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold text-base flex items-center gap-2 shadow-sm transition-all">
+      <span class="text-2xl">📓</span>
+      <span>Ver Libreta / Registrar Abono ({{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }})</span>
+    </button>
+  </div>
+</section>
+
+<!-- ===================== NOTIFICACIONES DE SINCRONIZACIÓN O VENTA ===================== -->
+@if (syncNotification(); as syncMsg) {
+  <div class="mb-4 rounded-2xl border-2 border-indigo-600 bg-indigo-50 px-5 py-3.5 text-indigo-950 font-bold flex items-center justify-between gap-4 shadow-sm">
+    <span>{{ syncMsg }}</span>
+    <button type="button" (click)="syncNotification.set(null)" class="h-10 px-4 rounded-xl bg-white border border-indigo-300 text-sm font-bold">
+      ✖️ Cerrar
+    </button>
+  </div>
+}
+
+@if (saleFeedback(); as fb) {
+  <div class="mb-4 rounded-2xl border-2 px-5 py-4 font-extrabold text-lg flex items-center justify-between gap-4 shadow-sm"
+    [class]="fb.ok ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-red-600 bg-red-50 text-red-900'">
+    <span>{{ fb.text }}</span>
+    <button type="button" (click)="saleFeedback.set(null)" class="h-11 px-4 rounded-xl bg-white border border-slate-300 text-sm font-bold text-slate-800">
+      👍 Entendido
+    </button>
+  </div>
+}
+
+<!-- ===================== PANTALLA DIVIDIDA 2 COLUMNAS (60% IZQUIERDA / 40% DERECHA) ===================== -->
+<div class="grid lg:grid-cols-12 gap-6 items-start">
+
+  <!-- =========================================================================
+       COLUMNA IZQUIERDA (60% ANCHO = 7/12): SELECTOR RÁPIDO, GRANEL Y ESCÁNER
+       ========================================================================= -->
+  <section class="lg:col-span-7 flex flex-col gap-4">
+
+    <!-- Barra de búsqueda / Escáner de código de barras -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <label class="flex-1 flex items-center gap-3 px-3 h-14 rounded-xl bg-slate-50 border border-slate-300 focus-within:border-blue-600">
+        <span class="text-2xl" aria-hidden="true">▮▯▮</span>
+        <input
+          type="text"
+          [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)"
+          (keyup.enter)="onSearchOrBarcodeSubmit()"
+          placeholder="Escanea el código EAN-13 o escribe el producto (ej. Queso, Lala, Frijol)..."
+          class="flex-1 bg-transparent text-lg font-semibold text-slate-900 outline-none"
+        />
+      </label>
+      @if (searchQuery()) {
+        <button type="button" (click)="searchQuery.set('')"
+          class="h-14 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 font-bold text-slate-700">
+          ✖️ Limpiar
+        </button>
+      }
+      <button type="button" (click)="onSearchOrBarcodeSubmit()"
+        class="h-14 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base shadow-sm">
+        ➕ Buscar / Agregar
+      </button>
+    </div>
+
+    <!-- Pestañas Grandes: [ ⚡ Acceso Rápido / Granel ] vs [ 📦 Todos los Productos ] -->
+    <div class="grid grid-cols-2 gap-3" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'bulk'"
+        (click)="activeTab.set('bulk')"
+        class="h-16 rounded-2xl border-2 px-4 text-lg font-extrabold flex items-center justify-center gap-2.5 transition-all"
+        [class]="activeTab() === 'bulk'
+          ? 'border-blue-700 bg-blue-600 text-white shadow-md'
+          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
+        <span class="text-2xl">⚡</span>
+        <span>Acceso Rápido / Granel</span>
+      </button>
+
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'all'"
+        (click)="activeTab.set('all')"
+        class="h-16 rounded-2xl border-2 px-4 text-lg font-extrabold flex items-center justify-center gap-2.5 transition-all"
+        [class]="activeTab() === 'all'
+          ? 'border-blue-700 bg-blue-600 text-white shadow-md'
+          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
+        <span class="text-2xl">📦</span>
+        <span>Todos los Productos ({{ inv.products().length }})</span>
+      </button>
+    </div>
+
+    <!-- Cuadrícula Bento de Productos -->
+    <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+      @for (p of displayedProducts(); track p.sku) {
+        <div
+          class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:border-blue-400 transition-all flex flex-col justify-between gap-3">
+          <div>
+            <!-- Badges superiores: Clase ABC + Granel -->
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold"
+                [class]="p.abcClass === 'A'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : (p.abcClass === 'B' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-700 border border-slate-300')">
+                {{ p.abcClass === 'A' ? '🔥 Clase A' : (p.abcClass === 'B' ? '⚡ Clase B' : '💤 Clase C') }}
+              </span>
+
+              @if (p.isBulk) {
+                <span class="px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold">
+                  ⚖️ Granel / Sin Código
+                </span>
+              } @else {
+                <span class="font-mono text-xs text-slate-400">{{ p.barcode }}</span>
+              }
+            </div>
+
+            <!-- Nombre e Icono -->
+            <div class="flex items-start gap-2.5">
+              <span class="text-4xl leading-none select-none">{{ p.emoji }}</span>
+              <div>
+                <h3 class="text-base font-extrabold text-slate-900 leading-snug">{{ p.name }}</h3>
+                <p class="text-xs font-semibold mt-0.5"
+                  [class]="p.stock <= p.rop ? 'text-amber-700 font-bold' : 'text-slate-500'">
+                  Hay: {{ p.stock | number:'1.0-2' }} {{ p.saleUnit }}
+                  @if (p.stock <= p.rop) { · ⚠️ Bajo ROP ({{ p.rop }}) }
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Precio y Botón de Acción Grande -->
+          <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+            <div>
+              <span class="block text-xs text-slate-400 font-bold uppercase">Precio</span>
+              <span class="text-2xl font-black text-slate-900">
+                {{ p.salePrice | currency:'MXN':'symbol-narrow' }}
+              </span>
+              <span class="text-xs text-slate-500">/{{ p.saleUnit }}</span>
+            </div>
+
+            <button
+              type="button"
+              (click)="onProductCardClick(p)"
+              class="h-14 px-4 rounded-xl font-extrabold text-sm flex items-center gap-1.5 shadow-sm transition-all"
+              [class]="p.isBulk && p.saleUnit === 'Kg'
+                ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-2 border-amber-700'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-emerald-800'">
+              @if (p.isBulk && p.saleUnit === 'Kg') {
+                <span>⚖️ Pesar / $</span>
+              } @else {
+                <span>➕ Agregar</span>
+              }
+            </button>
+          </div>
+        </div>
+      } @empty {
+        <div class="sm:col-span-2 xl:col-span-3 bg-white rounded-2xl border border-slate-200 p-8 text-center">
+          <p class="text-xl font-bold text-slate-700">No encontramos ningún producto con "{{ searchQuery() }}"</p>
+          <button type="button" (click)="searchQuery.set('')" class="mt-3 h-14 px-6 rounded-xl bg-slate-100 font-bold text-slate-800">
+            Mostrar todos los productos
+          </button>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       COLUMNA DERECHA (40% ANCHO = 5/12): TICKET ACTIVO Y CIERRE DE VENTA
+       ========================================================================= -->
+  <aside class="lg:col-span-5 bg-white rounded-2xl border-2 border-slate-200 shadow-md flex flex-col overflow-hidden sticky top-24">
+
+    <!-- Cabecera del Ticket -->
+    <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-extrabold flex items-center gap-2">
+          <span>🧾</span>
+          <span>Cuenta del Cliente</span>
+        </h2>
+        <p class="text-xs text-slate-300">{{ cartItemsCount() }} renglones en el ticket actual</p>
+      </div>
+      @if (cart().length > 0) {
+        <button type="button" (click)="clearCart()"
+          class="h-11 px-3.5 rounded-xl bg-slate-800 hover:bg-red-900/80 text-slate-200 border border-slate-700 text-xs font-bold">
+          🗑️ Vaciar
+        </button>
+      }
+    </div>
+
+    <!-- Lista de Artículos en el Ticket -->
+    <div class="divide-y divide-slate-200 max-h-[380px] overflow-y-auto px-4 py-2">
+      @for (item of cart(); track item.sku) {
+        <div class="py-3.5 flex items-center justify-between gap-3">
+          <div class="min-w-0 flex-1">
+            <p class="text-base font-extrabold text-slate-900 truncate">
+              {{ item.emoji }} {{ item.name }}
+            </p>
+            <p class="text-xs font-semibold text-slate-500">
+              @if (item.saleUnit === 'Kg') {
+                <span class="text-amber-800 font-bold">
+                  ⚖️ {{ item.qty | number:'1.3-3' }} kg ({{ item.qty * 1000 | number:'1.0-0' }} g)
+                </span>
+                · a {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}/kg
+              } @else {
+                <span>{{ item.qty | number:'1.0-2' }} × {{ item.unitPrice | currency:'MXN':'symbol-narrow' }} c/u</span>
+              }
+            </p>
+          </div>
+
+          <!-- Controles grandes +/- y Subtotal -->
+          <div class="flex items-center gap-1.5">
+            <button type="button" (click)="adjustCartItemQty(item, -1)" aria-label="Disminuir cantidad"
+              class="w-11 h-11 rounded-xl border-2 border-slate-300 bg-slate-50 hover:bg-slate-100 text-xl font-black text-slate-800">
+              −
+            </button>
+            <span class="min-w-[46px] text-center font-extrabold text-base text-slate-900">
+              {{ item.saleUnit === 'Kg' ? (item.qty | number:'1.2-2') : (item.qty | number:'1.0-0') }}
+            </span>
+            <button type="button" (click)="adjustCartItemQty(item, 1)" aria-label="Aumentar cantidad"
+              class="w-11 h-11 rounded-xl border-2 border-slate-300 bg-slate-50 hover:bg-slate-100 text-xl font-black text-slate-800">
+              +
+            </button>
+          </div>
+
+          <div class="text-right min-w-[78px]">
+            <p class="text-lg font-black text-slate-900">{{ item.subtotal | currency:'MXN':'symbol-narrow' }}</p>
+            <button type="button" (click)="removeCartItem(item.sku)" class="text-xs font-bold text-red-600 hover:underline">
+              Quitar
+            </button>
+          </div>
+        </div>
+      } @empty {
+        <div class="py-12 text-center text-slate-500">
+          <p class="text-5xl mb-2">🛒</p>
+          <p class="text-lg font-bold text-slate-700">El ticket está vacío</p>
+          <p class="text-sm">Toca cualquier producto de la izquierda o escanea con el celular.</p>
+        </div>
+      }
+    </div>
+
+    <!-- Total Gigante -->
+    <div class="bg-slate-50 border-t-2 border-slate-200 px-5 py-4 flex items-center justify-between">
+      <div>
+        <span class="block text-xs font-extrabold uppercase tracking-wider text-slate-500">Total a Pagar</span>
+        <span class="text-xs text-slate-500">Impuestos incluidos · Descuenta stock al instante</span>
+      </div>
+      <span class="text-4xl font-black text-slate-900">
+        {{ cartTotal() | currency:'MXN':'symbol-narrow' }}
+      </span>
+    </div>
+
+    <!-- 2 Botones Gigantes de Cierre de Venta -->
+    <div class="p-4 bg-white border-t border-slate-200 flex flex-col gap-3">
+      <button
+        type="button"
+        [disabled]="cart().length === 0"
+        (click)="openCashModal()"
+        class="h-16 w-full rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-extrabold shadow-md flex items-center justify-center gap-3 disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400 disabled:shadow-none">
+        <span class="text-2xl">💵</span>
+        <span>Cobrar en Efectivo ({{ cartTotal() | currency:'MXN':'symbol-narrow' }})</span>
+      </button>
+
+      <button
+        type="button"
+        [disabled]="cart().length === 0"
+        (click)="openCreditModal()"
+        class="h-16 w-full rounded-2xl border-2 border-amber-700 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xl font-extrabold shadow-md flex items-center justify-center gap-3 disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400 disabled:shadow-none">
+        <span class="text-2xl">📓</span>
+        <span>Anotar en Fiado (Crédito Vecinos)</span>
+      </button>
+    </div>
+
+    <!-- Kardex en Vivo (Últimos 3 movimientos) -->
+    <div class="bg-slate-50 border-t border-slate-200 px-5 py-3">
+      <p class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">⚡ Kardex en Tiempo Real</p>
+      <ul class="space-y-1.5 text-xs">
+        @for (k of inv.kardex().slice(0, 3); track k.id) {
+          <li class="flex items-center justify-between gap-2 text-slate-700">
+            <span class="truncate">
+              <b class="text-slate-900">{{ k.timestamp }}</b> · {{ k.description }}
+            </span>
+            <span class="font-extrabold whitespace-nowrap"
+              [class]="k.type === 'VENTA_FIADO' ? 'text-amber-700' : 'text-emerald-700'">
+              {{ k.amount | currency:'MXN':'symbol-narrow' }}
+            </span>
+          </li>
+        }
+      </ul>
+    </div>
+  </aside>
+</div>
+
+<!-- =====================================================================
+     MODAL 1: CALCULADORA DUAL PARA PRODUCTOS A GRANEL (PESO VS MONTO EN $)
+     ===================================================================== -->
+@if (bulkModalProduct(); as prod) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden">
+      <!-- Cabecera -->
+      <div class="bg-amber-500 text-slate-950 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-4xl">{{ prod.emoji }}</span>
+          <div>
+            <p class="text-xs font-extrabold uppercase tracking-wider">Despacho de Granel Dual</p>
+            <h3 class="text-2xl font-black">{{ prod.name }}</h3>
+          </div>
+        </div>
+        <div class="text-right">
+          <span class="text-xs font-bold block">PRECIO POR {{ prod.saleUnit | uppercase }}</span>
+          <span class="text-2xl font-black">{{ prod.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+        </div>
+      </div>
+
+      <div class="p-6 flex flex-col gap-5">
+        <!-- Selector Dual Gigante: Por Monto ($) vs Por Peso (Kg/g) -->
+        <div class="grid sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            (click)="bulkMode.set('amount')"
+            class="h-16 rounded-2xl border-2 px-4 text-left flex items-center gap-3 transition-all"
+            [class]="bulkMode() === 'amount'
+              ? 'border-emerald-700 bg-emerald-600 text-white shadow-md'
+              : 'border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100'">
+            <span class="text-3xl">💲</span>
+            <div>
+              <span class="block text-base font-extrabold leading-tight">Por Monto en Pesos ($)</span>
+              <span class="block text-xs opacity-90">Ej. "Deme $25 pesos de queso"</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            (click)="bulkMode.set('weight')"
+            class="h-16 rounded-2xl border-2 px-4 text-left flex items-center gap-3 transition-all"
+            [class]="bulkMode() === 'weight'
+              ? 'border-blue-700 bg-blue-600 text-white shadow-md'
+              : 'border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100'">
+            <span class="text-3xl">⚖️</span>
+            <div>
+              <span class="block text-base font-extrabold leading-tight">Por Peso de Báscula (Kg)</span>
+              <span class="block text-xs opacity-90">Ej. "Medio kilo (0.500 kg)"</span>
+            </div>
+          </button>
+        </div>
+
+        <!-- Modo A: El cliente pide por Monto en Pesos ($) -->
+        @if (bulkMode() === 'amount') {
+          <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-col gap-3">
+            <p class="font-extrabold text-slate-800">¿Cuánto dinero pidió el cliente?</p>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              @for (m of [15, 20, 25, 30, 50, 100]; track m) {
+                <button type="button" (click)="setPresetAmount(m)"
+                  class="h-14 rounded-xl border-2 font-extrabold text-lg"
+                  [class]="bulkAmountPesos() === m ? 'border-emerald-700 bg-emerald-100 text-emerald-900' : 'border-slate-300 bg-white text-slate-800'">
+                  ${{ m }}
+                </button>
+              }
+            </div>
+            <label class="flex items-center gap-3 mt-1">
+              <span class="font-bold text-slate-700">Otro monto ($):</span>
+              <input type="number" min="1" step="1" [ngModel]="bulkAmountPesos()" (ngModelChange)="bulkAmountPesos.set($event)"
+                class="h-14 w-44 rounded-xl border-2 border-slate-400 bg-white px-4 text-2xl font-black text-slate-900" />
+            </label>
+          </div>
+        } @else {
+          <!-- Modo B: El cliente pide por Peso (Kg) -->
+          <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-col gap-3">
+            <p class="font-extrabold text-slate-800">¿Cuánto marcó la báscula (en Kg)?</p>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button type="button" (click)="setPresetWeight(0.25)"
+                class="h-14 rounded-xl border-2 font-extrabold text-sm"
+                [class]="bulkWeightKg() === 0.25 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
+                ¼ Kg (250 g)
+              </button>
+              <button type="button" (click)="setPresetWeight(0.5)"
+                class="h-14 rounded-xl border-2 font-extrabold text-sm"
+                [class]="bulkWeightKg() === 0.5 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
+                ½ Kg (500 g)
+              </button>
+              <button type="button" (click)="setPresetWeight(1)"
+                class="h-14 rounded-xl border-2 font-extrabold text-sm"
+                [class]="bulkWeightKg() === 1 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
+                1 Kg (1000 g)
+              </button>
+              <button type="button" (click)="setPresetWeight(1.5)"
+                class="h-14 rounded-xl border-2 font-extrabold text-sm"
+                [class]="bulkWeightKg() === 1.5 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
+                1.5 Kg (1500 g)
+              </button>
+            </div>
+            <label class="flex items-center gap-3 mt-1">
+              <span class="font-bold text-slate-700">Peso exacto (Kg):</span>
+              <input type="number" min="0.05" step="0.05" [ngModel]="bulkWeightKg()" (ngModelChange)="bulkWeightKg.set($event)"
+                class="h-14 w-44 rounded-xl border-2 border-slate-400 bg-white px-4 text-2xl font-black text-slate-900" />
+            </label>
+          </div>
+        }
+
+        <!-- Resultado Calculado en Letra Gigante -->
+        <div class="rounded-2xl border-2 border-emerald-600 bg-emerald-50 p-4 grid sm:grid-cols-2 gap-4 items-center">
+          <div>
+            <p class="text-xs font-extrabold uppercase text-emerald-800">⚖️ Peso Exacto a Despachar en Báscula</p>
+            <p class="text-3xl font-black text-slate-900">
+              {{ calculatedBulkGrams() }} gramos
+              <span class="text-lg font-bold text-slate-600">({{ calculatedBulkKg() | number:'1.3-3' }} kg)</span>
+            </p>
+          </div>
+          <div class="sm:text-right">
+            <p class="text-xs font-extrabold uppercase text-emerald-800">💲 Importe a Cobrar</p>
+            <p class="text-4xl font-black text-emerald-700">{{ calculatedBulkSubtotal() | currency:'MXN':'symbol-narrow' }}</p>
+          </div>
+        </div>
+
+        <!-- Botones de Acción -->
+        <div class="grid sm:grid-cols-2 gap-3">
+          <button type="button" (click)="closeBulkCalculator()"
+            class="h-16 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-lg font-bold">
+            ✖️ Cancelar
+          </button>
+          <button type="button" (click)="confirmBulkItem()"
+            class="h-16 rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-extrabold shadow-md">
+            ➕ Agregar al Ticket ({{ calculatedBulkSubtotal() | currency:'MXN':'symbol-narrow' }})
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =====================================================================
+     MODAL 2: COBRO EN EFECTIVO Y CALCULADORA DE CAMBIO
+     ===================================================================== -->
+@if (cashModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-xl overflow-hidden">
+      <div class="bg-emerald-600 text-white px-6 py-4 flex items-center justify-between">
+        <h3 class="text-2xl font-black">💵 Cobrar en Efectivo</h3>
+        <span class="text-2xl font-black">{{ cartTotal() | currency:'MXN':'symbol-narrow' }}</span>
+      </div>
+
+      <div class="p-6 flex flex-col gap-5">
+        <div>
+          <p class="font-extrabold text-slate-700 mb-2">1. ¿Con qué billete o monto te paga el cliente?</p>
+          <div class="grid grid-cols-3 gap-2.5">
+            <button type="button" (click)="setExactCash()"
+              class="h-14 rounded-xl border-2 border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-extrabold text-base">
+              Pago Exacto ({{ cartTotal() | currency:'MXN':'symbol-narrow' }})
+            </button>
+            @for (bill of [50, 100, 200, 500, 1000]; track bill) {
+              <button type="button" (click)="cashReceived.set(bill)"
+                class="h-14 rounded-xl border-2 font-extrabold text-xl"
+                [class]="cashReceived() === bill ? 'border-emerald-700 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+                ${{ bill }}
+              </button>
+            }
+          </div>
+
+          <label class="flex items-center justify-between gap-4 mt-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+            <span class="font-bold text-lg text-slate-700">Efectivo recibido ($):</span>
+            <input type="number" min="0" step="1" [ngModel]="cashReceived()" (ngModelChange)="cashReceived.set($event)"
+              class="h-14 w-44 rounded-xl border-2 border-slate-400 bg-white px-4 text-3xl font-black text-right text-slate-900" />
+          </label>
+        </div>
+
+        <!-- Cambio en Letra Gigante -->
+        <div class="rounded-2xl border-2 p-5 text-center"
+          [class]="cashChange() >= 0 ? 'border-emerald-600 bg-emerald-50' : 'border-red-600 bg-red-50'">
+          @if (cashChange() >= 0) {
+            <p class="text-sm font-extrabold uppercase text-emerald-800">💰 Cambio a Devolver al Cliente</p>
+            <p class="text-5xl font-black text-emerald-700 mt-1">{{ cashChange() | currency:'MXN':'symbol-narrow' }}</p>
+          } @else {
+            <p class="text-sm font-extrabold uppercase text-red-800">⚠️ Falta Dinero por Cubrir</p>
+            <p class="text-4xl font-black text-red-700 mt-1">Faltan {{ -cashChange() | currency:'MXN':'symbol-narrow' }}</p>
+          }
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-3">
+          <button type="button" (click)="closeCashModal()"
+            class="h-16 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-lg font-bold">
+            ✖️ Regresar
+          </button>
+          <button type="button" [disabled]="!canConfirmCash()" (click)="confirmCashSale()"
+            class="h-16 rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-extrabold shadow-md disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400">
+            ✅ Confirmar Cobro
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =====================================================================
+     MODAL 3: LIBRETA DIGITAL DE "FIADO" (CRÉDITO VECINOS) Y ABONOS A CUENTA
+     ===================================================================== -->
+@if (creditModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+      <!-- Encabezado -->
+      <div class="bg-amber-500 text-slate-950 px-6 py-4 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-wider">Control de Riesgo y Crédito Vecinal</p>
+          <h3 class="text-2xl font-black">📓 Libreta Digital de "Fiado" y Abonos</h3>
+        </div>
+        <button type="button" (click)="closeCreditModal()"
+          class="h-12 px-4 rounded-xl bg-white/90 hover:bg-white text-slate-900 font-extrabold text-sm">
+          ✖️ Cerrar Ventana
+        </button>
+      </div>
+
+      <div class="p-6 grid lg:grid-cols-12 gap-6">
+        <!-- Columna Izquierda (7/12): Selección de Cliente Vecino y Validación de Límite -->
+        <div class="lg:col-span-7 flex flex-col gap-4">
+          <h4 class="text-lg font-extrabold text-slate-900">1. Selecciona al vecino para anotar o revisar su cuenta:</h4>
+
+          <div class="flex flex-col gap-3">
+            @for (c of inv.creditCustomers(); track c.id) {
+              @let available = c.creditLimit - c.currentBalance;
+              <button
+                type="button"
+                (click)="selectCustomerForFiado(c.id)"
+                class="w-full rounded-2xl border-2 p-4 text-left transition-all flex flex-col gap-2"
+                [class]="selectedCustomerId() === c.id
+                  ? (c.status === 'VENCIDO' ? 'border-red-600 bg-red-50 ring-2 ring-red-200' : 'border-blue-600 bg-blue-50/70 ring-2 ring-blue-200')
+                  : 'border-slate-200 bg-white hover:bg-slate-50'">
+                <div class="flex items-start justify-between gap-2">
+                  <div>
+                    <p class="text-lg font-black text-slate-900">{{ c.name }}</p>
+                    <p class="text-xs text-slate-500">📞 {{ c.phone }} · Vence: {{ c.dueDate }}</p>
+                  </div>
+
+                  <span class="px-2.5 py-1 rounded-full text-xs font-extrabold"
+                    [class]="c.status === 'AL_CORRIENTE'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : (c.status === 'LIMITE_ALCANZADO' ? 'bg-amber-100 text-amber-900 border border-amber-400' : 'bg-red-600 text-white')">
+                    {{ c.status === 'AL_CORRIENTE' ? '🟢 AL CORRIENTE' : (c.status === 'LIMITE_ALCANZADO' ? '🟠 LÍMITE ALCANZADO' : '🔴 VENCIDO / BLOQUEADO') }}
+                  </span>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/80 text-sm">
+                  <div>
+                    <span class="block text-xs text-slate-500">Deuda Actual</span>
+                    <span class="font-extrabold text-slate-900">{{ c.currentBalance | currency:'MXN':'symbol-narrow' }}</span>
+                  </div>
+                  <div>
+                    <span class="block text-xs text-slate-500">Límite Máximo</span>
+                    <span class="font-bold text-slate-700">{{ c.creditLimit | currency:'MXN':'symbol-narrow' }}</span>
+                  </div>
+                  <div class="text-right">
+                    <span class="block text-xs text-slate-500">Disponible</span>
+                    <span class="font-extrabold" [class]="available > 50 ? 'text-emerald-700' : 'text-red-700'">
+                      {{ (available > 0 ? available : 0) | currency:'MXN':'symbol-narrow' }}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            }
+          </div>
+
+          <!-- Dictamen de Aprobación o Bloqueo en ROJO -->
+          @if (cart().length > 0) {
+            @let check = creditValidation();
+            <div class="rounded-2xl border-2 p-4"
+              [class]="check.allowed ? 'border-emerald-600 bg-emerald-50 text-emerald-950' : 'border-red-600 bg-red-50 text-red-950'">
+              <p class="font-extrabold text-base leading-snug">{{ check.reason }}</p>
+            </div>
+
+            <button
+              type="button"
+              [disabled]="!check.allowed"
+              (click)="confirmCreditSale()"
+              class="h-16 w-full rounded-2xl border-2 text-xl font-extrabold shadow-md transition-all border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-red-100 disabled:border-red-400 disabled:text-red-800 disabled:shadow-none">
+              @if (check.allowed) {
+                📓 Autorizar y Anotar {{ cartTotal() | currency:'MXN':'symbol-narrow' }} en Fiado
+              } @else {
+                🔒 Venta en Fiado Bloqueada (Revisa el motivo arriba)
+              }
+            </button>
+          }
+        </div>
+
+        <!-- Columna Derecha (5/12): Registrar Abono en Efectivo a Cuenta -->
+        <div class="lg:col-span-5 bg-slate-50 rounded-2xl border-2 border-slate-200 p-5 flex flex-col justify-between gap-4">
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center gap-2">
+              <span class="text-3xl">💵</span>
+              <div>
+                <h4 class="text-lg font-black text-slate-900">Registrar Abono a Cuenta</h4>
+                <p class="text-xs text-slate-600">El dinero recibido entra al Efectivo Real en Cajón y libera el crédito del vecino.</p>
+              </div>
+            </div>
+
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-bold text-slate-700">Vecino que abona:</span>
+              <select [ngModel]="abonoCustomerId()" (ngModelChange)="abonoCustomerId.set($event)"
+                class="h-14 rounded-xl border-2 border-slate-300 bg-white px-3 font-bold text-slate-900">
+                @for (c of inv.creditCustomers(); track c.id) {
+                  <option [value]="c.id">{{ c.name }} (Debe: {{ c.currentBalance | currency:'MXN':'symbol-narrow' }})</option>
+                }
+              </select>
+            </label>
+
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-bold text-slate-700">Monto que entrega en efectivo ($):</span>
+              <input type="number" min="10" step="10" [ngModel]="abonoAmount()" (ngModelChange)="abonoAmount.set($event)"
+                class="h-14 rounded-xl border-2 border-slate-400 bg-white px-4 text-2xl font-black text-slate-900" />
+            </label>
+
+            <div class="grid grid-cols-3 gap-2">
+              @for (preset of [100, 200, 500]; track preset) {
+                <button type="button" (click)="abonoAmount.set(preset)"
+                  class="h-12 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 font-extrabold text-sm">
+                  ${{ preset }}
+                </button>
+              }
+            </div>
+
+            @if (abonoFeedback(); as msg) {
+              <div class="rounded-xl border-2 border-emerald-600 bg-emerald-100 p-3 text-emerald-950 text-sm font-extrabold">
+                ✔️ {{ msg }}
+              </div>
+            }
+          </div>
+
+          <button type="button" (click)="submitCustomerAbono()"
+            class="h-16 w-full rounded-2xl border-2 border-blue-800 bg-blue-600 hover:bg-blue-700 text-white text-lg font-extrabold shadow-sm">
+            💰 Registrar Abono en Efectivo
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

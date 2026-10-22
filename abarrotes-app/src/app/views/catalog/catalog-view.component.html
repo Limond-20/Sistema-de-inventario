@@ -1,84 +1,326 @@
-<section class="mb-5">
-  <h1 class="text-3xl font-extrabold">📦 Catálogo y Precios</h1>
-  <p class="text-lg text-slate-600">Todos tus productos con existencias, costo, precio y cuánto ganas.</p>
+<!-- ===================== ENCABEZADO Y BOTÓN DE HOJA PDF GRANEL ===================== -->
+<section class="mb-6 flex flex-wrap items-center justify-between gap-4 print:hidden">
+  <div>
+    <div class="flex items-center gap-2">
+      <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-extrabold uppercase tracking-wider border border-blue-200">
+        Estrategia ABC · ROP · FEFO · Costo Promedio vs Reposición
+      </span>
+    </div>
+    <h1 class="text-3xl font-black text-slate-900 mt-1">📦 Catálogo Maestro y Punto de Reorden</h1>
+    <p class="text-base text-slate-600">Prioriza tus productos críticos (Clase A), vigila el Punto de Reorden y protege tu margen contra inflación.</p>
+  </div>
+
+  <button
+    type="button"
+    (click)="openBulkSheetModal()"
+    class="h-16 px-6 rounded-2xl border-2 border-amber-700 bg-amber-500 hover:bg-amber-600 text-slate-950 text-lg font-extrabold shadow-sm hover:shadow-md flex items-center gap-3 transition-all">
+    <span class="text-2xl">🖨️</span>
+    <span>Generar Hoja PDF de Códigos de Mostrador (Granel)</span>
+  </button>
 </section>
 
-<!-- Búsqueda -->
-<section class="flex flex-col md:flex-row gap-3 mb-4">
-  <label class="flex-1 flex items-center gap-3 min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-4">
-    <span class="text-2xl" aria-hidden="true">🔎</span>
-    <span class="sr-only">Buscar producto</span>
-    <input type="text" [value]="search()" (input)="onSearch($event)" placeholder="Escribe el nombre (ej. Nutrioli) o el código de barras"
-      class="flex-1 text-lg outline-none bg-transparent min-h-[52px]" />
-  </label>
-  @if (search()) {
-    <button type="button" (click)="clearSearch()" class="min-h-[56px] px-6 rounded-xl border-2 border-slate-400 bg-white text-lg font-bold hover:bg-slate-100">✖️ Borrar búsqueda</button>
-  }
-</section>
-
-<!-- Categorías -->
-<section class="flex flex-wrap gap-2 mb-5" aria-label="Filtrar por categoría">
-  @for (c of categories(); track c) {
-    <button type="button" (click)="category.set(c)" [attr.aria-pressed]="category() === c"
-      class="min-h-[56px] px-5 rounded-xl border-2 text-lg font-bold"
-      [class]="category() === c ? 'border-blue-800 bg-blue-600 text-white' : 'border-slate-300 bg-white hover:bg-slate-50'">
-      {{ c }}
+<!-- ===================== FILTROS RÁPIDOS POR CLASIFICACIÓN ABC (PARETO) ===================== -->
+<section class="mb-5 print:hidden" aria-label="Filtrar por Clasificación ABC">
+  <p class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">
+    1. Filtrar por importancia en tus ventas (Clasificación ABC / Ley de Pareto):
+  </p>
+  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <button
+      type="button"
+      (click)="abcFilter.set('ALL')"
+      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      [class]="abcFilter() === 'ALL'
+        ? 'border-slate-900 bg-slate-900 text-white shadow-md'
+        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50 shadow-xs'">
+      <span class="font-extrabold text-base">📋 Todos los Productos</span>
+      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-slate-200 text-slate-900">{{ abcCounts().all }}</span>
     </button>
-  }
+
+    <button
+      type="button"
+      (click)="abcFilter.set('A')"
+      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      [class]="abcFilter() === 'A'
+        ? 'border-emerald-800 bg-emerald-600 text-white shadow-md'
+        : 'border-emerald-200 bg-white text-slate-800 hover:bg-emerald-50 shadow-xs'">
+      <div>
+        <span class="block font-extrabold text-base">🔥 Clase A (80% Ventas - Críticos)</span>
+        <span class="block text-xs opacity-85">Nunca deben agotarse</span>
+      </div>
+      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-900">{{ abcCounts().A }}</span>
+    </button>
+
+    <button
+      type="button"
+      (click)="abcFilter.set('B')"
+      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      [class]="abcFilter() === 'B'
+        ? 'border-blue-800 bg-blue-600 text-white shadow-md'
+        : 'border-blue-200 bg-white text-slate-800 hover:bg-blue-50 shadow-xs'">
+      <div>
+        <span class="block font-extrabold text-base">⚡ Clase B (Rotación Media)</span>
+        <span class="block text-xs opacity-85">Complementarios de pasillo</span>
+      </div>
+      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-blue-100 text-blue-900">{{ abcCounts().B }}</span>
+    </button>
+
+    <button
+      type="button"
+      (click)="abcFilter.set('C')"
+      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      [class]="abcFilter() === 'C'
+        ? 'border-amber-800 bg-amber-600 text-white shadow-md'
+        : 'border-amber-200 bg-white text-slate-800 hover:bg-amber-50 shadow-xs'">
+      <div>
+        <span class="block font-extrabold text-base">💤 Clase C (Dinero Dormido / Liquidar)</span>
+        <span class="block text-xs opacity-85">Baja rotación · No sobre-comprar</span>
+      </div>
+      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900">{{ abcCounts().C }}</span>
+    </button>
+  </div>
 </section>
 
-<!-- Leyenda -->
-<div class="flex flex-wrap gap-3 mb-3 text-sm font-semibold">
-  <span class="px-3 py-1 rounded-full bg-green-100 text-green-800 border-2 border-green-600">Verde = ganancia sana</span>
-  <span class="px-3 py-1 rounded-full bg-red-100 text-red-800 border-2 border-red-600">Rojo = ganas menos de tu mínimo</span>
-  <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 border-2 border-amber-600">Ámbar = caduca en 3 días o menos</span>
-</div>
+<!-- ===================== BUSCADOR Y CATEGORÍAS ===================== -->
+<section class="mb-5 bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col gap-3 print:hidden">
+  <div class="flex flex-col md:flex-row gap-3">
+    <label class="flex-1 flex items-center gap-3 h-14 rounded-xl border border-slate-300 bg-slate-50 px-4 focus-within:border-blue-600">
+      <span class="text-2xl" aria-hidden="true">🔎</span>
+      <span class="sr-only">Buscar producto</span>
+      <input
+        type="text"
+        [value]="search()"
+        (input)="onSearch($event)"
+        placeholder="Busca por nombre (ej. Nutrioli, Queso, Lala), SKU o código EAN-13..."
+        class="flex-1 text-lg font-semibold outline-none bg-transparent"
+      />
+    </label>
+    @if (search()) {
+      <button type="button" (click)="clearSearch()"
+        class="h-14 px-6 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-base font-bold">
+        ✖️ Borrar búsqueda
+      </button>
+    }
+  </div>
 
-<section class="rounded-2xl border-2 border-slate-300 bg-white overflow-hidden">
-  <table class="w-full text-left">
-    <thead class="bg-slate-800 text-white">
+  <!-- Categorías -->
+  <div class="flex flex-wrap gap-2" aria-label="Filtrar por categoría">
+    @for (c of categories(); track c) {
+      <button
+        type="button"
+        (click)="category.set(c)"
+        [attr.aria-pressed]="category() === c"
+        class="h-12 px-4 rounded-xl border text-sm font-extrabold transition-all"
+        [class]="category() === c
+          ? 'border-blue-700 bg-blue-600 text-white shadow-xs'
+          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'">
+        {{ c }}
+      </button>
+    }
+  </div>
+</section>
+
+<!-- ===================== TABLA MODERNA CON ABC, ROP, VALUACIÓN Y FEFO ===================== -->
+<section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto print:hidden">
+  <table class="w-full text-left border-collapse">
+    <thead class="bg-slate-900 text-white text-sm uppercase tracking-wider">
       <tr>
-        <th class="p-4">Producto</th>
-        <th class="p-4">Se compra / se vende</th>
-        <th class="p-4 text-right">Hay</th>
-        <th class="p-4 text-right">Costo</th>
-        <th class="p-4 text-right">Precio</th>
-        <th class="p-4">Ganancia</th>
-        <th class="p-4">Caduca</th>
+        <th class="p-4">Producto / Clase ABC</th>
+        <th class="p-4">Stock vs Punto de Reorden (ROP)</th>
+        <th class="p-4 text-right">Costo Promedio vs Último Costo</th>
+        <th class="p-4 text-right">Precio Venta</th>
+        <th class="p-4">Margen Real</th>
+        <th class="p-4">Semáforo FEFO / Cambio Físico</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody class="divide-y divide-slate-200">
       @for (p of rows(); track p.sku) {
-        <tr class="border-b-2 border-slate-200">
+        <tr class="hover:bg-slate-50/80 transition-colors align-top">
+          <!-- 1. Producto + Clase ABC -->
           <td class="p-4">
-            <p class="text-lg font-bold">{{ p.emoji }} {{ p.name }}</p>
-            <p class="text-sm text-slate-500">{{ p.category }} · {{ p.barcode }}</p>
+            <div class="flex items-start gap-3">
+              <span class="text-3xl leading-none mt-0.5">{{ p.emoji }}</span>
+              <div>
+                <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                  <span class="px-2 py-0.5 rounded-md text-xs font-extrabold"
+                    [class]="p.abcClass === 'A'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : (p.abcClass === 'B' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-700 border border-slate-300')">
+                    {{ p.abcClass === 'A' ? '🔥 Clase A' : (p.abcClass === 'B' ? '⚡ Clase B' : '💤 Clase C') }}
+                  </span>
+                  @if (p.isBulk) {
+                    <span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold">
+                      ⚖️ Granel
+                    </span>
+                  }
+                </div>
+                <p class="text-lg font-extrabold text-slate-900 leading-snug">{{ p.name }}</p>
+                <p class="text-xs font-mono text-slate-500 mt-0.5">{{ p.category }} · EAN {{ p.barcode }} · {{ p.supplier }}</p>
+              </div>
+            </div>
           </td>
-          <td class="p-4">{{ p.purchaseUnit }} de {{ p.unitsPerPurchase }} → {{ p.saleUnit }}</td>
+
+          <!-- 2. Stock vs Punto de Reorden (ROP) -->
+          <td class="p-4">
+            <div class="rounded-xl border p-3"
+              [class]="p.belowRop ? 'border-red-300 bg-red-50/70' : 'border-slate-200 bg-slate-50'">
+              <p class="text-base font-extrabold text-slate-900">
+                Stock: <span [class]="p.belowRop ? 'text-red-700' : 'text-emerald-700'">{{ p.stock | number:'1.0-1' }}</span>
+                <span class="text-slate-400 mx-1">|</span>
+                Pedir al bajar de: <span class="text-slate-900">{{ p.rop | number:'1.0-1' }}</span> {{ p.saleUnit }}
+              </p>
+              <p class="text-xs text-slate-500 mt-0.5">
+                Venta diaria: {{ p.dailySalesRate }}/{{ p.saleUnit }} · Tarda {{ p.supplierLeadTimeDays }}d + Seg: {{ p.safetyStock }}
+              </p>
+              @if (p.belowRop) {
+                <span class="mt-1.5 inline-block px-2.5 py-0.5 rounded-lg bg-red-600 text-white text-xs font-extrabold">
+                  🚨 Reabastecer Hoy (Debajo de ROP)
+                </span>
+              } @else {
+                <span class="mt-1.5 inline-block px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold">
+                  ✔️ Abasto Seguro
+                </span>
+              }
+            </div>
+          </td>
+
+          <!-- 3. Valuación: Costo Promedio Ponderado vs Último Costo de Reposición -->
           <td class="p-4 text-right">
-            <span class="text-xl font-extrabold" [class.text-blue-700]="p.low">{{ p.stock | number:'1.0-1' }}</span>
-            @if (p.low) { <span class="block text-sm font-bold text-blue-700">📉 Pedir pronto</span> }
+            <div class="text-xs text-slate-500">
+              Promedio Ponderado: <b class="text-slate-700">{{ p.weightedAvgCost | currency:'MXN':'symbol-narrow' }}</b>
+            </div>
+            <div class="text-base font-extrabold mt-0.5" [class]="p.costDiff > 0 ? 'text-red-700' : 'text-slate-900'">
+              Último Costo: {{ p.lastPurchaseCost | currency:'MXN':'symbol-narrow' }}
+            </div>
+            @if (p.costDiff > 0) {
+              <span class="inline-block mt-1 px-2 py-0.5 rounded bg-red-100 text-red-800 text-xs font-extrabold">
+                🔺 Inflación +{{ p.costDiff | currency:'MXN':'symbol-narrow' }}
+              </span>
+            } @else {
+              <span class="inline-block mt-1 text-xs text-slate-400">Costo estable</span>
+            }
           </td>
-          <td class="p-4 text-right text-lg">{{ p.newCost | currency:'MXN':'symbol-narrow' }}</td>
-          <td class="p-4 text-right text-xl font-extrabold">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</td>
+
+          <!-- 4. Precio Venta -->
+          <td class="p-4 text-right">
+            <span class="text-2xl font-black text-slate-900">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+            <span class="block text-xs text-slate-500">por {{ p.saleUnit }}</span>
+          </td>
+
+          <!-- 5. Margen sobre Último Costo de Reposición -->
           <td class="p-4">
-            <span class="inline-block px-3 py-1 rounded-lg font-extrabold border-2"
-              [class]="p.margin >= p.targetMargin ? 'bg-green-100 text-green-800 border-green-600' : 'bg-red-100 text-red-800 border-red-600'">
-              {{ p.margin | number:'1.0-0' }}% <span class="font-semibold text-sm">(mín. {{ p.targetMargin }}%)</span>
+            <span class="inline-block px-3 py-1.5 rounded-xl font-extrabold text-sm border-2"
+              [class]="p.margin >= p.targetMargin
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-600'
+                : 'bg-red-50 text-red-800 border-red-600'">
+              {{ p.margin | number:'1.0-0' }}%
+              <span class="font-semibold text-xs block">Meta: {{ p.targetMargin }}%</span>
             </span>
           </td>
+
+          <!-- 6. Semáforo FEFO y Cambio Físico -->
           <td class="p-4">
-            @if (p.daysLeft <= 3) {
-              <span class="inline-block px-3 py-1 rounded-lg bg-amber-500 text-white font-extrabold">⚠️ {{ fmtDate(p.expiry) }}</span>
-              <span class="block text-sm text-amber-800 font-bold">{{ p.daysLeft <= 1 ? 'Caduca mañana' : 'En ' + p.daysLeft + ' días' }} · Cambio físico</span>
+            @if (p.daysLeft <= 4) {
+              <div class="rounded-xl border-2 border-amber-500 bg-amber-50 p-2.5">
+                <span class="inline-block px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-extrabold">
+                  ⚠️ FEFO: {{ fmtDate(p.fefoExpiryDate) }} ({{ p.daysLeft <= 1 ? 'Mañana' : 'En ' + p.daysLeft + ' días' }})
+                </span>
+                @if (p.acceptsPhysicalExchange) {
+                  <p class="text-xs font-extrabold text-amber-900 mt-1">
+                    🔄 Acepta Cambio Físico · {{ p.nextVisitInfo }}
+                  </p>
+                } @else {
+                  <p class="text-xs font-bold text-red-700 mt-1">
+                    ❗ Sin devolución: poner en oferta hoy
+                  </p>
+                }
+              </div>
             } @else {
-              <span class="text-lg">{{ fmtDate(p.expiry) }}</span>
+              <span class="text-sm font-bold text-slate-800">{{ fmtDate(p.fefoExpiryDate) }}</span>
+              @if (p.acceptsPhysicalExchange) {
+                <span class="block text-xs text-emerald-700 font-semibold">🔄 Con Cambio Físico</span>
+              } @else {
+                <span class="block text-xs text-slate-400">Lote vigente</span>
+              }
             }
           </td>
         </tr>
       } @empty {
-        <tr><td colspan="7" class="p-8 text-center text-xl text-slate-600">🤷 No encontramos "{{ search() }}". Revisa cómo lo escribiste o toca "Borrar búsqueda".</td></tr>
+        <tr>
+          <td colspan="6" class="p-8 text-center text-xl text-slate-600">
+            🤷 No encontramos productos con ese filtro. Toca "Todos los Productos" o borra la búsqueda.
+          </td>
+        </tr>
       }
     </tbody>
   </table>
 </section>
+
+<!-- =====================================================================
+     MODAL IMPRIMIBLE: HOJA CARTA DE CÓDIGOS DE MOSTRADOR (GRANEL EAN-13)
+     ===================================================================== -->
+@if (bulkSheetModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:static print:bg-white print:p-0" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:rounded-none">
+      <!-- Barra superior (se oculta al imprimir) -->
+      <div class="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 print:hidden">
+        <div>
+          <span class="text-xs uppercase tracking-wider text-amber-300 font-extrabold">Estándar GS1 Prefijo 200 · Uso Interno en Mostrador</span>
+          <h2 class="text-2xl font-black">🖨️ Hoja de Códigos de Barras para Productos a Granel</h2>
+        </div>
+        <div class="flex items-center gap-3">
+          <button type="button" (click)="printBulkSheet()"
+            class="h-14 px-5 rounded-xl border-2 border-emerald-400 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-base flex items-center gap-2">
+            🖨️ Imprimir / Guardar en PDF
+          </button>
+          <button type="button" (click)="closeBulkSheetModal()"
+            class="h-14 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-base">
+            ✖️ Cerrar
+          </button>
+        </div>
+      </div>
+
+      <!-- Contenido de la Hoja Carta -->
+      <div class="p-8">
+        <div class="border-b-2 border-slate-900 pb-4 mb-6 flex items-center justify-between">
+          <div>
+            <h3 class="text-2xl font-black text-slate-900">{{ inv.storeName }} · Tablero de Códigos Rápidos de Mostrador</h3>
+            <p class="text-sm text-slate-600">Coloca esta hoja enmicada junto a la báscula y el lector para cobrar productos sin empaque de fábrica.</p>
+          </div>
+          <div class="text-right text-xs font-bold text-slate-500">
+            Actualizado: {{ inv.today }}<br />
+            Formato: EAN-13 Interno (Prefijo 200)
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-5">
+          @for (item of bulkProducts(); track item.sku) {
+            <div class="rounded-2xl border-2 border-slate-800 p-4 flex flex-col items-center text-center bg-white">
+              <div class="w-full flex items-center justify-between text-xs font-extrabold text-slate-600 mb-1">
+                <span>SKU: {{ item.sku }}</span>
+                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900">GRANEL</span>
+              </div>
+
+              <span class="text-5xl my-1">{{ item.emoji }}</span>
+              <h4 class="text-lg font-black text-slate-900 leading-snug">{{ item.name }}</h4>
+              <p class="text-xl font-black text-emerald-700 mt-1">
+                {{ item.salePrice | currency:'MXN':'symbol-narrow' }} / {{ item.saleUnit }}
+              </p>
+
+              <!-- Código de Barras SVG Nítido -->
+              <div class="mt-3 p-2 bg-white border border-slate-300 rounded-xl w-full flex flex-col items-center">
+                <svg viewBox="0 0 110 42" class="w-48 h-16" shape-rendering="crispEdges" role="img" [attr.aria-label]="'Código de barras ' + item.barcode">
+                  @for (bar of buildBarcodeBars(item.barcode); track $index) {
+                    <rect [attr.x]="bar.x" y="2" [attr.width]="bar.w" [attr.height]="bar.tall ? 36 : 30" fill="#0f172a" />
+                  }
+                </svg>
+                <span class="font-mono text-sm font-black tracking-[0.22em] text-slate-900 mt-0.5">
+                  {{ item.barcode }}
+                </span>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}

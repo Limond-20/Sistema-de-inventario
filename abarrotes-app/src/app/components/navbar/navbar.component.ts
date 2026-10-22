@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterLink } from '@angular/router';
+import { CommonModule, CurrencyPipe } from '@angular/common';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterModule } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 import { MockInventoryService } from '../../services/mock-inventory.service';
@@ -19,14 +20,19 @@ function buildFakeQr(size = 29, seed = 20931): boolean[][] {
         m[rr][cc] = r >= 0 && r <= 6 && c >= 0 && c <= 6 && (border || core);
       }
   };
-  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
-  for (let i = 8; i < size - 8; i++) { m[6][i] = i % 2 === 0; m[i][6] = i % 2 === 0; }
+  finder(0, 0);
+  finder(0, size - 7);
+  finder(size - 7, 0);
+  for (let i = 8; i < size - 8; i++) {
+    m[6][i] = i % 2 === 0;
+    m[i][6] = i % 2 === 0;
+  }
   return m;
 }
 
 @Component({
   selector: 'app-navbar',
-  imports: [RouterLink],
+  imports: [CommonModule, CurrencyPipe, RouterModule, RouterLink, RouterLinkActive],
   templateUrl: './navbar.component.html',
 })
 export class NavbarComponent {
@@ -38,14 +44,21 @@ export class NavbarComponent {
   protected readonly mobileUrl = `${location.origin}/movil-prototipo.html`;
 
   private readonly url = toSignal(
-    this.router.events.pipe(filter((e) => e instanceof NavigationEnd), map((e) => (e as NavigationEnd).urlAfterRedirects)),
+    this.router.events.pipe(
+      filter((e) => e instanceof NavigationEnd),
+      map((e) => (e as NavigationEnd).urlAfterRedirects),
+    ),
     { initialValue: this.router.url },
   );
   protected readonly isHome = computed(() => this.url() === '/' || this.url() === '');
 
-  openQr() { this.qrOpen.set(true); }
-  closeQr() { this.qrOpen.set(false); }
-  simulateLink() {
+  openQr(): void {
+    this.qrOpen.set(true);
+  }
+  closeQr(): void {
+    this.qrOpen.set(false);
+  }
+  simulateLink(): void {
     this.inv.phoneLinked.set(true);
     this.qrOpen.set(false);
   }

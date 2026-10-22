@@ -7,10 +7,11 @@
 }
 
 html, body {
-  background: #f1f5f9;
+  background: #f8fafc;
   color: #0f172a;
-  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
-  font-size: 18px;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Botones: feedback visual al presionar, sin depender del teclado */
@@ -21,5 +22,11 @@ button:not(:disabled), a.btn {
 button:not(:disabled):active, a.btn:active { transform: scale(0.98); }
 button:disabled { cursor: not-allowed; }
 
-/* Foco visible y grueso para quien sí navega con teclado o lector de pantalla */
-:focus-visible { outline: 4px solid #2563eb; outline-offset: 3px; border-radius: 12px; }
+/* Foco visible y grueso para accesibilidad */
+:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; border-radius: 12px; }
+
+@media print {
+  html, body {
+    background: #ffffff !important;
+  }
+}
