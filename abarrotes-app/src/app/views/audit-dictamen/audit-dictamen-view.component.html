@@ -1,84 +1,153 @@
-<section class="mb-5">
-  <h1 class="text-3xl font-extrabold">📋 Auditoría Exprés de Pasillo</h1>
-  <p class="text-lg text-slate-600">Conteo del <b>Pasillo 3 (Aceites, Enlatados y Granos)</b> recibido del celular hoy a las 6:52 p.m. · Contó: <b>Toño</b></p>
-</section>
+<!-- ===================== ENCABEZADO EJECUTIVO ===================== -->
+<section class="mb-6 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-extrabold uppercase tracking-wider border border-amber-300">
+      Conciliación de Inventario · Auditoría Ciega
+    </span>
+    <h1 class="text-3xl sm:text-4xl font-black text-slate-900 mt-1">📋 Auditoría Exprés de Pasillo</h1>
+    <p class="text-base text-slate-600">
+      Conteo del <b>Pasillo 3 (Aceites, Enlatados y Granos)</b> recibido del celular hoy a las 6:52 p.m. · Contó: <b>Toño</b>
+    </p>
+  </div>
 
-<!-- ===================== RESUMEN ===================== -->
-<section class="grid md:grid-cols-4 gap-4 mb-6">
-  <div class="rounded-2xl border-4 border-slate-300 bg-white p-4">
-    <p class="text-slate-500 font-semibold">Productos contados</p>
-    <p class="text-4xl font-extrabold">{{ rows().length }}</p>
-  </div>
-  <div class="rounded-2xl border-4 border-green-600 bg-green-50 p-4">
-    <p class="text-green-800 font-semibold">✔️ Cuadran exacto</p>
-    <p class="text-4xl font-extrabold text-green-700">{{ matches() }}</p>
-  </div>
-  <div class="rounded-2xl border-4 border-red-600 bg-red-50 p-4">
-    <p class="text-red-800 font-semibold">➖ Faltante en dinero</p>
-    <p class="text-4xl font-extrabold text-red-700">{{ missingMoney() | currency:'MXN':'symbol-narrow' }}</p>
-  </div>
-  <div class="rounded-2xl border-4 border-amber-600 bg-amber-50 p-4">
-    <p class="text-amber-800 font-semibold">➕ Sobrante en dinero</p>
-    <p class="text-4xl font-extrabold text-amber-700">{{ extraMoney() | currency:'MXN':'symbol-narrow' }}</p>
+  <div class="flex items-center gap-2 bg-white rounded-2xl border border-slate-200 px-4 py-2.5 shadow-xs text-xs font-bold text-slate-600">
+    <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+    <span>Sincronizado desde el celular sin mostrar existencias teóricas</span>
   </div>
 </section>
 
-<!-- ===================== TARJETAS POR PRODUCTO ===================== -->
+<!-- ===================== BENTO GRID DE INDICADORES (4 TARJETAS KPI) ===================== -->
+<section class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Productos Contados</span>
+    <p class="text-3xl font-black text-slate-900 mt-1 tabular-nums">{{ rows().length }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Muestra rápida de Pasillo 3</p>
+  </div>
+
+  <div class="rounded-2xl border border-emerald-300 bg-emerald-50/70 p-5 shadow-xs">
+    <span class="text-xs font-extrabold uppercase tracking-wider text-emerald-800">✔️ Cuadran Exacto</span>
+    <p class="text-3xl font-black text-emerald-700 mt-1 tabular-nums">{{ matches() }}</p>
+    <p class="text-xs text-emerald-800/80 mt-0.5">Sin diferencia física vs sistema</p>
+  </div>
+
+  <div class="rounded-2xl border border-red-300 bg-red-50/70 p-5 shadow-xs">
+    <span class="text-xs font-extrabold uppercase tracking-wider text-red-800">➖ Faltante en Dinero</span>
+    <p class="text-3xl font-black text-red-700 mt-1 tabular-nums">{{ missingMoney() | currency:'MXN':'symbol-narrow' }}</p>
+    <p class="text-xs text-red-800/80 mt-0.5">Posible merma o robo hormiga</p>
+  </div>
+
+  <div class="rounded-2xl border border-amber-300 bg-amber-50/70 p-5 shadow-xs">
+    <span class="text-xs font-extrabold uppercase tracking-wider text-amber-900">➕ Sobrante en Dinero</span>
+    <p class="text-3xl font-black text-amber-800 mt-1 tabular-nums">{{ extraMoney() | currency:'MXN':'symbol-narrow' }}</p>
+    <p class="text-xs text-amber-900/80 mt-0.5">Entrada no registrada o error de conteo</p>
+  </div>
+</section>
+
+<!-- ===================== TARJETAS DE DICTAMEN POR PRODUCTO ===================== -->
 <section class="flex flex-col gap-4 mb-6">
   @for (r of rows(); track r.sku) {
-    <article class="rounded-2xl border-4 bg-white p-5 grid lg:grid-cols-12 gap-5 items-center"
-      [class]="r.diffQty === 0 ? 'border-green-500' : (r.status === 'autorizado' ? 'border-green-600 bg-green-50' : (r.status === 'reconteo' ? 'border-amber-600 bg-amber-50' : 'border-amber-500'))">
+    <article class="rounded-2xl border-2 bg-white p-5 shadow-xs hover:shadow-sm transition-all grid lg:grid-cols-12 gap-5 items-center"
+      [class]="r.diffQty === 0
+        ? 'border-slate-200'
+        : (r.status === 'autorizado'
+          ? 'border-emerald-500 bg-emerald-50/40'
+          : (r.status === 'reconteo' ? 'border-amber-500 bg-amber-50/40' : 'border-amber-400'))">
 
-      <!-- Producto -->
-      <div class="lg:col-span-3">
-        <p class="text-xl font-extrabold">{{ r.emoji }} {{ r.name }}</p>
-        <p class="text-slate-500">📍 {{ r.location }}</p>
-        <p class="text-slate-500 text-sm">Costo: {{ r.unitCost | currency:'MXN':'symbol-narrow' }} por {{ unitLabel(r, 1) }}</p>
+      <!-- 1. Datos del Producto -->
+      <div class="lg:col-span-3 flex items-start gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-3xl shrink-0">
+          {{ r.emoji }}
+        </div>
+        <div>
+          <p class="text-lg font-black text-slate-900 leading-snug">{{ r.name }}</p>
+          <p class="text-xs font-bold text-slate-500 mt-0.5">📍 {{ r.location }}</p>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Costo unitario: <b class="text-slate-600">{{ r.unitCost | currency:'MXN':'symbol-narrow' }}</b> / {{ unitLabel(r, 1) }}
+          </p>
+        </div>
       </div>
 
-      <!-- Comparación -->
-      <div class="lg:col-span-5 grid grid-cols-3 gap-2 text-center">
-        <div class="rounded-xl bg-slate-100 border-2 border-slate-300 p-3">
-          <p class="text-sm font-semibold text-slate-600">💻 Lo que dice el sistema</p>
-          <p class="text-3xl font-extrabold">{{ r.systemQty | number:'1.0-1' }}</p>
-          <p class="text-sm text-slate-500">{{ unitLabel(r, r.systemQty) }}</p>
+      <!-- 2. Comparación Sistema vs Conteo Físico vs Diferencia -->
+      <div class="lg:col-span-5 grid grid-cols-3 gap-2.5 text-center">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-3">
+          <p class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">💻 En Sistema</p>
+          <p class="text-2xl font-black text-slate-900 mt-0.5 tabular-nums">{{ r.systemQty | number:'1.0-1' }}</p>
+          <p class="text-xs text-slate-500">{{ unitLabel(r, r.systemQty) }}</p>
         </div>
-        <div class="rounded-xl bg-blue-50 border-2 border-blue-400 p-3">
-          <p class="text-sm font-semibold text-blue-800">🖐️ Lo que contaste en el estante</p>
-          <p class="text-3xl font-extrabold text-blue-900">{{ r.countedQty | number:'1.0-1' }}</p>
-          <p class="text-sm text-slate-500">{{ unitLabel(r, r.countedQty) }}</p>
+
+        <div class="rounded-xl bg-blue-50/80 border border-blue-200 p-3">
+          <p class="text-[11px] font-extrabold uppercase tracking-wider text-blue-800">🖐️ En Estante</p>
+          <p class="text-2xl font-black text-blue-950 mt-0.5 tabular-nums">{{ r.countedQty | number:'1.0-1' }}</p>
+          <p class="text-xs text-blue-700/80">{{ unitLabel(r, r.countedQty) }}</p>
         </div>
-        <div class="rounded-xl border-2 p-3"
-          [class]="r.diffQty === 0 ? 'bg-green-50 border-green-500' : (r.diffQty < 0 ? 'bg-red-50 border-red-500' : 'bg-amber-50 border-amber-500')">
-          <p class="text-sm font-semibold">Diferencia</p>
-          <p class="text-3xl font-extrabold" [class.text-red-700]="r.diffQty < 0" [class.text-amber-700]="r.diffQty > 0" [class.text-green-700]="r.diffQty === 0">
+
+        <div class="rounded-xl border p-3"
+          [class]="r.diffQty === 0
+            ? 'bg-emerald-50 border-emerald-300'
+            : (r.diffQty < 0 ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300')">
+          <p class="text-[11px] font-extrabold uppercase tracking-wider"
+            [class]="r.diffQty === 0 ? 'text-emerald-800' : (r.diffQty < 0 ? 'text-red-800' : 'text-amber-900')">
+            Diferencia
+          </p>
+          <p class="text-2xl font-black mt-0.5 tabular-nums"
+            [class.text-red-700]="r.diffQty < 0"
+            [class.text-amber-800]="r.diffQty > 0"
+            [class.text-emerald-700]="r.diffQty === 0">
             {{ r.diffQty > 0 ? '+' : '' }}{{ r.diffQty | number:'1.0-1' }}
           </p>
-          <p class="text-sm font-bold" [class.text-red-700]="r.diffMoney < 0" [class.text-amber-700]="r.diffMoney > 0" [class.text-green-700]="r.diffMoney === 0">
+          <p class="text-xs font-extrabold tabular-nums"
+            [class.text-red-700]="r.diffMoney < 0"
+            [class.text-amber-800]="r.diffMoney > 0"
+            [class.text-emerald-700]="r.diffMoney === 0">
             {{ r.diffMoney === 0 ? 'Cuadra' : ((r.diffMoney > 0 ? '+' : '') + (r.diffMoney | currency:'MXN':'symbol-narrow')) }}
           </p>
         </div>
       </div>
 
-      <!-- Acciones -->
+      <!-- 3. Acciones de Dictamen -->
       <div class="lg:col-span-4 flex flex-col gap-2">
         @if (r.diffQty === 0) {
-          <p class="text-xl font-extrabold text-green-700">✔️ Todo cuadra. No hay que hacer nada.</p>
+          <div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-800 font-extrabold text-sm flex items-center gap-2">
+            <span class="text-lg">✔️</span>
+            <span>Todo cuadra exacto. No requiere ajuste.</span>
+          </div>
         } @else if (r.status === 'pendiente') {
-          <p class="text-base font-semibold" [class.text-red-700]="r.diffQty < 0" [class.text-amber-700]="r.diffQty > 0">
-            @if (r.diffQty < 0) { Faltan {{ -r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
-            @else { Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
+          <p class="text-xs font-extrabold px-1" [class]="r.diffQty < 0 ? 'text-red-700' : 'text-amber-800'">
+            @if (r.diffQty < 0) { ⚠️ Faltan {{ -r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
+            @else { ℹ️ Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
           </p>
-          <div class="grid grid-cols-2 gap-2">
-            <button type="button" (click)="authorize(r.sku)" class="min-h-[64px] rounded-xl border-4 border-green-800 bg-green-600 hover:bg-green-700 text-white text-lg font-extrabold">✅ Autorizar Ajuste</button>
-            <button type="button" (click)="recount(r.sku)" class="min-h-[64px] rounded-xl border-4 border-amber-800 bg-amber-500 hover:bg-amber-400 text-white text-lg font-extrabold">🔁 Pedir Reconteo</button>
+          <div class="grid grid-cols-2 gap-2.5">
+            <button type="button" (click)="authorize(r.sku)"
+              class="h-14 rounded-xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold shadow-2xs flex items-center justify-center gap-1.5">
+              <span>✅</span>
+              <span>Autorizar Ajuste</span>
+            </button>
+            <button type="button" (click)="recount(r.sku)"
+              class="h-14 rounded-xl border-2 border-amber-700 bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-extrabold shadow-2xs flex items-center justify-center gap-1.5">
+              <span>🔁</span>
+              <span>Pedir Reconteo</span>
+            </button>
           </div>
         } @else if (r.status === 'autorizado') {
-          <p class="text-lg font-extrabold text-green-700">✔️ Ajuste autorizado. El sistema ahora dice {{ r.countedQty | number:'1.0-1' }} {{ unitLabel(r, r.countedQty) }}.</p>
-          <button type="button" (click)="undo(r.sku)" class="min-h-[56px] rounded-xl border-2 border-slate-400 bg-white font-bold hover:bg-slate-100">↩️ Deshacer</button>
+          <div class="flex items-center justify-between gap-2 rounded-xl bg-emerald-100/80 border border-emerald-300 px-3.5 py-2.5">
+            <p class="text-xs font-extrabold text-emerald-950">
+              ✔️ Ajuste aplicado: stock actualizado a <b>{{ r.countedQty | number:'1.0-1' }} {{ unitLabel(r, r.countedQty) }}</b>.
+            </p>
+            <button type="button" (click)="undo(r.sku)"
+              class="h-10 px-3 rounded-lg border border-slate-300 bg-white text-xs font-extrabold text-slate-700 hover:bg-slate-100 shrink-0">
+              ↩️ Deshacer
+            </button>
+          </div>
         } @else {
-          <p class="text-lg font-extrabold text-amber-700">🔁 Se envió al celular para volver a contar.</p>
-          <button type="button" (click)="undo(r.sku)" class="min-h-[56px] rounded-xl border-2 border-slate-400 bg-white font-bold hover:bg-slate-100">↩️ Deshacer</button>
+          <div class="flex items-center justify-between gap-2 rounded-xl bg-amber-100/80 border border-amber-300 px-3.5 py-2.5">
+            <p class="text-xs font-extrabold text-amber-950">
+              🔁 Enviado al celular de Toño para segundo conteo.
+            </p>
+            <button type="button" (click)="undo(r.sku)"
+              class="h-10 px-3 rounded-lg border border-slate-300 bg-white text-xs font-extrabold text-slate-700 hover:bg-slate-100 shrink-0">
+              ↩️ Deshacer
+            </button>
+          </div>
         }
       </div>
     </article>
@@ -86,12 +155,20 @@
 </section>
 
 @if (allDone()) {
-  <section class="rounded-3xl border-4 border-green-600 bg-green-50 p-6 flex flex-col md:flex-row items-center gap-5">
-    <div class="text-6xl">🎉</div>
-    <div class="flex-1">
-      <p class="text-2xl font-extrabold text-green-800">¡Revisaste todas las diferencias del Pasillo 3!</p>
-      <p class="text-lg text-slate-700">Las que mandaste a reconteo aparecerán en el celular de Toño.</p>
+  <section class="rounded-3xl border-2 border-emerald-500 bg-emerald-50/90 p-6 flex flex-col md:flex-row items-center justify-between gap-5 shadow-sm">
+    <div class="flex items-center gap-4">
+      <div class="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-3xl shrink-0">
+        🎉
+      </div>
+      <div>
+        <p class="text-xl font-black text-emerald-950">¡Dictamen del Pasillo 3 completado!</p>
+        <p class="text-sm text-slate-700">Los ajustes autorizados ya actualizaron el Kardex y las órdenes de reconteo se enviaron al celular.</p>
+      </div>
     </div>
-    <a routerLink="/" class="btn min-h-[64px] px-8 rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold flex items-center hover:bg-green-700">🏠 Volver al Inicio</a>
+    <a routerLink="/"
+      class="btn h-14 px-7 rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white text-base font-extrabold flex items-center gap-2 hover:bg-emerald-700 shrink-0 shadow-xs">
+      <span>🏠</span>
+      <span>Volver al Inicio</span>
+    </a>
   </section>
 }

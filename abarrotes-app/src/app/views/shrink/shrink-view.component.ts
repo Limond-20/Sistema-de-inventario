@@ -6,50 +6,92 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
   selector: 'app-shrink-view',
   imports: [CurrencyPipe],
   template: `
-    <section class="mb-5">
-      <h1 class="text-3xl font-extrabold">🗑️ Revisar Mermas</h1>
-      <p class="text-lg text-slate-600">Productos rotos o caducados que se dieron de baja desde el celular, con su foto de evidencia.</p>
-    </section>
-
-    <section class="grid md:grid-cols-3 gap-4 mb-6">
-      <div class="rounded-2xl border-4 border-red-600 bg-red-50 p-4">
-        <p class="text-red-800 font-semibold">💸 Pérdida de esta semana</p>
-        <p class="text-4xl font-extrabold text-red-700">{{ totalLoss() | currency: 'MXN' : 'symbol-narrow' }}</p>
-      </div>
-      <div class="rounded-2xl border-4 border-slate-300 bg-white p-4">
-        <p class="text-slate-600 font-semibold">💥 Envase roto</p>
-        <p class="text-4xl font-extrabold">{{ broken() }} registros</p>
-      </div>
-      <div class="rounded-2xl border-4 border-slate-300 bg-white p-4">
-        <p class="text-slate-600 font-semibold">📅 Caducado sin devolución</p>
-        <p class="text-4xl font-extrabold">{{ expired() }} registros</p>
+    <!-- ===================== ENCABEZADO EJECUTIVO ===================== -->
+    <section class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <span class="px-3 py-1 rounded-full bg-red-100 text-red-900 text-xs font-extrabold uppercase tracking-wider border border-red-200">
+          Control de Pérdidas · Evidencia Fotográfica Obligatoria
+        </span>
+        <h1 class="text-3xl sm:text-4xl font-black text-slate-900 mt-1">🗑️ Revisar Mermas y Bajas</h1>
+        <p class="text-base text-slate-600">
+          Productos rotos o caducados sin devolución dados de baja desde el celular con foto obligatoria.
+        </p>
       </div>
     </section>
 
+    <!-- ===================== BENTO GRID DE RESUMEN DE MERMAS ===================== -->
+    <section class="grid sm:grid-cols-3 gap-4 mb-6">
+      <div class="rounded-2xl border border-red-300 bg-red-50/80 p-5 shadow-xs">
+        <span class="text-xs font-extrabold uppercase tracking-wider text-red-800">💸 Pérdida de esta Semana</span>
+        <p class="text-3xl font-black text-red-700 mt-1 tabular-nums">{{ totalLoss() | currency: 'MXN' : 'symbol-narrow' }}</p>
+        <p class="text-xs text-red-900/80 mt-0.5">Valuado a costo de reposición</p>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">💥 Envase Roto en Piso</span>
+        <p class="text-3xl font-black text-slate-900 mt-1 tabular-nums">{{ broken() }} registros</p>
+        <p class="text-xs text-slate-500 mt-0.5">Accidentes de pasillo o descarga</p>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">📅 Caducado sin Devolución</span>
+        <p class="text-3xl font-black text-slate-900 mt-1 tabular-nums">{{ expired() }} registros</p>
+        <p class="text-xs text-slate-500 mt-0.5">Proveedores sin convenio de cambio físico</p>
+      </div>
+    </section>
+
+    <!-- ===================== LISTA DE REGISTROS CON EVIDENCIA FOTOGRÁFICA ===================== -->
     <section class="flex flex-col gap-4">
       @for (r of inv.shrinkRecords(); track r.id) {
-        <article class="rounded-2xl border-4 bg-white p-5 grid md:grid-cols-12 gap-4 items-center"
-          [class]="r.reviewed ? 'border-slate-200 opacity-80' : 'border-red-500'">
-          <div class="md:col-span-2 h-24 rounded-xl bg-gradient-to-br from-amber-100 to-red-200 flex flex-col items-center justify-center border-2 border-red-300">
-            <span class="text-4xl">{{ r.emoji }}{{ r.reason === 'Envase Roto en Piso' ? '💥' : '📅' }}</span>
-            <span class="text-xs font-bold text-red-800">📷 Foto de evidencia</span>
+        <article class="rounded-2xl border-2 bg-white p-5 shadow-xs hover:shadow-sm transition-all grid md:grid-cols-12 gap-5 items-center"
+          [class]="r.reviewed ? 'border-slate-200 opacity-85' : 'border-red-300'">
+
+          <!-- Miniatura de Evidencia Fotográfica -->
+          <div class="md:col-span-2 h-24 rounded-2xl bg-gradient-to-br from-rose-50 via-amber-50 to-red-100 flex flex-col items-center justify-center border border-red-200 shadow-2xs">
+            <span class="text-4xl leading-none">{{ r.emoji }}{{ r.reason === 'Envase Roto en Piso' ? '💥' : '📅' }}</span>
+            <span class="mt-1.5 px-2 py-0.5 rounded-full bg-white/90 text-[11px] font-extrabold text-red-900 border border-red-200">
+              📷 Evidencia
+            </span>
           </div>
+
+          <!-- Detalle del Producto y Causa -->
           <div class="md:col-span-5">
-            <p class="text-xl font-extrabold">{{ r.qty }} × {{ r.name }}</p>
-            <p class="text-base font-bold text-red-700">{{ r.reason === 'Envase Roto en Piso' ? '💥' : '📅' }} {{ r.reason }}</p>
-            <p class="text-sm text-slate-500">Folio {{ r.id }} · {{ r.date }} {{ r.time }} · {{ r.registeredBy }}</p>
+            <div class="flex flex-wrap items-center gap-2 mb-1">
+              <span class="px-2.5 py-0.5 rounded-md text-xs font-extrabold"
+                [class]="r.reason === 'Envase Roto en Piso'
+                  ? 'bg-red-100 text-red-900 border border-red-200'
+                  : 'bg-amber-100 text-amber-900 border border-amber-200'">
+                {{ r.reason === 'Envase Roto en Piso' ? '💥 Envase Roto en Piso' : '📅 ' + r.reason }}
+              </span>
+              <span class="font-mono text-xs font-bold text-slate-400">Folio #{{ r.id }}</span>
+            </div>
+            <p class="text-xl font-black text-slate-900">{{ r.qty }} × {{ r.name }}</p>
+            <p class="text-xs font-semibold text-slate-500 mt-1">
+              📅 {{ r.date }} a las {{ r.time }} · Reportado desde celular por: <b class="text-slate-700">{{ r.registeredBy }}</b>
+            </p>
           </div>
-          <div class="md:col-span-2 text-right">
-            <p class="text-sm text-slate-500">Pérdida</p>
-            <p class="text-2xl font-extrabold text-red-700">{{ r.qty * r.unitCost | currency: 'MXN' : 'symbol-narrow' }}</p>
+
+          <!-- Impacto Financiero -->
+          <div class="md:col-span-2 text-right bg-red-50/70 border border-red-100 rounded-xl p-3">
+            <p class="text-[11px] font-extrabold uppercase tracking-wider text-red-800">Pérdida Neta</p>
+            <p class="text-2xl font-black text-red-700 tabular-nums mt-0.5">
+              -{{ r.qty * r.unitCost | currency: 'MXN' : 'symbol-narrow' }}
+            </p>
+            <p class="text-[11px] text-slate-500">{{ r.unitCost | currency: 'MXN' : 'symbol-narrow' }} c/u</p>
           </div>
+
+          <!-- Acción de Revisión -->
           <div class="md:col-span-3">
             @if (r.reviewed) {
-              <p class="text-lg font-extrabold text-green-700 text-center">✔️ Revisado</p>
+              <div class="h-14 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold text-sm flex items-center justify-center gap-2">
+                <span>✔️</span>
+                <span>Merma Revisada y Auditada</span>
+              </div>
             } @else {
               <button type="button" (click)="inv.markShrinkReviewed(r.id)"
-                class="w-full min-h-[64px] rounded-xl border-4 border-green-800 bg-green-600 hover:bg-green-700 text-white text-lg font-extrabold">
-                ✅ Marcar como Revisado
+                class="w-full h-14 rounded-xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-base font-extrabold shadow-xs flex items-center justify-center gap-2">
+                <span>✅</span>
+                <span>Confirmar Revisión</span>
               </button>
             }
           </div>
