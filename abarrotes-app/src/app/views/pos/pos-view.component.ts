@@ -1,7 +1,7 @@
 import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
+import { ActivatedRoute, RouterModule } from '@angular/router';
 import {
   CreditCustomer,
   MockInventoryService,
@@ -9,7 +9,7 @@ import {
   Product,
 } from '../../services/mock-inventory.service';
 
-type CatalogTab = 'bulk' | 'all';
+type CatalogTab = 'quick' | 'bulk' | 'all';
 type BulkCalcMode = 'weight' | 'amount';
 
 @Component({
@@ -20,9 +20,10 @@ type BulkCalcMode = 'weight' | 'amount';
 export class PosViewComponent implements OnInit, OnDestroy {
   protected readonly inv = inject(MockInventoryService);
   private readonly zone = inject(NgZone);
+  private readonly route = inject(ActivatedRoute);
 
   // ---------- Pestañas y Búsqueda ----------
-  protected readonly activeTab = signal<CatalogTab>('bulk');
+  protected readonly activeTab = signal<CatalogTab>('quick');
   protected readonly searchQuery = signal<string>('');
   protected readonly syncNotification = signal<string | null>(null);
   protected readonly saleFeedback = signal<{ ok: boolean; text: string } | null>(null);
@@ -82,12 +83,23 @@ export class PosViewComponent implements OnInit, OnDestroy {
     }
   };
 
+  // ---------- Accesos Rápidos y Sugerencias Clase A ----------
+  protected readonly suggestions = this.inv.quickAccessSuggestions;
+  protected readonly pinnedCount = computed(() => this.inv.pinnedQuickAccessSkus().length);
+
   // ---------- Computadas del Catálogo ----------
   protected readonly displayedProducts = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
     const tab = this.activeTab();
+    const pinnedSet = new Set(this.inv.pinnedQuickAccessSkus());
+
     return this.inv.products().filter((p) => {
-      const matchesTab = tab === 'all' ? true : p.isBulk || p.abcClass === 'A';
+      let matchesTab = true;
+      if (tab === 'quick') {
+        matchesTab = pinnedSet.has(p.sku);
+      } else if (tab === 'bulk') {
+        matchesTab = p.isBulk;
+      }
       const matchesSearch =
         !q ||
         p.name.toLowerCase().includes(q) ||
@@ -179,6 +191,12 @@ export class PosViewComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    this.route.queryParams.subscribe((params) => {
+      if (params['tab'] === 'fiados') {
+        this.openCreditModal();
+      }
+    });
+
     if (typeof BroadcastChannel !== 'undefined') {
       this.syncChannel = new BroadcastChannel('abarrotes_lan_sync');
       this.syncChannel.onmessage = (event) => {
@@ -198,6 +216,27 @@ export class PosViewComponent implements OnInit, OnDestroy {
     if (typeof window !== 'undefined') {
       window.removeEventListener('storage', this.storageListener);
     }
+  }
+
+  isPinned(sku: string): boolean {
+    return this.inv.pinnedQuickAccessSkus().includes(sku);
+  }
+
+  togglePin(sku: string, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    if (this.isPinned(sku)) {
+      this.inv.unpinProductQuickAccess(sku);
+    } else {
+      this.inv.pinProductQuickAccess(sku);
+    }
+  }
+
+  pinSuggestion(sku: string): void {
+    this.inv.pinProductQuickAccess(sku);
+  }
+
+  dismissSuggestion(sku: string): void {
+    this.inv.dismissQuickAccessSuggestion(sku);
   }
 
   private onExternalBarcodeEvent(data: Record<string, unknown>): void {
@@ -309,15 +348,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
         if (nextQty <= 0) {
           return list.filter((i) => i.sku !== product.sku);
         }
-        return list.map((i) =>
-          i.sku === product.sku
-            ? {
-                ...i,
-                qty: nextQty,
-                subtotal: +(nextQty * i.unitPrice).toFixed(2),
-              }
-            : i,
-        );
+        const nextSub = +(nextQty * existing.unitPrice).toFixed(2);
+        return list.map((i) => (i.sku === product.sku ? { ...i, qty: nextQty, subtotal: nextSub } : i));
       }
       if (delta <= 0) return list;
       return [
@@ -337,41 +369,45 @@ export class PosViewComponent implements OnInit, OnDestroy {
     });
   }
 
-  adjustCartItemQty(item: PosSaleItem, delta: number): void {
-    const step = item.saleUnit === 'Kg' ? 0.25 * delta : delta;
-    const nextQty = +(item.qty + step).toFixed(3);
+  updateCartQty(sku: string, delta: number): void {
+    const item = this.cart().find((i) => i.sku === sku);
+    if (!item) return;
+    const step = item.isBulk && item.saleUnit === 'Kg' ? 0.25 : 1;
+    const nextQty = +(item.qty + delta * step).toFixed(3);
+
     if (nextQty <= 0) {
-      this.removeCartItem(item.sku);
+      this.removeFromCart(sku);
       return;
     }
+
     this.cart.update((list) =>
-      list.map((i) =>
-        i.sku === item.sku
-          ? {
-              ...i,
-              qty: nextQty,
-              subtotal: +(nextQty * i.unitPrice).toFixed(2),
-            }
-          : i,
-      ),
+      list.map((i) => (i.sku === sku ? { ...i, qty: nextQty, subtotal: +(nextQty * i.unitPrice).toFixed(2) } : i)),
     );
   }
 
-  removeCartItem(sku: string): void {
+  adjustCartItemQty(item: PosSaleItem, delta: number): void {
+    this.updateCartQty(item.sku, delta);
+  }
+
+  removeFromCart(sku: string): void {
     this.cart.update((list) => list.filter((i) => i.sku !== sku));
+  }
+
+  removeCartItem(sku: string): void {
+    this.removeFromCart(sku);
   }
 
   clearCart(): void {
     this.cart.set([]);
+    this.saleFeedback.set(null);
   }
 
-  // ---------- Flujo Cobro en Efectivo ----------
+  // ---------- Modal Efectivo ----------
   openCashModal(): void {
     if (!this.cart().length) return;
     const total = this.cartTotal();
-    const suggestedBill =
-      total <= 50 ? 50 : total <= 100 ? 100 : total <= 200 ? 200 : total <= 500 ? 500 : Math.ceil(total / 100) * 100;
-    this.cashReceived.set(suggestedBill);
+    const suggestedBills = [50, 100, 200, 500].find((b) => b >= total) ?? Math.ceil(total);
+    this.cashReceived.set(suggestedBills);
     this.cashModalOpen.set(true);
   }
 
@@ -379,61 +415,70 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.cashModalOpen.set(false);
   }
 
-  setExactCash(): void {
+  setCashExact(): void {
     this.cashReceived.set(this.cartTotal());
+  }
+
+  setExactCash(): void {
+    this.setCashExact();
+  }
+
+  setCashBill(amount: number): void {
+    this.cashReceived.set(amount);
   }
 
   confirmCashSale(): void {
     if (!this.canConfirmCash()) return;
-    const change = this.cashChange();
-    const result = this.inv.processSale(this.cart(), 'EFECTIVO');
-    if (result.ok) {
+    const res = this.inv.processSale(this.cart(), 'EFECTIVO');
+    if (res.ok) {
+      const changeMsg =
+        this.cashChange() > 0 ? ` · Cambio a entregar: $${this.cashChange().toFixed(2)}` : '';
+      this.saleFeedback.set({ ok: true, text: `✅ ${res.message}${changeMsg}` });
       this.cart.set([]);
-      this.cashModalOpen.set(false);
-      this.saleFeedback.set({
-        ok: true,
-        text: `💵 ${result.message} Cambio entregado al cliente: $${change.toFixed(2)}.`,
-      });
+      this.closeCashModal();
+    } else {
+      this.saleFeedback.set({ ok: false, text: res.message });
     }
   }
 
-  // ---------- Flujo Libreta de Fiado y Abonos ----------
+  // ---------- Modal Fiado ----------
   openCreditModal(): void {
-    this.abonoFeedback.set(null);
     this.creditModalOpen.set(true);
+    this.abonoFeedback.set(null);
+  }
+
+  selectCustomerForFiado(id: string): void {
+    this.selectedCustomerId.set(id);
   }
 
   closeCreditModal(): void {
     this.creditModalOpen.set(false);
   }
 
-  selectCustomerForFiado(customerId: string): void {
-    this.selectedCustomerId.set(customerId);
-    this.abonoCustomerId.set(customerId);
-    this.abonoFeedback.set(null);
-  }
-
   confirmCreditSale(): void {
-    const check = this.creditValidation();
-    if (!check.allowed || !this.cart().length) return;
-    const result = this.inv.processSale(this.cart(), 'FIADO', this.selectedCustomerId());
-    if (result.ok) {
+    const val = this.creditValidation();
+    if (!val.allowed) return;
+    const customer = this.selectedCustomer();
+    if (!customer) return;
+
+    const res = this.inv.processSale(this.cart(), 'FIADO', customer.id);
+    if (res.ok) {
+      this.saleFeedback.set({ ok: true, text: `📓 ${res.message}` });
       this.cart.set([]);
-      this.creditModalOpen.set(false);
-      this.saleFeedback.set({
-        ok: true,
-        text: `📓 ${result.message}`,
-      });
+      this.closeCreditModal();
     } else {
-      this.saleFeedback.set({
-        ok: false,
-        text: result.message,
-      });
+      this.saleFeedback.set({ ok: false, text: res.message });
     }
   }
 
-  submitCustomerAbono(): void {
-    const res = this.inv.registerCreditPayment(this.abonoCustomerId(), Number(this.abonoAmount()));
+  executeAbono(): void {
+    const customerId = this.abonoCustomerId();
+    const amount = Number(this.abonoAmount());
+    const res = this.inv.registerCreditPayment(customerId, amount);
     this.abonoFeedback.set(res.message);
+  }
+
+  submitCustomerAbono(): void {
+    this.executeAbono();
   }
 }

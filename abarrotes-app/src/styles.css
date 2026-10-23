@@ -6,12 +6,22 @@
   --color-bad: #dc2626;
 }
 
-html, body {
-  background: #f1f5f9;
+/* ==========================================================================
+   ESTILO NATIVO DE TERMINAL / APLICACIÓN DE ESCRITORIO (SIN SCROLL GLOBAL)
+   ========================================================================== */
+html,
+body {
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+  background-color: #0f172a; /* Slate 900 */
   color: #0f172a;
   font-family: "Inter", "Plus Jakarta Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   font-size: 16px;
-  line-height: 1.5;
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -23,35 +33,39 @@ table th {
   font-variant-numeric: tabular-nums;
 }
 
-/* Botones táctiles de alta visibilidad: feedback físico sin depender de atajos */
-button:not(:disabled), a.btn {
+/* Botones táctiles de alta visibilidad: feedback físico sin atajos ocultos */
+button:not(:disabled),
+a.btn {
   cursor: pointer;
+  user-select: none;
   transition:
-    transform 0.08s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.16s cubic-bezier(0.4, 0, 0.2, 1),
-    background-color 0.16s ease,
-    border-color 0.16s ease;
+    transform 0.06s ease,
+    box-shadow 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease;
 }
 
-button:not(:disabled):active, a.btn:active {
-  transform: scale(0.985);
+button:not(:disabled):active,
+a.btn:active {
+  transform: scale(0.975);
 }
 
 button:disabled {
   cursor: not-allowed;
+  opacity: 0.55;
 }
 
-/* Foco visible de alto contraste para accesibilidad */
+/* Foco visible de alto contraste para teclado numérico o lectores */
 :focus-visible {
-  outline: 3px solid #2563eb;
+  outline: 3px solid #38bdf8;
   outline-offset: 2px;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
-/* Scrollbars limpias estilo SaaS moderno */
+/* Scrollbars limpias para paneles internos */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: #f1f5f9;
@@ -65,7 +79,10 @@ button:disabled {
 }
 
 @media print {
-  html, body {
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
     background: #ffffff !important;
   }
 }

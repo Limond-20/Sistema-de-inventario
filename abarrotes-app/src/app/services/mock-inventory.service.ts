@@ -1,4 +1,13 @@
 import { Injectable, computed, signal } from '@angular/core';
+import {
+  AbcResult,
+  ClassificationDiscrepancy,
+  GuidedAnswer,
+  calculateAbcRankings,
+  calculateVU,
+  confirmClassificationChanges,
+  proposeNewClassification,
+} from './abc-classifier';
 
 // =====================================================================
 //  MODELOS
@@ -20,6 +29,8 @@ export interface Product {
   saleUnit: SaleUnit;
   /** Costo histórico por unidad de venta (MXN). */
   historicCost: number;
+  /** Costo de compra unitario usado para el Valor de Utilización (VU) de Pareto. */
+  purchaseCost?: number;
   /** Costo más reciente por unidad de venta (MXN). */
   newCost: number;
   /** Costo Promedio Ponderado contable (MXN). */
@@ -30,6 +41,8 @@ export interface Product {
   salePrice: number;
   /** Margen mínimo deseado (%) sobre precio de venta. */
   targetMargin: number;
+  /** Unidades mensuales vendidas estimadas (30 días) para cálculo VU = (Precio - Costo) * Unidades. */
+  monthlySalesUnits?: number;
   /** Fecha de caducidad del lote en anaquel (ISO yyyy-mm-dd). */
   expiry: string;
   /** Fecha FEFO (First Expired, First Out) del lote más próximo a vencer. */
@@ -52,6 +65,8 @@ export interface Product {
   rop: number;
   /** true para productos a granel o sin código de fábrica (Frijol, Queso, Huevo, Azúcar, Pan). */
   isBulk: boolean;
+  /** Producto gancho (si se acaba, el cliente se va a otra tienda). */
+  isTrafficDriver?: boolean;
   supplier: string;
 }
 
@@ -346,11 +361,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Pieza',
     historicCost: 21.0,
+    purchaseCost: 21.0,
     newCost: 21.0,
     weightedAvgCost: 20.8,
     lastPurchaseCost: 21.0,
     salePrice: 26.0,
     targetMargin: 20,
+    monthlySalesUnits: 420,
     expiry: '2026-10-24',
     fefoExpiryDate: '2026-10-24',
     acceptsPhysicalExchange: true,
@@ -374,17 +391,19 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Pieza',
     historicCost: 34.0,
+    purchaseCost: 39.0,
     newCost: 39.0,
     weightedAvgCost: 34.0,
     lastPurchaseCost: 39.0,
     salePrice: 42.0,
     targetMargin: 18,
+    monthlySalesUnits: 150,
     expiry: '2027-06-30',
     fefoExpiryDate: '2027-06-30',
     acceptsPhysicalExchange: false,
     stock: 18,
     minStock: 23,
-    abcClass: 'A',
+    abcClass: 'B',
     dailySalesRate: 5,
     supplierLeadTimeDays: 3,
     safetyStock: 8,
@@ -401,17 +420,19 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Lata',
     historicCost: 16.5,
+    purchaseCost: 16.5,
     newCost: 16.5,
     weightedAvgCost: 16.2,
     lastPurchaseCost: 16.5,
     salePrice: 21.0,
     targetMargin: 20,
+    monthlySalesUnits: 180,
     expiry: '2028-03-15',
     fefoExpiryDate: '2028-03-15',
     acceptsPhysicalExchange: false,
     stock: 40,
     minStock: 24,
-    abcClass: 'A',
+    abcClass: 'B',
     dailySalesRate: 6,
     supplierLeadTimeDays: 3,
     safetyStock: 6,
@@ -428,17 +449,19 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Kg',
     historicCost: 28.0,
+    purchaseCost: 32.0,
     newCost: 32.0,
     weightedAvgCost: 28.0,
     lastPurchaseCost: 32.0,
     salePrice: 36.0,
     targetMargin: 22,
+    monthlySalesUnits: 135,
     expiry: '2027-04-01',
     fefoExpiryDate: '2027-04-01',
     acceptsPhysicalExchange: false,
     stock: 16.5,
     minStock: 20,
-    abcClass: 'A',
+    abcClass: 'B',
     dailySalesRate: 4.5,
     supplierLeadTimeDays: 3,
     safetyStock: 6.5,
@@ -455,11 +478,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Kg',
     historicCost: 75.0,
+    purchaseCost: 75.0,
     newCost: 75.0,
     weightedAvgCost: 74.0,
     lastPurchaseCost: 75.0,
     salePrice: 95.0,
     targetMargin: 20,
+    monthlySalesUnits: 75,
     expiry: '2026-10-24',
     fefoExpiryDate: '2026-10-24',
     acceptsPhysicalExchange: true,
@@ -484,11 +509,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Kg',
     historicCost: 36.0,
+    purchaseCost: 36.0,
     newCost: 36.0,
     weightedAvgCost: 35.5,
     lastPurchaseCost: 36.0,
     salePrice: 46.0,
     targetMargin: 20,
+    monthlySalesUnits: 240,
     expiry: '2026-11-05',
     fefoExpiryDate: '2026-11-05',
     acceptsPhysicalExchange: false,
@@ -511,11 +538,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Kg',
     historicCost: 24.0,
+    purchaseCost: 24.0,
     newCost: 24.0,
     weightedAvgCost: 23.8,
     lastPurchaseCost: 24.0,
     salePrice: 31.0,
     targetMargin: 18,
+    monthlySalesUnits: 120,
     expiry: '2028-01-01',
     fefoExpiryDate: '2028-01-01',
     acceptsPhysicalExchange: false,
@@ -538,11 +567,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 1,
     saleUnit: 'Pieza',
     historicCost: 1.8,
+    purchaseCost: 1.8,
     newCost: 1.8,
     weightedAvgCost: 1.8,
     lastPurchaseCost: 1.8,
     salePrice: 3.0,
     targetMargin: 35,
+    monthlySalesUnits: 1050,
     expiry: '2026-10-23',
     fefoExpiryDate: '2026-10-23',
     acceptsPhysicalExchange: false,
@@ -565,11 +596,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 8,
     saleUnit: 'Pieza',
     historicCost: 41.0,
+    purchaseCost: 41.0,
     newCost: 41.0,
     weightedAvgCost: 41.0,
     lastPurchaseCost: 41.0,
     salePrice: 50.0,
     targetMargin: 16,
+    monthlySalesUnits: 90,
     expiry: '2026-10-23',
     fefoExpiryDate: '2026-10-23',
     acceptsPhysicalExchange: true,
@@ -593,11 +626,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 6,
     saleUnit: 'Pieza',
     historicCost: 41.3,
+    purchaseCost: 41.3,
     newCost: 41.3,
     weightedAvgCost: 41.0,
     lastPurchaseCost: 41.3,
     salePrice: 52.0,
     targetMargin: 18,
+    monthlySalesUnits: 60,
     expiry: '2026-10-25',
     fefoExpiryDate: '2026-10-25',
     acceptsPhysicalExchange: true,
@@ -621,11 +656,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 24,
     saleUnit: 'Pieza',
     historicCost: 14.1,
+    purchaseCost: 14.1,
     newCost: 14.1,
     weightedAvgCost: 14.1,
     lastPurchaseCost: 14.1,
     salePrice: 19.0,
     targetMargin: 22,
+    monthlySalesUnits: 540,
     expiry: '2027-01-25',
     fefoExpiryDate: '2027-01-25',
     acceptsPhysicalExchange: true,
@@ -649,11 +686,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 20,
     saleUnit: 'Pieza',
     historicCost: 27.6,
+    purchaseCost: 27.6,
     newCost: 27.6,
     weightedAvgCost: 27.2,
     lastPurchaseCost: 27.6,
     salePrice: 34.0,
     targetMargin: 15,
+    monthlySalesUnits: 75,
     expiry: '2027-08-20',
     fefoExpiryDate: '2027-08-20',
     acceptsPhysicalExchange: false,
@@ -676,17 +715,19 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 40,
     saleUnit: 'Pieza',
     historicCost: 9.9,
+    purchaseCost: 9.9,
     newCost: 9.9,
     weightedAvgCost: 9.8,
     lastPurchaseCost: 9.9,
     salePrice: 13.0,
     targetMargin: 20,
+    monthlySalesUnits: 120,
     expiry: '2027-12-10',
     fefoExpiryDate: '2027-12-10',
     acceptsPhysicalExchange: false,
     stock: 35,
     minStock: 20,
-    abcClass: 'B',
+    abcClass: 'C',
     dailySalesRate: 4,
     supplierLeadTimeDays: 3,
     safetyStock: 6,
@@ -703,11 +744,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 24,
     saleUnit: 'Lata',
     historicCost: 14.2,
+    purchaseCost: 14.2,
     newCost: 14.2,
     weightedAvgCost: 14.0,
     lastPurchaseCost: 14.2,
     salePrice: 19.0,
     targetMargin: 20,
+    monthlySalesUnits: 24,
     expiry: '2028-05-30',
     fefoExpiryDate: '2028-05-30',
     acceptsPhysicalExchange: false,
@@ -730,11 +773,13 @@ const PRODUCT_SEEDS: ProductSeed[] = [
     unitsPerPurchase: 25,
     saleUnit: 'Pieza',
     historicCost: 18.6,
+    purchaseCost: 18.6,
     newCost: 18.6,
     weightedAvgCost: 18.5,
     lastPurchaseCost: 18.6,
     salePrice: 25.0,
     targetMargin: 22,
+    monthlySalesUnits: 18,
     expiry: '2029-09-01',
     fefoExpiryDate: '2029-09-01',
     acceptsPhysicalExchange: false,
@@ -930,6 +975,179 @@ export class MockInventoryService {
   /** Total acumulado de deuda por cobrar en la libreta de fiado. */
   readonly totalAccountsReceivable = computed(() =>
     this.creditCustomers().reduce((sum, c) => sum + c.currentBalance, 0),
+  );
+
+  // ---------- Clasificación ABC por Utilidad Neta (VU) y Propuestas ----------
+  readonly abcConfig = signal({ windowDays: 30, minDaysForAuto: 14 });
+  readonly lastAbcRun = signal<string>('22 de octubre de 2026');
+  readonly abcPinned = signal<Record<string, AbcClass>>({});
+
+  toggleTrafficDriver(sku: string): void {
+    this.products.update((list) =>
+      list.map((p) => (p.sku === sku ? { ...p, isTrafficDriver: !p.isTrafficDriver } : p)),
+    );
+  }
+
+  pinAbc(sku: string, value: AbcClass | null): void {
+    this.abcPinned.update((m) => {
+      const copy = { ...m };
+      if (!value) delete copy[sku];
+      else copy[sku] = value;
+      return copy;
+    });
+  }
+
+  readonly abcSuggestions = computed<AbcResult[]>(() => {
+    const products = this.products();
+    const rankings = calculateAbcRankings(products);
+    const pinned = this.abcPinned();
+
+    return products.map((p, idx) => {
+      const rank = rankings.get(p.sku);
+      const computedClass = rank?.proposedClass ?? p.abcClass;
+      const finalClass = pinned[p.sku] ?? (p.isTrafficDriver && computedClass === 'C' ? 'B' : computedClass);
+      const changed = finalClass !== p.abcClass;
+      const flags: any[] = [];
+      if (pinned[p.sku]) flags.push('CANDADO');
+      if (p.isTrafficDriver) flags.push('GANCHO');
+
+      return {
+        sku: p.sku,
+        currentClass: p.abcClass,
+        computedClass,
+        finalClass,
+        source: pinned[p.sku] ? 'MANUAL' : 'AUTOMATICA',
+        share: (rank?.share ?? 0) / 100,
+        cumulativeBefore: ((rank?.cumulativePct ?? 0) - (rank?.share ?? 0)) / 100,
+        rank: idx + 1,
+        grossProfit: rank?.netProfit ?? 0,
+        ticketCount: Math.round((p.dailySalesRate || 1) * 25),
+        changed,
+        reason: `Utilidad neta: $${(rank?.netProfit ?? 0).toFixed(0)}/mes.`,
+        flags,
+      };
+    });
+  });
+
+  readonly pendingAbcChanges = computed<AbcResult[]>(() =>
+    this.abcSuggestions().filter((r) => r.changed),
+  );
+
+  applyAbcResults(results: AbcResult[], skus?: string[]): number {
+    const targetSkus = new Set(skus ?? results.filter((r) => r.changed).map((r) => r.sku));
+    let count = 0;
+    this.products.update((list) =>
+      list.map((p) => {
+        if (!targetSkus.has(p.sku)) return p;
+        const res = results.find((r) => r.sku === p.sku);
+        if (res && res.finalClass !== p.abcClass) {
+          count++;
+          return { ...p, abcClass: res.finalClass };
+        }
+        return p;
+      }),
+    );
+    this.lastAbcRun.set(new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long' }));
+    return count;
+  }
+
+  previewGuided(answers: GuidedAnswer[]): AbcResult[] {
+    const answerMap = new Map(answers.map((a) => [a.sku, a]));
+    return this.products().map((p, idx) => {
+      const ans = answerMap.get(p.sku);
+      let computedClass: AbcClass = p.abcClass;
+      if (ans) {
+        computedClass = ans.frequency === 'VARIAS_AL_DIA' ? 'A' : ans.frequency === 'POR_SEMANA' ? 'B' : 'C';
+      }
+      let finalClass = computedClass;
+      if (ans?.losesCustomer && finalClass === 'C') finalClass = 'B';
+      return {
+        sku: p.sku,
+        currentClass: p.abcClass,
+        computedClass,
+        finalClass,
+        source: 'GUIADA',
+        share: 0.1,
+        cumulativeBefore: 0,
+        rank: idx + 1,
+        grossProfit: calculateVU(p),
+        ticketCount: Math.round((p.dailySalesRate || 1) * 20),
+        changed: finalClass !== p.abcClass,
+        reason: 'Estimado con respuestas guiadas.',
+        flags: ans?.losesCustomer ? ['GANCHO'] : [],
+      };
+    });
+  }
+
+  /** Discrepancias entre la clase actual y la propuesta calculada con VU. */
+  readonly abcDiscrepancies = computed<ClassificationDiscrepancy[]>(() =>
+    proposeNewClassification(this.products()),
+  );
+  readonly abcProposalDismissed = signal(false);
+
+  /** Aplica los cambios de clasificación aceptados por el usuario. */
+  confirmClassificationChanges(accepted: ClassificationDiscrepancy[]): void {
+    this.products.update((list) => confirmClassificationChanges(list, accepted));
+    this.abcProposalDismissed.set(false);
+  }
+
+  /** Pospone la revisión de reclasificación para fin de mes. */
+  dismissAbcProposal(): void {
+    this.abcProposalDismissed.set(true);
+  }
+
+  // ---------- Accesos Rápidos POS y Sugerencias de Clase A ----------
+  /** Productos fijados manualmente en el acceso rápido del mostrador. */
+  readonly pinnedQuickAccessSkus = signal<string[]>([
+    'HUE-BAC-18', // Huevo Blanco
+    'FRI-NEG-50K', // Frijol Negro
+    'AZU-ZUL-1K',  // Azúcar
+    'QUE-FRE-1K',  // Queso Fresco
+    'PAN-BOL-PZ',  // Pan / Bolillo
+  ]);
+
+  /** Sugerencias descartadas por el usuario para no insistir. */
+  readonly dismissedQuickAccessSuggestions = signal<string[]>([]);
+
+  pinProductQuickAccess(sku: string): void {
+    if (!this.pinnedQuickAccessSkus().includes(sku)) {
+      this.pinnedQuickAccessSkus.update((list) => [...list, sku]);
+    }
+  }
+
+  unpinProductQuickAccess(sku: string): void {
+    this.pinnedQuickAccessSkus.update((list) => list.filter((s) => s !== sku));
+  }
+
+  dismissQuickAccessSuggestion(sku: string): void {
+    if (!this.dismissedQuickAccessSuggestions().includes(sku)) {
+      this.dismissedQuickAccessSuggestions.update((list) => [...list, sku]);
+    }
+  }
+
+  /** Productos de Clase A que NO están anclados en acceso rápido ni descartados. */
+  readonly quickAccessSuggestions = computed(() => {
+    const pinned = new Set(this.pinnedQuickAccessSkus());
+    const dismissed = new Set(this.dismissedQuickAccessSuggestions());
+    return this.products().filter((p) => p.abcClass === 'A' && !pinned.has(p.sku) && !dismissed.has(p.sku));
+  });
+
+  // ---------- Badges de Alerta Operativa para el Dashboard ----------
+  /** true si la nota OCR tiene productos donde el costo subió y rompió el margen objetivo. */
+  readonly hasPendingOcrMarginIssue = computed(() => {
+    const note = this.ocrNote();
+    if (!note) return false;
+    return note.lines.some((l) => !l.resolved && marginPct(l.newCost, l.salePrice) < l.targetMargin);
+  });
+
+  readonly brokenMarginLinesCount = computed(() => {
+    const note = this.ocrNote();
+    if (!note) return 0;
+    return note.lines.filter((l) => !l.resolved && marginPct(l.newCost, l.salePrice) < l.targetMargin).length;
+  });
+
+  readonly overdueCustomersCount = computed(() =>
+    this.creditCustomers().filter((c) => c.status === 'VENCIDO' || c.status === 'LIMITE_ALCANZADO').length,
   );
 
   // ---------- Corte de Caja y Punto de Venta (POS) ----------

@@ -83,19 +83,32 @@
       </button>
     </div>
 
-    <!-- Pestañas Grandes: [ ⚡ Acceso Rápido / Granel ] vs [ 📦 Todos los Productos ] -->
-    <div class="grid grid-cols-2 gap-3" role="tablist">
+    <!-- Pestañas Grandes: [ 📌 Accesos Rápidos ] vs [ ⚖️ Granel ] vs [ 📦 Todo el Catálogo ] -->
+    <div class="grid grid-cols-3 gap-2.5" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'quick'"
+        (click)="activeTab.set('quick')"
+        class="h-14 sm:h-16 rounded-2xl border-2 px-2 text-sm sm:text-base font-extrabold flex items-center justify-center gap-1.5 transition-all"
+        [class]="activeTab() === 'quick'
+          ? 'border-blue-700 bg-blue-600 text-white shadow-md'
+          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
+        <span class="text-xl">📌</span>
+        <span>Accesos Rápidos ({{ pinnedCount() }})</span>
+      </button>
+
       <button
         type="button"
         role="tab"
         [attr.aria-selected]="activeTab() === 'bulk'"
         (click)="activeTab.set('bulk')"
-        class="h-16 rounded-2xl border-2 px-4 text-lg font-extrabold flex items-center justify-center gap-2.5 transition-all"
+        class="h-14 sm:h-16 rounded-2xl border-2 px-2 text-sm sm:text-base font-extrabold flex items-center justify-center gap-1.5 transition-all"
         [class]="activeTab() === 'bulk'
           ? 'border-blue-700 bg-blue-600 text-white shadow-md'
           : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
-        <span class="text-2xl">⚡</span>
-        <span>Acceso Rápido / Granel</span>
+        <span class="text-xl">⚖️</span>
+        <span>Granel / Báscula</span>
       </button>
 
       <button
@@ -103,14 +116,41 @@
         role="tab"
         [attr.aria-selected]="activeTab() === 'all'"
         (click)="activeTab.set('all')"
-        class="h-16 rounded-2xl border-2 px-4 text-lg font-extrabold flex items-center justify-center gap-2.5 transition-all"
+        class="h-14 sm:h-16 rounded-2xl border-2 px-2 text-sm sm:text-base font-extrabold flex items-center justify-center gap-1.5 transition-all"
         [class]="activeTab() === 'all'
           ? 'border-blue-700 bg-blue-600 text-white shadow-md'
           : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
-        <span class="text-2xl">📦</span>
-        <span>Todos los Productos ({{ inv.products().length }})</span>
+        <span class="text-xl">📦</span>
+        <span>Todos ({{ inv.products().length }})</span>
       </button>
     </div>
+
+    <!-- Sugerencias de Clase A para Acceso Rápido -->
+    @if (suggestions().length > 0) {
+      <div class="flex flex-col gap-2">
+        @for (sug of suggestions().slice(0, 2); track sug.sku) {
+          <div class="rounded-2xl border-2 border-amber-300 bg-amber-50/95 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">💡</span>
+              <p class="text-xs sm:text-sm font-extrabold text-amber-950">
+                Sugerencia: El producto <b>{{ sug.name }}</b> genera alta utilidad (Clase A). ¿Fijar en acceso rápido?
+              </p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button type="button" (click)="pinSuggestion(sug.sku)"
+                class="btn h-9 px-3 rounded-lg border border-amber-700 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 shadow-2xs">
+                <span>📌</span>
+                <span>Fijar</span>
+              </button>
+              <button type="button" (click)="dismissSuggestion(sug.sku)"
+                class="btn h-9 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 font-bold text-xs">
+                ✖️ Descartar
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
 
     <!-- Cuadrícula Bento de Productos -->
     <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
@@ -118,22 +158,37 @@
         <div
           class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:border-blue-400 transition-all flex flex-col justify-between gap-3">
           <div>
-            <!-- Badges superiores: Clase ABC + Granel -->
-            <div class="flex items-center justify-between gap-2 mb-2">
-              <span class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold"
-                [class]="p.abcClass === 'A'
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                  : (p.abcClass === 'B' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-700 border border-slate-300')">
-                {{ p.abcClass === 'A' ? '🔥 Clase A' : (p.abcClass === 'B' ? '⚡ Clase B' : '💤 Clase C') }}
-              </span>
-
-              @if (p.isBulk) {
-                <span class="px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold">
-                  ⚖️ Granel / Sin Código
+            <!-- Badges superiores: Clase ABC + Granel + Fijar en Acceso Rápido -->
+            <div class="flex items-center justify-between gap-1.5 mb-2">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold"
+                  [class]="p.abcClass === 'A'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : (p.abcClass === 'B' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-700 border border-slate-300')">
+                  {{ p.abcClass === 'A' ? '🔥 A' : (p.abcClass === 'B' ? '⚡ B' : '💤 C') }}
                 </span>
-              } @else {
-                <span class="font-mono text-xs text-slate-400">{{ p.barcode }}</span>
-              }
+
+                @if (p.isBulk) {
+                  <span class="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold">
+                    ⚖️ Granel
+                  </span>
+                } @else {
+                  <span class="font-mono text-[11px] text-slate-400">{{ p.barcode }}</span>
+                }
+              </div>
+
+              <!-- Botón Pin Manual para Fijar / Desfijar -->
+              <button
+                type="button"
+                (click)="togglePin(p.sku, $event)"
+                [title]="isPinned(p.sku) ? 'Quitar de accesos rápidos' : 'Fijar en accesos rápidos de mostrador'"
+                class="h-7 px-2 rounded-lg border text-xs font-bold flex items-center gap-1 transition-all"
+                [class]="isPinned(p.sku)
+                  ? 'border-amber-400 bg-amber-100 text-amber-900'
+                  : 'border-slate-200 bg-slate-50 text-slate-400 hover:text-slate-800 hover:border-slate-400'">
+                <span>{{ isPinned(p.sku) ? '📌' : '📍' }}</span>
+                <span class="text-[10px] hidden sm:inline">{{ isPinned(p.sku) ? 'Fijado' : 'Fijar' }}</span>
+              </button>
             </div>
 
             <!-- Nombre e Icono -->

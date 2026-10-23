@@ -1,257 +1,325 @@
-<!-- ===================== ENCABEZADO DE BIENVENIDA ===================== -->
-<section class="mb-6 flex flex-wrap items-end justify-between gap-4">
-  <div>
-    <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold uppercase tracking-wider border border-emerald-200">
-      Operación en Vivo · {{ inv.today }}
-    </span>
-    <h1 class="text-3xl sm:text-4xl font-black text-slate-900 mt-1">☀️ Buenas tardes, Doña Lupe</h1>
-    <p class="text-base text-slate-600">
-      Resumen ejecutivo de mostrador, caducidades (FEFO), punto de reorden (ROP) y corte de caja.
-    </p>
-  </div>
+<!-- ===================== CENTRO DE MÓDULOS OPERATIVO (TERMINAL NATIVA POS) ===================== -->
+<div class="h-full w-full flex flex-col justify-between p-4 sm:p-5 overflow-hidden select-none">
 
-  <a routerLink="/pos"
-    class="btn h-16 px-7 rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-extrabold shadow-md flex items-center gap-3 transition-all">
-    <span class="text-3xl">🛒</span>
-    <span>Ir al Punto de Venta (Cobrar / Fiado)</span>
-  </a>
-</section>
+  <!-- ===================== CUADRÍCULA COMPLETA DE MÓDULOS (GRID 3x2) ===================== -->
+  <div class="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch content-center max-h-[calc(100vh-6rem)]">
 
-<!-- ===================== BENTO GRID EJECUTIVO (3 TARJETAS ESTRATÉGICAS) ===================== -->
-<section class="grid lg:grid-cols-3 gap-5 mb-8" aria-label="Indicadores estratégicos de la tienda">
-
-  <!-- TARJETA 1: SEMÁFORO FEFO ("CAMBIO FÍSICO" CON REPARTIDOR) -->
-  <article class="bg-white rounded-2xl border-2 border-amber-300 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4">
-    <div>
-      <div class="flex items-center justify-between gap-2 mb-3">
-        <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold uppercase">
-          🔄 Semáforo FEFO · Cambio Físico
+    <!-- BOTÓN 1: PUNTO DE VENTA (COLOR VERDE ESMERALDA / PRINCIPAL) -->
+    <a routerLink="/pos"
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-emerald-700 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white p-5 flex flex-col justify-between shadow-lg shadow-emerald-950/20 transition-all group">
+      <!-- Badge superior -->
+      <div class="flex items-center justify-between">
+        <span class="px-3 py-1 rounded-full bg-emerald-900/90 text-emerald-200 text-xs font-black tracking-wider uppercase border border-emerald-400/40">
+          TECLA F1 · CAJA REGISTRADORA
         </span>
-        <span class="text-2xl">🥛🍞</span>
-      </div>
-      <h2 class="text-xl font-black text-slate-900">Separar hoy para el repartidor</h2>
-      <p class="text-sm text-slate-600 mt-0.5">
-        Mercancía próxima a vencer que el proveedor cambia mano a mano sin perder un peso:
-      </p>
-
-      <ul class="mt-3 space-y-2">
-        @for (item of inv.fefoExchangeProducts().slice(0, 3); track item.sku) {
-          <li class="rounded-xl bg-amber-50/80 border border-amber-200 px-3 py-2 flex items-center justify-between gap-2 text-sm">
-            <div>
-              <p class="font-extrabold text-slate-900">{{ item.emoji }} {{ item.name }}</p>
-              <p class="text-xs font-bold text-amber-800">⏰ {{ item.nextVisitInfo }}</p>
-            </div>
-            <span class="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-xs font-extrabold whitespace-nowrap">
-              {{ item.stock }} {{ item.saleUnit }}
-            </span>
-          </li>
-        }
-      </ul>
-    </div>
-
-    <a routerLink="/catalogo"
-      class="btn h-14 w-full rounded-xl border-2 border-amber-700 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-base flex items-center justify-center gap-2">
-      <span>📦 Ver Lotes FEFO en Catálogo</span>
-      <span>➡️</span>
-    </a>
-  </article>
-
-  <!-- TARJETA 2: ALERTA ROP (REABASTECIMIENTO DE PRODUCTOS CLASE A) -->
-  <article class="bg-white rounded-2xl border-2 border-red-200 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4">
-    <div>
-      <div class="flex items-center justify-between gap-2 mb-3">
-        <span class="px-3 py-1 rounded-full bg-red-100 text-red-900 border border-red-300 text-xs font-extrabold uppercase">
-          🔥 Clase A · Punto de Reorden (ROP)
-        </span>
-        <span class="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-xs font-black">
-          {{ inv.criticalRopProducts().length }} por pedir
-        </span>
-      </div>
-      <h2 class="text-xl font-black text-slate-900">Productos críticos por agotarse</h2>
-      <p class="text-sm text-slate-600 mt-0.5">
-        Generan el 80% de tus ventas y hoy bajaron de su Punto de Reorden:
-      </p>
-
-      <ul class="mt-3 space-y-2">
-        @for (p of inv.criticalRopProducts().slice(0, 4); track p.sku) {
-          <li class="rounded-xl bg-red-50/70 border border-red-200 px-3 py-2 flex items-center justify-between gap-2 text-sm">
-            <div>
-              <p class="font-extrabold text-slate-900">{{ p.emoji }} {{ p.name }}</p>
-              <p class="text-xs text-slate-600">Proveedor: {{ p.supplier }} ({{ p.supplierLeadTimeDays }}d)</p>
-            </div>
-            <div class="text-right whitespace-nowrap">
-              <span class="text-sm font-black text-red-700">Hay {{ p.stock | number:'1.0-1' }}</span>
-              <span class="block text-xs font-semibold text-slate-500">ROP: {{ p.rop | number:'1.0-1' }}</span>
-            </div>
-          </li>
-        }
-      </ul>
-    </div>
-
-    <a routerLink="/catalogo"
-      class="btn h-14 w-full rounded-xl border-2 border-slate-900 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-base flex items-center justify-center gap-2">
-      <span>📋 Ver Lista de Pedido (Clase A)</span>
-      <span>➡️</span>
-    </a>
-  </article>
-
-  <!-- TARJETA 3: CORTE DE CAJA BLINDADO EN VIVO (EFECTIVO REAL VS FIADO) -->
-  <article class="bg-white rounded-2xl border-2 border-emerald-300 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4">
-    <div>
-      <div class="flex items-center justify-between gap-2 mb-3">
-        <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-extrabold uppercase">
-          💰 Corte de Caja Blindado en Vivo
-        </span>
-        <span class="text-2xl">💵📓</span>
-      </div>
-      <h2 class="text-xl font-black text-slate-900">Efectivo en Cajón vs. Fiado</h2>
-      <p class="text-sm text-slate-600 mt-0.5">
-        Separa los billetes reales que debes tener en caja de las ventas anotadas en libreta:
-      </p>
-
-      <div class="mt-3 rounded-2xl bg-emerald-50 border-2 border-emerald-500 p-3.5">
-        <p class="text-xs font-extrabold uppercase text-emerald-800">💵 Efectivo Real Esperado en Cajón</p>
-        <p class="text-3xl font-black text-emerald-700 mt-0.5">
-          {{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}
-        </p>
-        <p class="text-xs text-emerald-900 font-semibold mt-1">
-          = Ventas Efectivo ({{ inv.cashRegister().cashSalesTotal | currency:'MXN':'symbol-narrow' }})
-          + Abonos Recibidos ({{ inv.cashRegister().creditPaymentsReceived | currency:'MXN':'symbol-narrow' }})
-        </p>
+        <span class="w-4 h-4 rounded-full bg-emerald-300 animate-ping opacity-75"></span>
       </div>
 
-      <div class="mt-2.5 grid grid-cols-2 gap-2.5">
-        <div class="rounded-xl bg-amber-50 border border-amber-200 p-2.5">
-          <span class="block text-xs font-bold text-amber-900">📓 Fiado Hoy</span>
-          <span class="text-lg font-black text-amber-800">
-            {{ inv.cashRegister().creditSalesTotal | currency:'MXN':'symbol-narrow' }}
-          </span>
-        </div>
-        <div class="rounded-xl bg-slate-100 border border-slate-200 p-2.5">
-          <span class="block text-xs font-bold text-slate-600">🏘️ Deuda Total Vecinos</span>
-          <span class="text-lg font-black text-slate-900">
-            {{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }}
-          </span>
-          @if (overdueCustomersCount() > 0) {
-            <span class="block text-[11px] font-extrabold text-red-600">{{ overdueCustomersCount() }} en alerta/vencido</span>
-          }
+      <div class="flex items-center gap-4">
+        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">🛒</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">PUNTO DE VENTA (POS)</h2>
+          <p class="text-xs sm:text-sm text-emerald-100 font-semibold mt-1">Cobro rápido, báscula de granel ($ o Kg) y lector láser</p>
         </div>
       </div>
-    </div>
 
-    <a routerLink="/pos"
-      class="btn h-14 w-full rounded-xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-base flex items-center justify-center gap-2">
-      <span>💵 Cobrar o Registrar Abono</span>
-      <span>➡️</span>
-    </a>
-  </article>
-</section>
-
-<!-- ===================== ACCIONES PRINCIPALES DE MOSTRADOR Y BODEGA ===================== -->
-<section class="mb-8" aria-labelledby="acciones-title">
-  <h2 id="acciones-title" class="text-2xl font-black text-slate-900 mb-3">👇 Módulos Principales de la Tienda</h2>
-  <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-
-    <!-- ACCIÓN #1: PUNTO DE VENTA Y FIADO -->
-    <a routerLink="/pos"
-      class="btn relative min-h-[144px] rounded-2xl border-2 border-emerald-700 bg-emerald-600 hover:bg-emerald-700 text-white p-5 flex items-center gap-4 shadow-md transition-all">
-      <span class="text-6xl" aria-hidden="true">🛒</span>
-      <div>
-        <span class="inline-block px-2.5 py-0.5 rounded-full bg-emerald-800 text-emerald-100 text-xs font-extrabold mb-1">
-          ACCIÓN #1 · MOSTRADOR
-        </span>
-        <span class="block text-2xl font-black leading-tight">Punto de Venta (Cobrar / Fiado)</span>
-        <span class="block text-sm text-emerald-100 mt-1">Calculadora de granel ($ o Kg), escáner y libreta de vecinos</span>
+      <div class="flex items-center justify-between text-xs font-bold text-emerald-200 border-t border-emerald-500/50 pt-2">
+        <span>Listo para cobrar en mostrador</span>
+        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
       </div>
     </a>
 
-    <!-- ACCIÓN #2: RECIBIR MERCANCÍA Y BLINDAJE DE MÁRGENES -->
+    <!-- BOTÓN 2: RECEPCIÓN DE MERCANCÍA (AZUL PIZARRA) -->
     <a routerLink="/recepcion"
-      class="btn relative min-h-[144px] rounded-2xl border-2 border-slate-200 bg-white hover:border-blue-500 hover:shadow-md text-slate-900 p-5 flex items-center gap-4 shadow-sm transition-all">
-      <span class="text-6xl" aria-hidden="true">📥</span>
-      <div>
-        <span class="block text-2xl font-black leading-tight">Recibir Mercancía (OCR)</span>
-        <span class="block text-sm text-slate-600 mt-1">Lee notas del celular y protege tu margen contra inflación</span>
-      </div>
-      @if (inv.ocrNote()) {
-        <span class="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-red-600 text-white font-extrabold text-xs">
-          1 nota OCR
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white p-5 flex flex-col justify-between shadow-lg shadow-slate-950/20 transition-all group">
+      <!-- Badge de margen caído si existe -->
+      <div class="flex items-center justify-between">
+        <span class="px-3 py-1 rounded-full bg-slate-950 text-slate-300 text-xs font-black tracking-wider uppercase border border-slate-700">
+          FACTURAS / ENTRADAS
         </span>
-      }
-    </a>
+        @if (inv.hasPendingOcrMarginIssue()) {
+          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black flex items-center gap-1.5 shadow-md animate-pulse">
+            <span>⚠️</span>
+            <span>{{ inv.brokenMarginLinesCount() }} con Margen Caído</span>
+          </span>
+        } @else if (inv.ocrNote()) {
+          <span class="px-2.5 py-0.5 rounded-full bg-blue-500 text-white text-xs font-extrabold">
+            1 Nota Pendiente
+          </span>
+        }
+      </div>
 
-    <!-- ACCIÓN #3: CATÁLOGO ABC, ROP Y HOJA PDF GRANEL -->
-    <a routerLink="/catalogo"
-      class="btn relative min-h-[144px] rounded-2xl border-2 border-slate-200 bg-white hover:border-blue-500 hover:shadow-md text-slate-900 p-5 flex items-center gap-4 shadow-sm transition-all">
-      <span class="text-6xl" aria-hidden="true">📦</span>
-      <div>
-        <span class="block text-2xl font-black leading-tight">Catálogo ABC y Precios</span>
-        <span class="block text-sm text-slate-600 mt-1">Filtros ABC, Punto de Reorden (ROP) y Hoja PDF de Granel</span>
+      <div class="flex items-center gap-4">
+        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📥</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">RECEPCIÓN DE MERCANCÍA</h2>
+          <p class="text-xs sm:text-sm text-slate-300 font-semibold mt-1">Escáner OCR de tickets del celular y blindaje contra inflación</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-bold text-slate-400 border-t border-slate-700/60 pt-2">
+        <span>Control de costos y compras</span>
+        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
       </div>
     </a>
 
-    <!-- ACCIÓN #4: AUDITORÍA EXPRÉS DE PASILLO -->
+    <!-- BOTÓN 3: AUDITORÍA EXPRÉS DE PASILLOS (ÁMBAR) -->
     <a routerLink="/auditoria"
-      class="btn relative min-h-[144px] rounded-2xl border-2 border-slate-200 bg-white hover:border-amber-500 hover:shadow-md text-slate-900 p-5 flex items-center gap-4 shadow-sm transition-all">
-      <span class="text-6xl" aria-hidden="true">📋</span>
-      <div>
-        <span class="block text-2xl font-black leading-tight">Auditoría Exprés Ciega</span>
-        <span class="block text-sm text-slate-600 mt-1">Concilia lo que dice el sistema vs el conteo del pasillo</span>
-      </div>
-      @if (inv.pendingAuditCount() > 0) {
-        <span class="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 font-extrabold text-xs">
-          {{ inv.pendingAuditCount() }} diferencias
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-amber-600 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 p-5 flex flex-col justify-between shadow-lg shadow-amber-950/20 transition-all group">
+      <div class="flex items-center justify-between">
+        <span class="px-3 py-1 rounded-full bg-amber-950 text-amber-200 text-xs font-black tracking-wider uppercase border border-amber-700/40">
+          CONTEO FÍSICO CIEGO
         </span>
-      }
+        @if (inv.pendingAuditCount() > 0) {
+          <span class="px-3 py-1 rounded-full bg-slate-950 text-amber-300 text-xs font-black flex items-center gap-1 shadow-md">
+            <span>📋</span>
+            <span>{{ inv.pendingAuditCount() }} Diferencias por Dictaminar</span>
+          </span>
+        }
+      </div>
+
+      <div class="flex items-center gap-4">
+        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📋</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">AUDITORÍA DE PASILLO</h2>
+          <p class="text-xs sm:text-sm text-amber-950 font-bold mt-1">Conciliación ciega de anaqueles vs sistema desde el celular</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-extrabold text-amber-950 border-t border-amber-600/60 pt-2">
+        <span>Pasillo 3 · Aceites y Granos</span>
+        <span class="font-mono text-slate-950 text-sm font-black">ENTRAR ➔</span>
+      </div>
     </a>
 
-    <!-- ACCIÓN #5: REVISAR MERMAS -->
+    <!-- BOTÓN 4: LIBRETA DE FIADOS / CRÉDITO (PÚRPURA) -->
+    <button type="button" (click)="goToFiados()"
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-purple-700 bg-gradient-to-br from-purple-700 to-purple-900 hover:from-purple-600 hover:to-purple-800 text-white p-5 flex flex-col justify-between shadow-lg shadow-purple-950/20 transition-all text-left group">
+      <div class="flex items-center justify-between w-full">
+        <span class="px-3 py-1 rounded-full bg-purple-950 text-purple-200 text-xs font-black tracking-wider uppercase border border-purple-500/40">
+          CUENTAS POR COBRAR
+        </span>
+        @if (inv.overdueCustomersCount() > 0) {
+          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black flex items-center gap-1 shadow-md animate-pulse">
+            <span>🚫</span>
+            <span>{{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)</span>
+          </span>
+        } @else {
+          <span class="px-2.5 py-0.5 rounded-full bg-purple-800 text-purple-200 text-xs font-extrabold">
+            {{ inv.creditCustomers().length }} Clientes
+          </span>
+        }
+      </div>
+
+      <div class="flex items-center gap-4">
+        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📓</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">LIBRETA DE FIADOS</h2>
+          <p class="text-xs sm:text-sm text-purple-200 font-semibold mt-1">Control de deuda de vecinos, límites de crédito y abonos</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-bold text-purple-300 border-t border-purple-600/50 pt-2 w-full">
+        <span>Deuda total: {{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }}</span>
+        <span class="font-mono text-white text-sm font-black">ABRIR LIBRETA ➔</span>
+      </div>
+    </button>
+
+    <!-- BOTÓN 5: CATÁLOGO, PRECIOS Y GRANEL (GRIS AZULADO) -->
+    <a routerLink="/catalogo"
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-slate-500 bg-gradient-to-br from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white p-5 flex flex-col justify-between shadow-lg shadow-slate-950/20 transition-all group">
+      <div class="flex items-center justify-between">
+        <span class="px-3 py-1 rounded-full bg-slate-800 text-slate-200 text-xs font-black tracking-wider uppercase border border-slate-600">
+          MAESTRO DE ARTÍCULOS
+        </span>
+        <span class="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-xs font-mono font-bold">
+          EAN-13 · ROP
+        </span>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📦</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">CATÁLOGO Y PRECIOS</h2>
+          <p class="text-xs sm:text-sm text-slate-200 font-semibold mt-1">Clasificación ABC, Punto de Reorden y Hoja PDF de mostrador</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-bold text-slate-300 border-t border-slate-500/50 pt-2">
+        <span>{{ inv.products().length }} productos dados de alta</span>
+        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
+      </div>
+    </a>
+
+    <!-- BOTÓN 6: REGISTRO DE MERMAS (ROJO TENUE) -->
     <a routerLink="/mermas"
-      class="btn relative min-h-[144px] rounded-2xl border-2 border-slate-200 bg-white hover:border-red-500 hover:shadow-md text-slate-900 p-5 flex items-center gap-4 shadow-sm transition-all">
-      <span class="text-6xl" aria-hidden="true">🗑️</span>
-      <div>
-        <span class="block text-2xl font-black leading-tight">Revisar Mermas</span>
-        <span class="block text-sm text-slate-600 mt-1">Bajas por producto roto o caducado con evidencia fotográfica</span>
-      </div>
-      @if (inv.pendingShrinkCount() > 0) {
-        <span class="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-red-600 text-white font-extrabold text-xs">
-          {{ inv.pendingShrinkCount() }} por revisar
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-rose-800 bg-gradient-to-br from-rose-900 to-rose-950 hover:from-rose-800 hover:to-rose-900 text-white p-5 flex flex-col justify-between shadow-lg shadow-rose-950/20 transition-all group">
+      <div class="flex items-center justify-between">
+        <span class="px-3 py-1 rounded-full bg-rose-950 text-rose-200 text-xs font-black tracking-wider uppercase border border-rose-700/50">
+          CONTROL DE PÉRDIDAS
         </span>
-      }
+        @if (inv.pendingShrinkCount() > 0) {
+          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black flex items-center gap-1 shadow-md">
+            <span>📷</span>
+            <span>{{ inv.pendingShrinkCount() }} Bajas por Auditar</span>
+          </span>
+        }
+      </div>
+
+      <div class="flex items-center gap-4">
+        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">🗑️</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">REGISTRO DE MERMAS</h2>
+          <p class="text-xs sm:text-sm text-rose-200 font-semibold mt-1">Bajas de producto roto o caducado con foto obligatoria</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-bold text-rose-300 border-t border-rose-800/60 pt-2">
+        <span>Evidencia fotográfica desde celular</span>
+        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
+      </div>
     </a>
-  </div>
-</section>
 
-<!-- ===================== ALERTAS DEL DÍA ===================== -->
-<section aria-labelledby="alertas-title">
-  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-    <h2 id="alertas-title" class="text-2xl font-black text-slate-900">
-      🔔 Avisos Prioritarios del Día <span class="text-slate-500 font-semibold">({{ alerts().length }})</span>
-    </h2>
-    <div class="flex flex-wrap gap-2 text-xs font-extrabold">
-      <span class="px-3 py-1 rounded-full bg-red-600 text-white">Rojo = cuidando tu ganancia</span>
-      <span class="px-3 py-1 rounded-full bg-amber-500 text-slate-950">Ámbar = cambio físico / conteo</span>
-      <span class="px-3 py-1 rounded-full bg-blue-600 text-white">Azul = pedir a proveedor (ROP)</span>
-    </div>
   </div>
 
-  @if (alerts().length === 0) {
-    <div class="rounded-2xl border-2 border-emerald-600 bg-emerald-50 p-6 text-xl font-extrabold text-emerald-800">
-      ✅ ¡Todo en orden! No hay alertas pendientes por resolver.
+  <!-- ===================== BARRA DE ESTADO DELGADA INFERIOR ===================== -->
+  <footer class="mt-3 h-11 bg-slate-900 border border-slate-800 rounded-2xl px-4 flex items-center justify-between text-xs shrink-0 shadow-sm text-slate-300">
+    <div class="flex items-center gap-2">
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+      <span class="font-bold text-white">Terminal Activa</span>
+      <span class="text-slate-500">|</span>
+      <span>Base de datos SQLite local sincronizada</span>
     </div>
-  } @else {
-    <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-      @for (a of alerts(); track a.id) {
-        @let s = styleFor(a.kind);
-        <article class="rounded-2xl border-2 p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all {{ s.card }}">
-          <span class="self-start px-3 py-1 rounded-full text-xs font-extrabold {{ s.tag }}">{{ s.tagText }}</span>
-          <h3 class="text-lg font-black text-slate-900 leading-snug"><span aria-hidden="true">{{ a.icon }}</span> {{ a.title }}</h3>
-          <p class="text-sm text-slate-600 flex-1">{{ a.detail }}</p>
-          <a [routerLink]="a.route" class="btn h-14 rounded-xl border-2 text-white text-base font-extrabold flex items-center justify-center {{ s.btn }}">
-            {{ a.actionLabel }} ➡️
-          </a>
-        </article>
-      }
+
+    <!-- Indicador y Botón de Propuesta Mensual ABC -->
+    @if (pendingAbcCount() > 0) {
+      <div class="flex items-center gap-3">
+        <span class="text-amber-400 font-bold hidden sm:inline">
+          ⚡ Hay {{ pendingAbcCount() }} producto(s) con propuesta de cambio ABC (por Utilidad Neta)
+        </span>
+        <button
+          type="button"
+          (click)="openAbcModal()"
+          class="btn h-8 px-3 rounded-lg border-2 border-amber-500 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-xs transition-all">
+          <span>⚡</span>
+          <span>Revisar actualización ABC del mes</span>
+        </button>
+      </div>
+    } @else {
+      <div class="text-slate-500 text-xs font-semibold">
+        Clasificación ABC por Utilidad Neta: al día
+      </div>
+    }
+  </footer>
+
+</div>
+
+<!-- ===================== MODAL DE CONFIRMACIÓN RECLASIFICACIÓN ABC ===================== -->
+@if (abcModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white text-slate-900 rounded-3xl shadow-2xl w-full max-w-3xl border-2 border-slate-700 overflow-hidden flex flex-col max-h-[90vh]">
+      <!-- Cabecera -->
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">⚡</span>
+          <div>
+            <h2 class="text-lg font-black leading-tight">Propuesta de Reclasificación ABC Mensual</h2>
+            <p class="text-xs text-slate-400">Basada en la Utilidad Neta real: VU = (Precio − Costo) × Unidades Mensuales</p>
+          </div>
+        </div>
+        <button type="button" (click)="closeAbcModal()" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold hover:bg-slate-700 flex items-center justify-center">
+          ✖️
+        </button>
+      </div>
+
+      <!-- Explicación amigable -->
+      <div class="bg-amber-50 border-b border-amber-200 px-6 py-3 text-xs text-amber-950 flex items-center justify-between shrink-0">
+        <p>
+          💡 <b>El sistema nunca cambia los productos solo.</b> Tú decides si aceptas la nueva clasificación o la pospones.
+        </p>
+        <span class="font-extrabold text-amber-900">{{ selectedDiscrepancies().length }} discrepancia(s)</span>
+      </div>
+
+      <!-- Tabla de discrepancias con scroll interno -->
+      <div class="p-6 overflow-y-auto flex-1">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead class="bg-slate-100 text-slate-700 text-xs uppercase tracking-wider sticky top-0">
+            <tr>
+              <th class="p-3 rounded-l-xl">Producto</th>
+              <th class="p-3 text-center">Clase Actual</th>
+              <th class="p-3 text-center">Clase Propuesta</th>
+              <th class="p-3 text-right">Ganancia Neta / Mes</th>
+              <th class="p-3 text-right rounded-r-xl">Aporte Pareto</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            @for (item of selectedDiscrepancies(); track item.product.sku) {
+              <tr class="hover:bg-slate-50 transition-colors">
+                <td class="p-3">
+                  <div class="flex items-center gap-2">
+                    <span class="text-2xl">{{ item.product.emoji }}</span>
+                    <div>
+                      <p class="font-black text-slate-900 leading-snug">{{ item.product.name }}</p>
+                      <p class="text-xs text-slate-500 font-mono">
+                        {{ item.monthlySalesUnits }} unids/mes · Costo: {{ (item.product.purchaseCost ?? item.product.lastPurchaseCost) | currency:'MXN':'symbol-narrow' }}
+                      </p>
+                    </div>
+                  </div>
+                </td>
+
+                <td class="p-3 text-center">
+                  <span class="px-2.5 py-1 rounded-lg text-xs font-black border"
+                    [class]="item.currentClass === 'A' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : (item.currentClass === 'B' ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-slate-100 text-slate-700 border-slate-300')">
+                    Clase {{ item.currentClass }}
+                  </span>
+                </td>
+
+                <td class="p-3 text-center">
+                  <span class="px-2.5 py-1 rounded-lg text-xs font-black border-2 animate-pulse"
+                    [class]="item.proposedClass === 'A' ? 'bg-emerald-600 text-white border-emerald-800' : (item.proposedClass === 'B' ? 'bg-blue-600 text-white border-blue-800' : 'bg-amber-500 text-slate-950 border-amber-700')">
+                    ➔ Clase {{ item.proposedClass }}
+                  </span>
+                </td>
+
+                <td class="p-3 text-right font-black text-slate-900 tabular-nums">
+                  {{ item.netProfit | currency:'MXN':'symbol-narrow' }}
+                </td>
+
+                <td class="p-3 text-right font-bold text-slate-600 tabular-nums">
+                  {{ item.share }}%
+                  <span class="block text-[10px] text-slate-400">Acum: {{ item.cumulativePct }}%</span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Barra de acciones modal -->
+      <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <button
+          type="button"
+          (click)="postponeAbcChanges()"
+          class="h-12 px-5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-700 hover:bg-slate-100">
+          ⏳ Posponer para Fin de Mes
+        </button>
+
+        <div class="flex gap-2.5">
+          <button
+            type="button"
+            (click)="closeAbcModal()"
+            class="h-12 px-4 rounded-xl border border-slate-300 bg-slate-100 font-bold text-sm text-slate-700 hover:bg-slate-200">
+            Cerrar
+          </button>
+          <button
+            type="button"
+            (click)="confirmAbcChanges()"
+            class="h-12 px-6 rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white font-black text-sm hover:bg-emerald-700 shadow-sm flex items-center gap-2">
+            <span>✅</span>
+            <span>Aplicar Cambios Aceptados</span>
+          </button>
+        </div>
+      </div>
     </div>
-  }
-</section>
+  </div>
+}

@@ -1,6 +1,6 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { CommonModule, CurrencyPipe } from '@angular/common';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterModule } from '@angular/router';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import { NavigationEnd, Router, RouterLink, RouterModule } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 import { MockInventoryService } from '../../services/mock-inventory.service';
@@ -32,16 +32,24 @@ function buildFakeQr(size = 29, seed = 20931): boolean[][] {
 
 @Component({
   selector: 'app-navbar',
-  imports: [CommonModule, CurrencyPipe, RouterModule, RouterLink, RouterLinkActive],
+  imports: [CommonModule, CurrencyPipe, DatePipe, RouterModule, RouterLink],
   templateUrl: './navbar.component.html',
 })
-export class NavbarComponent {
+export class NavbarComponent implements OnInit, OnDestroy {
   protected readonly inv = inject(MockInventoryService);
   private readonly router = inject(Router);
 
-  protected readonly qrOpen = signal(false);
+  // ---------- Reloj Digital en Vivo ----------
+  protected readonly now = signal<Date>(new Date());
+  private clockTimer: ReturnType<typeof setInterval> | null = null;
+
+  // ---------- Modales ----------
+  protected readonly qrOpen = signal<boolean>(false);
+  protected readonly closeShiftModalOpen = signal<boolean>(false);
+  protected readonly shiftClosedSuccess = signal<boolean>(false);
+
   protected readonly qr = buildFakeQr();
-  protected readonly mobileUrl = `${location.origin}/movil-prototipo.html`;
+  protected readonly mobileUrl = typeof window !== 'undefined' ? `${window.location.origin}/movil-prototipo.html` : '/movil-prototipo.html';
 
   private readonly url = toSignal(
     this.router.events.pipe(
@@ -52,6 +60,19 @@ export class NavbarComponent {
   );
   protected readonly isHome = computed(() => this.url() === '/' || this.url() === '');
 
+  ngOnInit(): void {
+    this.clockTimer = setInterval(() => {
+      this.now.set(new Date());
+    }, 1000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.clockTimer) {
+      clearInterval(this.clockTimer);
+      this.clockTimer = null;
+    }
+  }
+
   openQr(): void {
     this.qrOpen.set(true);
   }
@@ -61,5 +82,16 @@ export class NavbarComponent {
   simulateLink(): void {
     this.inv.phoneLinked.set(true);
     this.qrOpen.set(false);
+  }
+
+  openCloseShift(): void {
+    this.shiftClosedSuccess.set(false);
+    this.closeShiftModalOpen.set(true);
+  }
+  closeCloseShiftModal(): void {
+    this.closeShiftModalOpen.set(false);
+  }
+  confirmCloseShift(): void {
+    this.shiftClosedSuccess.set(true);
   }
 }
