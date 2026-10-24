@@ -69,6 +69,15 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   protected readonly manualLines = signal<ReceptionLine[]>([]);
   protected readonly savedSummary = signal<{ folio: string; lines: number; total: number; adjusted: number } | null>(null);
 
+  // ---------- Modal Alta Rápida de Producto Nuevo ----------
+  protected readonly quickProductModalOpen = signal<boolean>(false);
+  protected readonly quickName = signal<string>('');
+  protected readonly quickCategory = signal<string>('Abarrotes');
+  protected readonly quickIsBulk = signal<boolean>(false);
+  protected readonly quickCost = signal<number>(25.0);
+  protected readonly quickMargin = signal<number>(20);
+  protected readonly quickQty = signal<number>(1);
+
   // ---------- Laboratorio / Simulador OCR y Lector ----------
   protected readonly labOpen = signal<boolean>(true);
   protected readonly rawTicketText = signal<string>(PRESET_TICKETS['inflacion']);
@@ -347,6 +356,58 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
       list.map((l) => (l.sku === line.sku ? { ...l, salePrice: line.suggested, resolved: true } : l));
     if (this.mode() === 'ocr') this.ocrLines.update(update);
     else this.manualLines.update(update);
+  }
+
+  openQuickProductModal(): void {
+    this.quickName.set('');
+    this.quickCategory.set('Abarrotes');
+    this.quickIsBulk.set(false);
+    this.quickCost.set(25.0);
+    this.quickMargin.set(20);
+    this.quickQty.set(1);
+    this.quickProductModalOpen.set(true);
+  }
+
+  closeQuickProductModal(): void {
+    this.quickProductModalOpen.set(false);
+  }
+
+  confirmQuickProduct(): void {
+    const name = this.quickName().trim();
+    if (!name) return;
+    const cost = Number(this.quickCost()) || 0;
+    const margin = Number(this.quickMargin()) || 20;
+    const isBulk = this.quickIsBulk();
+    const newProd = this.inv.registerNewQuickProduct(
+      name,
+      this.quickCategory(),
+      isBulk,
+      cost,
+      margin,
+    );
+    const qty = Number(this.quickQty()) || 1;
+    const newLine: ReceptionLine = {
+      sku: newProd.sku,
+      barcode: newProd.barcode,
+      name: newProd.name,
+      emoji: '',
+      qtyPurchase: qty,
+      purchaseUnit: newProd.purchaseUnit,
+      unitsPerPurchase: 1,
+      saleUnit: newProd.saleUnit,
+      lineTotal: +(qty * cost).toFixed(2),
+      historicCost: cost,
+      newCost: cost,
+      salePrice: newProd.salePrice,
+      targetMargin: newProd.targetMargin,
+      resolved: true,
+    };
+    if (this.mode() === 'ocr') {
+      this.ocrLines.update((l) => [newLine, ...l]);
+    } else {
+      this.manualLines.update((l) => [newLine, ...l]);
+    }
+    this.closeQuickProductModal();
   }
 
   reloadNote(): void {

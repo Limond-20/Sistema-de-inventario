@@ -10,9 +10,15 @@
     </p>
   </div>
 
-  <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-1.5 shadow-2xs text-xs font-semibold text-slate-600">
-    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-    <span>Conteo ciego sincronizado desde móvil</span>
+  <div class="flex items-center gap-2">
+    <button type="button" (click)="loadBlindMissionSample()"
+      class="h-9 px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs shadow-2xs transition-colors">
+      Misión 15 Artículos (ABC)
+    </button>
+    <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-1.5 shadow-2xs text-xs font-semibold text-slate-600">
+      <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+      <span>Conteo ciego sincronizado desde móvil</span>
+    </div>
   </div>
 </section>
 
@@ -111,15 +117,19 @@
             @else { Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
           </p>
           <div class="grid grid-cols-2 gap-2">
-            <button type="button" (click)="authorize(r.sku)"
-              class="h-10 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs transition-colors">
-              Autorizar Ajuste
+            <button type="button" (click)="applySquare(r.sku, 'MERMA_OPERATIVA')"
+              class="h-10 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs transition-colors text-center leading-tight">
+              Merma Normal Granel/Corte
             </button>
-            <button type="button" (click)="recount(r.sku)"
-              class="h-10 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs transition-colors">
-              Pedir Reconteo
+            <button type="button" (click)="applySquare(r.sku, 'FALTANTE_INJUSTIFICADO')"
+              class="h-10 px-2 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-900 font-bold text-[11px] shadow-2xs transition-colors text-center leading-tight">
+              Faltante Injustificado
             </button>
           </div>
+          <button type="button" (click)="recount(r.sku)"
+            class="text-[11px] text-slate-400 hover:text-slate-700 font-medium text-center">
+            Pedir Reconteo
+          </button>
         } @else if (r.status === 'autorizado') {
           <div class="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
             <p class="text-xs text-emerald-950">

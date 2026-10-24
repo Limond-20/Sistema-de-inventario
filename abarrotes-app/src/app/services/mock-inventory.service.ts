@@ -228,6 +228,36 @@ export interface ShrinkRecord {
   reviewed: boolean;
 }
 
+export interface SupplierRoute {
+  id: string;
+  name: string;
+  visitDays: string[];
+  physicalExchangePolicy: boolean;
+  phone: string;
+}
+
+export interface PerishableBatch {
+  batchId: string;
+  productId: string;
+  productName: string;
+  expiryDate: string;
+  quantity: number;
+  status: 'OPTIMO' | 'POR_VENCER' | 'VENCIDO';
+  supplierId?: string;
+}
+
+export interface BlindAuditItem {
+  sku: string;
+  barcode: string;
+  name: string;
+  category: string;
+  saleUnit: SaleUnit;
+  location: string;
+  unitCost: number;
+  countedQty?: number;
+  completed?: boolean;
+}
+
 // =====================================================================
 //  UTILIDADES DE MARGEN, ROP Y PARSER OCR
 // =====================================================================
@@ -238,9 +268,25 @@ export function marginPct(cost: number, price: number): number {
   return ((price - cost) / price) * 100;
 }
 
-/** Precio sugerido redondeado hacia arriba al peso entero para cumplir el margen objetivo. */
+/**
+ * Redondeo comercial inteligente:
+ * - Menor a $50 MXN -> redondear al múltiplo de $0.50 o $1.00 superior más cercano (ej. $24.10 -> $24.50).
+ * - Mayor o igual a $50 MXN -> redondear al peso entero superior ($78.20 -> $79.00).
+ */
+export function calculateCommercialRound(price: number): number {
+  if (price <= 0) return 0;
+  if (price < 50) {
+    return +(Math.ceil(price * 2) / 2).toFixed(2);
+  } else {
+    return Math.ceil(price);
+  }
+}
+
+/** Precio sugerido redondeado comercialmente para cumplir el margen objetivo. */
 export function suggestedPrice(cost: number, targetMargin: number): number {
-  return Math.ceil(cost / (1 - targetMargin / 100));
+  if (targetMargin >= 100) return Math.ceil(cost * 1.5);
+  const raw = cost / (1 - targetMargin / 100);
+  return calculateCommercialRound(raw);
 }
 
 /** Calcula el Punto de Reorden (ROP): (Venta Diaria × Días Proveedor) + Stock de Seguridad */
@@ -949,6 +995,60 @@ const SHRINK_RECORDS: ShrinkRecord[] = [
   { id: 'M-0408', date: '18/10/2026', time: '5:50 p.m.', sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml', emoji: '🫒', qty: 1, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 34.0, registeredBy: 'Celular · Doña Lupe', hasPhoto: true, reviewed: true },
 ];
 
+export const SUPPLIER_ROUTES: SupplierRoute[] = [
+  {
+    id: 'SUP-LAL',
+    name: 'Lala (Lácteos)',
+    visitDays: ['Martes', 'Viernes'],
+    physicalExchangePolicy: true,
+    phone: '800-433-5252',
+  },
+  {
+    id: 'SUP-BIM',
+    name: 'Bimbo (Panadería)',
+    visitDays: ['Lunes', 'Miércoles', 'Viernes'],
+    physicalExchangePolicy: true,
+    phone: '800-910-2462',
+  },
+  {
+    id: 'SUP-SAB',
+    name: 'Sabritas',
+    visitDays: ['Jueves'],
+    physicalExchangePolicy: false,
+    phone: '800-901-9500',
+  },
+];
+
+export const PERISHABLE_BATCHES: PerishableBatch[] = [
+  {
+    batchId: 'LOT-LAL-201',
+    productId: 'LAC-LAL-1L',
+    productName: 'Leche Lala Entera 1L',
+    expiryDate: '2026-10-24', // Dentro de 48h (Viernes visita Lala)
+    quantity: 8,
+    status: 'POR_VENCER',
+    supplierId: 'SUP-LAL',
+  },
+  {
+    batchId: 'LOT-BIM-504',
+    productId: 'PAN-BIM-680',
+    productName: 'Pan Blanco Bimbo Grande 680g',
+    expiryDate: '2026-10-23', // Mañana (Viernes visita Bimbo)
+    quantity: 5,
+    status: 'POR_VENCER',
+    supplierId: 'SUP-BIM',
+  },
+  {
+    batchId: 'LOT-YOP-102',
+    productId: 'YOG-YOP-1K',
+    productName: 'Yoghurt Yoplait Fresa 1kg',
+    expiryDate: '2026-11-15',
+    quantity: 12,
+    status: 'OPTIMO',
+    supplierId: 'SUP-LAL',
+  },
+];
+
 // =====================================================================
 //  SERVICIO
 // =====================================================================
@@ -1008,6 +1108,9 @@ export class MockInventoryService {
   readonly morningAlerts = signal<MorningAlert[]>(structuredClone(MORNING_ALERTS));
   readonly auditLines = signal<AuditLine[]>(structuredClone(AUDIT_LINES));
   readonly shrinkRecords = signal<ShrinkRecord[]>(structuredClone(SHRINK_RECORDS));
+  readonly supplierRoutes = signal<SupplierRoute[]>(structuredClone(SUPPLIER_ROUTES));
+  readonly perishableBatches = signal<PerishableBatch[]>(structuredClone(PERISHABLE_BATCHES));
+  readonly blindAuditMission = signal<BlindAuditItem[]>([]);
 
   /** Estado de vinculación con el celular. */
   readonly phoneLinked = signal(false);
@@ -1208,6 +1311,22 @@ export class MockInventoryService {
   readonly overdueCustomersCount = computed(() =>
     this.creditCustomers().filter((c) => c.status === 'VENCIDO' || c.status === 'LIMITE_ALCANZADO').length,
   );
+
+  // ---------- Getters para los Badges del Dashboard ----------
+  /** Número de entradas con precios con margen caído pendientes. */
+  getMarginDropAlertsCount(): number {
+    return this.brokenMarginLinesCount();
+  }
+
+  /** Número de productos pendientes de contar hoy en auditoría. */
+  getPendingAuditMissionCount(): number {
+    return this.auditLines().filter((l) => l.status === 'pendiente' && l.countedQty !== l.systemQty).length;
+  }
+
+  /** Número de lotes que requieren cambio físico en las próximas 48h. */
+  getUrgentFefoCount(): number {
+    return this.getUpcomingFefoExchanges().length;
+  }
 
   // ---------- Corte de Caja y Punto de Venta (POS) ----------
 
@@ -1624,5 +1743,329 @@ export class MockInventoryService {
 
   markShrinkReviewed(id: string): void {
     this.shrinkRecords.update((list) => list.map((r) => (r.id === id ? { ...r, reviewed: true } : r)));
+  }
+
+  // ---------- Agenda de Rutas y FEFO ----------
+
+  /**
+   * Retorna los lotes que deben retirarse hoy según el proveedor que visita mañana o en 48h.
+   */
+  getUpcomingFefoExchanges(): {
+    batch: PerishableBatch;
+    supplier?: SupplierRoute;
+    urgent: boolean;
+    nextVisitText: string;
+  }[] {
+    const suppliers = this.supplierRoutes();
+    return this.perishableBatches()
+      .filter((b) => b.status === 'POR_VENCER' || b.status === 'VENCIDO')
+      .map((batch) => {
+        const supplier = suppliers.find((s) => s.id === batch.supplierId);
+        return {
+          batch,
+          supplier,
+          urgent: true,
+          nextVisitText: supplier ? `Visita: ${supplier.visitDays.join(', ')}` : 'Visita próxima',
+        };
+      });
+  }
+
+  /**
+   * Resuelve el cambio físico:
+   * - CAMBIO_EFECTIVO: actualiza la caducidad sin alterar costos contables.
+   * - MERMA_RECHAZADA: descuenta a merma al costo contable.
+   */
+  resolvePhysicalExchange(
+    batchId: string,
+    action: 'CAMBIO_EFECTIVO' | 'MERMA_RECHAZADA',
+    newExpiryDate?: string,
+  ): { ok: boolean; message: string } {
+    const batch = this.perishableBatches().find((b) => b.batchId === batchId);
+    if (!batch) return { ok: false, message: 'Lote no encontrado' };
+
+    if (action === 'CAMBIO_EFECTIVO') {
+      const nextDate = newExpiryDate || '2026-11-28';
+      this.perishableBatches.update((list) =>
+        list.map((b) => (b.batchId === batchId ? { ...b, expiryDate: nextDate, status: 'OPTIMO' } : b)),
+      );
+      return {
+        ok: true,
+        message: `Cambio físico exitoso de ${batch.quantity} piezas de ${batch.productName}. Nueva caducidad: ${nextDate}. Sin afectación a costos.`,
+      };
+    } else {
+      this.perishableBatches.update((list) =>
+        list.map((b) => (b.batchId === batchId ? { ...b, status: 'VENCIDO' } : b)),
+      );
+      const product = this.products().find((p) => p.sku === batch.productId);
+      const unitCost = product ? product.historicCost : 25;
+      const totalLoss = +(batch.quantity * unitCost).toFixed(2);
+
+      if (product) {
+        this.products.update((list) =>
+          list.map((p) =>
+            p.sku === batch.productId
+              ? { ...p, stock: Math.max(0, +(p.stock - batch.quantity).toFixed(2)) }
+              : p,
+          ),
+        );
+      }
+
+      const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+      this.shrinkRecords.update((list) => [
+        {
+          id: 'M-' + String(Date.now()).slice(-4),
+          date: '22/10/2026',
+          time: now,
+          sku: batch.productId,
+          name: batch.productName,
+          emoji: '',
+          qty: batch.quantity,
+          saleUnit: product ? product.saleUnit : 'Pieza',
+          reason: 'Caducado sin devolución',
+          unitCost,
+          registeredBy: 'Módulo FEFO / Mostrador',
+          hasPhoto: false,
+          reviewed: true,
+        },
+        ...list,
+      ]);
+
+      this.cashShift.update((s) => ({
+        ...s,
+        shrinkTotalCost: +(s.shrinkTotalCost + totalLoss).toFixed(2),
+      }));
+
+      this.kardex.update((k) => [
+        {
+          id: 'K-' + String(Date.now()).slice(-4),
+          timestamp: now,
+          type: 'BAJA_MERMA',
+          description: `Merma rechazada FEFO: ${batch.quantity}x ${batch.productName} ($${totalLoss.toFixed(2)})`,
+          amount: totalLoss,
+        },
+        ...k,
+      ]);
+
+      return {
+        ok: true,
+        message: `Cambio rechazado por proveedor. Se mandaron ${batch.quantity} piezas a merma por $${totalLoss.toFixed(2)} al costo.`,
+      };
+    }
+  }
+
+  // ---------- Recepción y Alta Rápida de Productos ----------
+
+  /**
+   * Da de alta al instante un producto no registrado en la nota de proveedor con redondeo comercial.
+   */
+  registerNewQuickProduct(
+    name: string,
+    category: string,
+    isBulk: boolean,
+    purchaseCost: number,
+    targetMargin: number,
+    saleUnit: SaleUnit = isBulk ? 'Kg' : 'Pieza',
+    purchaseUnit: PurchaseUnit = isBulk ? 'Costal' : 'Pieza',
+  ): Product {
+    const cleanName = name.trim();
+    const sku =
+      cleanName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '-')
+        .slice(0, 10) +
+      '-' +
+      String(Date.now()).slice(-3);
+
+    const barcode = isBulk
+      ? '200' + String(Date.now()).slice(-10)
+      : '750' + String(Date.now()).slice(-10);
+
+    const salePrice = calculateCommercialRound(purchaseCost / (1 - (targetMargin || 20) / 100));
+
+    const newProd: Product = {
+      sku,
+      barcode,
+      name: cleanName,
+      category: category || 'Abarrotes',
+      emoji: '',
+      purchaseUnit,
+      unitsPerPurchase: 1,
+      saleUnit,
+      historicCost: purchaseCost,
+      purchaseCost,
+      newCost: purchaseCost,
+      weightedAvgCost: purchaseCost,
+      lastPurchaseCost: purchaseCost,
+      salePrice,
+      targetMargin: targetMargin || 20,
+      monthlySalesUnits: 30,
+      expiry: '2027-12-31',
+      fefoExpiryDate: '2027-12-31',
+      acceptsPhysicalExchange: false,
+      stock: 0,
+      minStock: 5,
+      abcClass: 'B',
+      dailySalesRate: 1,
+      supplierLeadTimeDays: 3,
+      safetyStock: 2,
+      rop: calculateROP(1, 3, 2),
+      isBulk,
+      supplier: 'Proveedor General',
+    };
+
+    this.products.update((list) => [newProd, ...list]);
+    return newProd;
+  }
+
+  // ---------- Auditoría Ciega Exprés ----------
+
+  /**
+   * Genera una lista de 15 productos (10 Clase A, 4 Clase B, 1 Clase C) omitiendo el stock del sistema.
+   */
+  generateDailyBlindAuditMission(): BlindAuditItem[] {
+    const prods = this.products();
+    const classA = prods.filter((p) => p.abcClass === 'A').slice(0, 10);
+    const classB = prods.filter((p) => p.abcClass === 'B').slice(0, 4);
+    const classC = prods.filter((p) => p.abcClass === 'C').slice(0, 1);
+    const selected = [...classA, ...classB, ...classC];
+
+    const locations: Record<string, string> = {
+      Lácteos: 'Refrigerador 1 · Puerta 1',
+      Aceites: 'Anaquel B · Repisa 2',
+      Granos: 'Piso · Báscula',
+      Enlatados: 'Anaquel B · Repisa 3',
+      Bebidas: 'Refrigerador 2',
+      Panadería: 'Isla Central',
+      Pastas: 'Anaquel C · Repisa 1',
+      Limpieza: 'Anaquel D · Repisa 4',
+    };
+
+    return selected.map((p) => ({
+      sku: p.sku,
+      barcode: p.barcode,
+      name: p.name,
+      category: p.category,
+      saleUnit: p.saleUnit,
+      location: locations[p.category] || 'Pasillo 3',
+      unitCost: p.historicCost,
+      countedQty: undefined,
+      completed: false,
+    }));
+  }
+
+  /**
+   * Compara el conteo físico vs el stock teórico y calcula la diferencia en piezas y pesos ($).
+   */
+  submitBlindAuditResults(counts: { sku: string; countedQty: number }[]): void {
+    const newAuditLines: AuditLine[] = counts.map((c) => {
+      const p = this.products().find((x) => x.sku === c.sku);
+      const systemQty = p ? p.stock : 0;
+      const unitCost = p ? p.historicCost : 10;
+      const name = p ? p.name : c.sku;
+      const saleUnit = p ? p.saleUnit : 'Pieza';
+      return {
+        sku: c.sku,
+        name,
+        emoji: '',
+        location: 'Pasillo 3 · Auditoría Ciega Móvil',
+        saleUnit,
+        systemQty,
+        countedQty: c.countedQty,
+        unitCost,
+        status: 'pendiente' as AuditStatus,
+      };
+    });
+
+    this.auditLines.set(newAuditLines);
+    this.morningAlerts.update((alerts) => [
+      ...alerts.filter((a) => a.kind !== 'auditoria'),
+      {
+        id: 'A-BLIND-' + Date.now(),
+        kind: 'auditoria',
+        icon: '',
+        title: `Llegó auditoría ciega de 15 productos desde el celular`,
+        detail: `Revisa las diferencias encontradas antes de cuadrar stock.`,
+        actionLabel: 'Revisar auditoría',
+        route: '/auditoria',
+      },
+    ]);
+  }
+
+  /**
+   * Cuadra el stock al conteo físico en una sola transacción:
+   * - MERMA_OPERATIVA: merma normal granel/corte.
+   * - FALTANTE_INJUSTIFICADO: pérdida o extravío no justificado.
+   */
+  applySquareAdjustment(
+    productId: string,
+    type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO',
+  ): { ok: boolean; message: string } {
+    const line = this.auditLines().find((l) => l.sku === productId);
+    if (!line) return { ok: false, message: 'Producto no encontrado en auditoría' };
+
+    const diffQty = +(line.countedQty - line.systemQty).toFixed(2);
+    const diffMoney = +(diffQty * line.unitCost).toFixed(2);
+
+    // 1. Cuadrar stock en catálogo
+    this.products.update((list) =>
+      list.map((p) => (p.sku === productId ? { ...p, stock: line.countedQty } : p)),
+    );
+
+    // 2. Marcar auditoría como autorizada
+    this.auditLines.update((list) =>
+      list.map((l) => (l.sku === productId ? { ...l, status: 'autorizado' as AuditStatus } : l)),
+    );
+
+    // 3. Registrar Kardex
+    const typeLabel =
+      type === 'MERMA_OPERATIVA'
+        ? 'Merma Normal Granel/Corte'
+        : 'Faltante Injustificado';
+    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+
+    this.kardex.update((k) => [
+      {
+        id: 'K-' + String(Date.now()).slice(-4),
+        timestamp: now,
+        type: 'AJUSTE_AUDITORIA',
+        description: `Ajuste Auditoría [${typeLabel}]: ${line.name} (Dif: ${diffQty > 0 ? '+' : ''}${diffQty} ${line.saleUnit}, $${diffMoney})`,
+        amount: Math.abs(diffMoney),
+      },
+      ...k,
+    ]);
+
+    // 4. Si fue faltante (diffQty < 0), computar merma
+    if (diffQty < 0) {
+      const loss = Math.abs(diffMoney);
+      this.cashShift.update((s) => ({
+        ...s,
+        shrinkTotalCost: +(s.shrinkTotalCost + loss).toFixed(2),
+      }));
+      this.shrinkRecords.update((list) => [
+        {
+          id: 'M-' + String(Date.now()).slice(-4),
+          date: '22/10/2026',
+          time: now,
+          sku: line.sku,
+          name: line.name,
+          emoji: '',
+          qty: Math.abs(diffQty),
+          saleUnit: line.saleUnit,
+          reason: type === 'MERMA_OPERATIVA' ? 'Envase Roto en Piso' : 'Caducado sin devolución',
+          unitCost: line.unitCost,
+          registeredBy: 'Auditoría Ciega (' + typeLabel + ')',
+          hasPhoto: false,
+          reviewed: true,
+        },
+        ...list,
+      ]);
+    }
+
+    return {
+      ok: true,
+      message: `Stock cuadrado a ${line.countedQty} ${line.saleUnit}. Kardex actualizado como ${typeLabel}.`,
+    };
   }
 }

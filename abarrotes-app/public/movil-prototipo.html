@@ -3,1123 +3,1281 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#1e3a8a" />
-  <title>Abarrotes Doña Lupe · Celular</title>
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Terminal Móvil · Abarrotes Doña Lupe</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Librerías reales de producción para Código de Barras (EAN-13 / QR) y OCR en Español -->
+  <!-- Librerías de escáner EAN-13 / QR y OCR Tesseract en español -->
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
   <style>
-    html, body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
-    .btn-press:active { transform: scale(0.97); }
-    .screen { display: none; }
-    .screen.active { display: flex; }
-    @keyframes scan { 0% { top: 8%; } 50% { top: 88%; } 100% { top: 8%; } }
-    .scan-line { animation: scan 1.6s ease-in-out infinite; }
-    @keyframes pop { 0% { transform: scale(.8); opacity: 0 } 100% { transform: scale(1); opacity: 1 } }
-    .pop { animation: pop .2s ease-out; }
+    html, body {
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+      touch-action: manipulation;
+      user-select: none;
+      background-color: #e2e8f0;
+      color: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* Animación de feedback táctil */
+    .touch-btn:active {
+      transform: scale(0.97);
+    }
+
+    /* Pestañas de pantalla */
+    .screen-tab {
+      display: none;
+    }
+    .screen-tab.active {
+      display: flex;
+    }
+
+    /* Retícula de escáner láser */
+    .reticle-box {
+      position: relative;
+    }
+    .reticle-laser {
+      position: absolute;
+      left: 6%;
+      right: 6%;
+      height: 2px;
+      background: #10b981;
+      box-shadow: 0 0 12px 2px #34d399;
+      animation: laserSweep 1.8s ease-in-out infinite alternate;
+      z-index: 10;
+    }
+    @keyframes laserSweep {
+      0% { top: 12%; opacity: 0.3; }
+      50% { opacity: 1; }
+      100% { top: 88%; opacity: 0.3; }
+    }
+
+    .reticle-corner {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-color: #10b981;
+      z-index: 11;
+    }
+    .reticle-corner.tl { top: 8px; left: 8px; border-top-width: 3px; border-left-width: 3px; }
+    .reticle-corner.tr { top: 8px; right: 8px; border-top-width: 3px; border-right-width: 3px; }
+    .reticle-corner.bl { bottom: 8px; left: 8px; border-bottom-width: 3px; border-left-width: 3px; }
+    .reticle-corner.br { bottom: 8px; right: 8px; border-bottom-width: 3px; border-right-width: 3px; }
+
+    /* Estilo de scroll para listas internas */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
   </style>
 </head>
-<body class="bg-slate-200 min-h-screen flex justify-center font-sans text-slate-900">
+<body class="bg-slate-200 min-h-screen flex flex-col justify-between overflow-x-hidden font-sans">
 
-<div class="w-full max-w-md min-h-screen bg-slate-50 flex flex-col shadow-2xl relative">
+  <!-- =========================================================================
+       CONTENEDOR PRINCIPAL CENTRADO (max-w-md mx-auto min-h-screen bg-slate-100)
+       ========================================================================= -->
+  <div class="max-w-md mx-auto min-h-screen bg-slate-100 flex flex-col w-full shadow-2xl relative">
 
-  <!-- ===================== BARRA DE CONEXIÓN (siempre visible) ===================== -->
-  <header class="bg-slate-900 text-white px-4 pt-4 pb-3 sticky top-0 z-20 border-b border-slate-800 shadow-sm">
-    <div class="flex items-center justify-between">
+    <!-- =========================================================================
+         CABECERA IDÉNTICA A NAVBAR (h-12)
+         ========================================================================= -->
+    <header class="h-12 bg-slate-900 border-b border-slate-800 text-white px-3 flex items-center justify-between select-none shrink-0 z-30 shadow-md sticky top-0">
+      <!-- Lado Izquierdo: Icono cuadrado PV, Nombre de Tienda y Subtítulo -->
       <div class="flex items-center gap-2.5">
-        <div class="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-xl">🏪</div>
+        <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-xs font-black shadow-xs text-white">
+          PV
+        </div>
         <div>
-          <p class="text-[11px] uppercase tracking-wider font-extrabold text-emerald-400">Abarrotes Doña Lupe</p>
-          <p class="text-base font-black leading-tight">Terminal Móvil · Lab OCR/EAN</p>
+          <span class="block text-sm font-black tracking-tight leading-none text-white">DOÑA LUPE</span>
+          <span class="block text-[10px] font-bold text-slate-400 leading-none mt-0.5">Terminal Móvil</span>
         </div>
       </div>
-      <div class="flex items-center gap-2 bg-emerald-600/20 text-emerald-300 rounded-full px-3 py-1.5 border border-emerald-500/40">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span class="text-xs font-extrabold">En Línea</span>
+
+      <!-- Lado Derecho: Badge MODO LOCAL (LAN) y Conmutador de Sonido / Háptico -->
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-[10px] tracking-wide text-emerald-300 font-extrabold">MODO LOCAL (LAN)</span>
+        </div>
+        <button type="button" onclick="toggleBeepVibro()" id="beep-vibro-toggle-btn"
+          class="h-7 px-2 rounded-md bg-slate-800 border border-slate-700 text-xs font-bold text-slate-300 flex items-center gap-1 touch-btn"
+          title="Alternar sonido y vibración">
+          <span id="beep-vibro-icon">🔊📳</span>
+        </button>
       </div>
-    </div>
-    <p class="mt-2 text-xs text-slate-300 font-semibold">🟢 Sincronizado en tiempo real con la PC de mostrador</p>
-  </header>
+    </header>
 
-  <main class="flex-1 flex flex-col">
+    <!-- =========================================================================
+         CONTENIDO PRINCIPAL DINÁMICO
+         ========================================================================= -->
+    <main class="flex-1 p-3.5 flex flex-col pb-8">
 
-    <!-- ===================== PANTALLA 1: MENÚ PRINCIPAL ===================== -->
-    <section id="screen-menu" class="screen active flex-col gap-3.5 p-4">
-      <div>
-        <h1 class="text-2xl font-black text-slate-900">¿Qué operación vas a realizar?</h1>
-        <p class="text-sm text-slate-600">Toca cualquiera de los módulos táctiles para enviar datos a la PC.</p>
-      </div>
+      <!-- =====================================================================
+           PANTALLA PRINCIPAL: MENÚ HUB & SPOKE (MÓDULOS DEL DASHBOARD)
+           ===================================================================== -->
+      <section id="screen-menu" class="screen-tab active flex-col gap-3">
+        <!-- Título del Hub -->
+        <div class="mb-1">
+          <h1 class="text-xl font-black text-slate-900 tracking-tight">Terminal de Mostrador y Pasillo</h1>
+          <p class="text-xs text-slate-600 font-semibold mt-0.5">Selecciona una operación vinculada a la PC de caja</p>
+        </div>
 
-      <button onclick="goTo('screen-ocr')" class="btn-press w-full min-h-[100px] rounded-2xl border-2 border-blue-700 bg-blue-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-md">
-        <span class="text-5xl">📸</span>
-        <span>
-          <span class="block text-lg font-black leading-tight">Fotografiar Nota de Proveedor (OCR Real)</span>
-          <span class="block text-xs text-blue-100 mt-1">Lee tickets con Tesseract.js y detecta subidas de costo</span>
-        </span>
-      </button>
+        <!-- Botón 1: Lector POS (Esmeralda) -->
+        <button type="button" onclick="goTo('screen-pos')"
+          class="btn relative rounded-2xl border-2 border-emerald-600 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-0.5 rounded-full bg-emerald-900/90 text-emerald-200 text-[10px] font-black tracking-wider uppercase border border-emerald-400/40">
+              ESCÁNER EAN-13
+            </span>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-300"></span>
+          </div>
+          <div>
+            <h2 class="text-xl font-black tracking-tight leading-tight">Lector de Mostrador (POS)</h2>
+            <p class="text-xs text-emerald-100 font-semibold mt-0.5">Escáner láser por cámara continua o foto para agregar artículos al ticket activo de la PC</p>
+          </div>
+          <div class="flex items-center justify-between text-xs font-bold text-emerald-200 border-t border-emerald-500/50 pt-2">
+            <span>Sincronización LAN en vivo</span>
+            <span class="font-mono text-white text-xs font-black">ENTRAR ➔</span>
+          </div>
+        </button>
 
-      <button onclick="openBarcodeScreen()" class="btn-press w-full min-h-[100px] rounded-2xl border-2 border-emerald-700 bg-emerald-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-md">
-        <span class="text-5xl">▮▯▮</span>
-        <span>
-          <span class="block text-lg font-black leading-tight">Lector de Código de Barras (EAN-13)</span>
-          <span class="block text-xs text-emerald-100 mt-1">Cámara en vivo o captura por foto (HTTP sin SSL)</span>
-        </span>
-      </button>
+        <!-- Botón 2: Recepción y Notas OCR (Pizarra / Slate) -->
+        <button type="button" onclick="goTo('screen-ocr')"
+          class="btn relative rounded-2xl border-2 border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-0.5 rounded-full bg-slate-950 text-slate-300 text-[10px] font-black tracking-wider uppercase border border-slate-700">
+              REMISIÓN / OCR
+            </span>
+            <span class="px-2 py-0.5 rounded-full bg-blue-500 text-white text-[9px] font-black">
+              Tesseract Spa
+            </span>
+          </div>
+          <div>
+            <h2 class="text-xl font-black tracking-tight leading-tight">Recepción y Notas (OCR)</h2>
+            <p class="text-xs text-slate-300 font-semibold mt-0.5">Captura facturas de proveedores para blindar márgenes y detectar alzas de costo</p>
+          </div>
+          <div class="flex items-center justify-between text-xs font-bold text-slate-400 border-t border-slate-700/60 pt-2">
+            <span>Control de compras y costos</span>
+            <span class="font-mono text-white text-xs font-black">ENTRAR ➔</span>
+          </div>
+        </button>
 
-      <button onclick="startAudit()" class="btn-press w-full min-h-[100px] rounded-2xl border-2 border-amber-700 bg-amber-500 text-slate-950 text-left px-5 py-4 flex items-center gap-4 shadow-md">
-        <span class="text-5xl">🔍</span>
-        <span>
-          <span class="block text-lg font-black leading-tight">Contar Pasillo (Auditoría Exprés)</span>
-          <span class="block text-xs text-amber-950/80 font-semibold mt-1">Pasillo 3: Aceites, Enlatados y Granos · 5 productos</span>
-        </span>
-      </button>
+        <!-- Botón 3: Auditoría Ciega (Ámbar) -->
+        <button type="button" onclick="goTo('screen-conteo')"
+          class="btn relative rounded-2xl border-2 border-amber-600 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-200 text-[10px] font-black tracking-wider uppercase border border-amber-700/40">
+              CONTEO FÍSICO CIEGO
+            </span>
+            <span class="px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 text-[9px] font-black">
+              15 Productos
+            </span>
+          </div>
+          <div>
+            <h2 class="text-xl font-black tracking-tight leading-tight">Auditoría Ciega de Pasillo</h2>
+            <p class="text-xs text-amber-950 font-bold mt-0.5">Conteo físico sin sesgos ni stock visible. Teclado gigante en pantalla</p>
+          </div>
+          <div class="flex items-center justify-between text-xs font-extrabold text-amber-950 border-t border-amber-600/60 pt-2">
+            <span>10 Clase A · 4 Clase B · 1 Clase C</span>
+            <span class="font-mono text-slate-950 text-xs font-black">ENTRAR ➔</span>
+          </div>
+        </button>
 
-      <button onclick="startMerma()" class="btn-press w-full min-h-[100px] rounded-2xl border-2 border-red-800 bg-red-600 text-white text-left px-5 py-4 flex items-center gap-4 shadow-md">
-        <span class="text-5xl">⚠️</span>
-        <span>
-          <span class="block text-lg font-black leading-tight">Registrar Producto Roto o Caducado (Merma)</span>
-          <span class="block text-xs text-red-100 mt-1">Da de baja con evidencia fotográfica obligatoria</span>
-        </span>
-      </button>
+        <!-- Botón 4: Mermas con Evidencia (Rojo / Rose) -->
+        <button type="button" onclick="goTo('screen-mermas')"
+          class="btn relative rounded-2xl border-2 border-rose-800 bg-gradient-to-br from-rose-900 to-rose-950 hover:from-rose-800 hover:to-rose-900 text-white p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-0.5 rounded-full bg-rose-950 text-rose-200 text-[10px] font-black tracking-wider uppercase border border-rose-700/50">
+              EVIDENCIA DE MERMA
+            </span>
+            <span class="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black">
+              Foto Obligatoria
+            </span>
+          </div>
+          <div>
+            <h2 class="text-xl font-black tracking-tight leading-tight">Reporte de Mermas</h2>
+            <p class="text-xs text-rose-200 font-semibold mt-0.5">Registro rápido de bajas por rotura o caducidad con foto desde el anaquel</p>
+          </div>
+          <div class="flex items-center justify-between text-xs font-bold text-rose-300 border-t border-rose-800/60 pt-2">
+            <span>Sincronización a PC para dictamen</span>
+            <span class="font-mono text-white text-xs font-black">ENTRAR ➔</span>
+          </div>
+        </button>
+      </section>
 
-      <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-        <p class="text-xs font-extrabold uppercase tracking-wider text-slate-400">📡 Estado del Canal Local (BroadcastChannel)</p>
-        <p id="last-sync" class="text-slate-700 font-semibold text-sm mt-1">Listo para sincronizar con la pestaña de la PC</p>
-      </div>
-    </section>
+      <!-- =====================================================================
+           MODO 1: LECTOR EAN-13 (MOSTRADOR)
+           ===================================================================== -->
+      <section id="screen-pos" class="screen-tab flex-col gap-3">
+        <!-- Botón superior obligatorio para regresar al Menú -->
+        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
 
-    <!-- ===================== PANTALLA LECTOR DE CÓDIGO DE BARRAS DUAL ===================== -->
-    <section id="screen-barcode" class="screen flex-col gap-4 p-4">
-      <button onclick="leaveBarcodeScreen()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
-        ⬅️ Regresar al Menú
-      </button>
+        <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+          <div>
+            <h1 class="text-lg font-black text-slate-900">Lector EAN-13 (Mostrador)</h1>
+            <p class="text-[11px] text-slate-500 font-medium">Escanea códigos de barras para enviarlos al ticket activo en PC</p>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+            Láser Activo
+          </span>
+        </div>
 
-      <h2 class="text-2xl font-extrabold text-emerald-800">▮▯▮ Lector EAN-13 Dual</h2>
-      <p class="text-base text-slate-600 -mt-2">Funciona con cámara en vivo (HTTPS/localhost) o tomando foto en redes HTTP locales.</p>
+        <!-- Visor centrado de cámara con marco rounded-2xl border-2 border-emerald-600 -->
+        <div class="reticle-box w-full aspect-[4/3] rounded-2xl overflow-hidden bg-slate-950 border-2 border-emerald-600 relative shadow-inner flex flex-col items-center justify-center">
+          <div id="pos-camera-stream" class="w-full h-full object-cover"></div>
 
-      <!-- Modo 1: Cámara en vivo -->
-      <div class="rounded-2xl border-4 border-emerald-700 bg-white p-4 flex flex-col gap-3">
-        <p class="font-extrabold text-lg">1. Escaneo en Tiempo Real (Cámara)</p>
-        <div id="barcode-live-reader" class="w-full rounded-xl overflow-hidden bg-slate-900 min-h-[60px]"></div>
+          <!-- Guías de retícula láser -->
+          <div class="reticle-corner tl"></div>
+          <div class="reticle-corner tr"></div>
+          <div class="reticle-corner bl"></div>
+          <div class="reticle-corner br"></div>
+          <div class="reticle-laser" id="pos-laser"></div>
+
+          <!-- Placeholder cuando la cámara continua no está corriendo -->
+          <div id="pos-cam-placeholder" class="absolute inset-0 flex flex-col items-center justify-center p-4 bg-slate-950/90 text-center">
+            <svg class="w-12 h-12 text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            </svg>
+            <p class="text-xs font-bold text-slate-300">Cámara en espera</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">Toca el botón verde para iniciar el visor láser</p>
+          </div>
+        </div>
+
+        <!-- Controles de Escáner -->
         <div class="grid grid-cols-2 gap-2">
-          <button id="btn-start-cam" onclick="startLiveBarcodeScanner('barcode-live-reader', onBarcodeDecoded)"
-            class="btn-press min-h-[60px] rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white font-extrabold text-base px-3">
-            🎥 Iniciar Cámara
+          <button type="button" id="btn-toggle-camera" onclick="togglePosCamera()"
+            class="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md touch-btn">
+            <span id="pos-cam-icon">▶</span>
+            <span id="pos-cam-btn-text">Iniciar Cámara</span>
           </button>
-          <button id="btn-stop-cam" onclick="stopLiveBarcodeScanner()"
-            class="btn-press min-h-[60px] rounded-xl border-2 border-slate-400 bg-slate-100 text-slate-700 font-bold text-base px-3">
-            ⏹️ Detener Cámara
-          </button>
+
+          <!-- Botón táctil ancho para tomar foto / cámara nativa (HTTP) -->
+          <label for="pos-native-photo-input"
+            class="h-12 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-900 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center leading-tight px-2 shadow-2xs">
+            <span>📷 Tomar Foto / Usar Cámara Nativa (HTTP)</span>
+          </label>
+          <input type="file" id="pos-native-photo-input" accept="image/*" capture="environment" class="hidden" onchange="onPosPhotoSelected(event)" />
         </div>
-      </div>
 
-      <!-- Modo 2: Captura por foto (ideal para HTTP sin SSL) -->
-      <div class="rounded-2xl border-4 border-blue-700 bg-white p-4 flex flex-col gap-3">
-        <p class="font-extrabold text-lg">2. Captura por Foto (Redes HTTP sin SSL)</p>
-        <label for="barcode-photo-input" class="btn-press w-full min-h-[68px] rounded-2xl border-4 border-blue-800 bg-blue-600 text-white text-lg font-extrabold flex items-center justify-center gap-2 cursor-pointer shadow">
-          📷 Tomar / Subir Foto del Código
-        </label>
-        <input id="barcode-photo-input" type="file" accept="image/*" capture="environment" class="hidden" onchange="onBarcodePhotoSelected(event, 'barcode')" />
-        <div id="barcode-file-reader-tmp" class="hidden"></div>
-      </div>
-
-      <!-- Botones rápidos de prueba con los 5 EAN-13 oficiales -->
-      <div class="rounded-2xl border-2 border-slate-300 bg-slate-100 p-4 flex flex-col gap-2">
-        <p class="font-extrabold text-base text-slate-700">🧪 Probar decodificación rápida (5 códigos base):</p>
-        <div class="grid grid-cols-1 gap-2">
-          <button onclick="onBarcodeDecoded('7501020515350')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
-            <span><b class="font-mono text-sm text-emerald-700">7501020515350</b><br/><span class="font-bold">🥛 Leche Lala Entera 1L</span></span>
-            <span class="font-extrabold text-lg">$26.00</span>
-          </button>
-          <button onclick="onBarcodeDecoded('7501039121122')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
-            <span><b class="font-mono text-sm text-emerald-700">7501039121122</b><br/><span class="font-bold">🫒 Aceite Nutrioli 850ml</span></span>
-            <span class="font-extrabold text-lg">$42.00</span>
-          </button>
-          <button onclick="onBarcodeDecoded('7501045403014')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
-            <span><b class="font-mono text-sm text-emerald-700">7501045403014</b><br/><span class="font-bold">🐟 Atún Dolores en Agua 140g</span></span>
-            <span class="font-extrabold text-lg">$21.00</span>
-          </button>
-          <button onclick="onBarcodeDecoded('2000001000014')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
-            <span><b class="font-mono text-sm text-emerald-700">2000001000014</b><br/><span class="font-bold">🫘 Frijol Negro Granel (1 kg)</span></span>
-            <span class="font-extrabold text-lg">$36.00</span>
-          </button>
-          <button onclick="onBarcodeDecoded('2000002000013')" class="btn-press min-h-[56px] rounded-xl border-2 border-slate-400 bg-white px-3 py-2 text-left flex justify-between items-center">
-            <span><b class="font-mono text-sm text-emerald-700">2000002000013</b><br/><span class="font-bold">🧀 Queso Fresco Local (1 kg)</span></span>
-            <span class="font-extrabold text-lg">$95.00</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Resultado con letras grandes -->
-      <div id="barcode-result-card" class="hidden rounded-3xl border-4 border-green-600 bg-green-50 p-5 flex-col gap-3 shadow-lg">
-        <p class="text-sm font-extrabold uppercase tracking-wide text-green-800">✅ Producto Encontrado</p>
-        <p id="bc-res-code" class="font-mono text-base font-bold text-slate-600"></p>
-        <p id="bc-res-name" class="text-3xl font-extrabold text-slate-900 leading-tight"></p>
-        <div class="grid grid-cols-2 gap-3 bg-white rounded-2xl p-3 border-2 border-green-300">
-          <div>
-            <p class="text-xs text-slate-500 font-bold">PRECIO VENTA ACTUAL</p>
-            <p id="bc-res-price" class="text-3xl font-extrabold text-green-700"></p>
+        <!-- Tarjeta inferior blanca flotante que confirme la lectura con sonido Beep y vibración háptica -->
+        <div id="pos-last-scan-card" class="bg-white rounded-2xl border border-slate-200 shadow-md p-3.5 flex items-center justify-between gap-3 transition-all">
+          <div class="min-w-0 flex-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Último Código Escaneado:</span>
+            <p id="pos-last-name" class="text-sm font-black text-slate-900 truncate">Ningún código leído aún</p>
+            <p id="pos-last-sub" class="text-xs text-emerald-700 font-bold font-mono">Listo para escanear en mostrador</p>
           </div>
-          <div>
-            <p class="text-xs text-slate-500 font-bold">COSTO HISTÓRICO</p>
-            <p id="bc-res-cost" class="text-2xl font-bold text-slate-700"></p>
+          <div id="pos-scan-status-pill" class="w-9 h-9 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center font-bold text-base shrink-0 border border-slate-200">
+            ✓
           </div>
         </div>
-        <button onclick="sendDecodedBarcodeToPC()" class="btn-press w-full min-h-[68px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold shadow-lg">
-          📤 Enviar Producto a la PC Ahora
-        </button>
-      </div>
-    </section>
 
-    <!-- ===================== PANTALLA 2: FOTOGRAFIAR NOTA (OCR REAL TESSERACT.JS) ===================== -->
-    <section id="screen-ocr" class="screen flex-col gap-4 p-4">
-      <button onclick="goTo('screen-menu')" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
-        ⬅️ Regresar al Menú
-      </button>
-
-      <h2 class="text-2xl font-extrabold">📸 Escáner OCR de Ticket</h2>
-      <p class="text-base text-slate-600 -mt-2">Toma foto de la nota, sube una imagen o pega texto crudo para analizar con Tesseract.js.</p>
-
-      <!-- Opción A: Cámara o imagen -->
-      <label for="ocr-file" class="btn-press w-full min-h-[72px] rounded-2xl border-4 border-blue-800 bg-blue-600 text-white text-xl font-extrabold flex items-center justify-center gap-3 cursor-pointer shadow-lg">
-        📷 Tomar Foto / Subir Imagen de Ticket
-      </label>
-      <input id="ocr-file" type="file" accept="image/*" capture="environment" class="hidden" onchange="onOcrPhoto(event)" />
-
-      <!-- Barra de progreso grande de Tesseract -->
-      <div id="ocr-progress-box" class="hidden rounded-2xl border-4 border-blue-600 bg-blue-50 p-4 flex-col gap-2">
-        <div class="flex justify-between items-center">
-          <span id="ocr-status-label" class="font-extrabold text-lg text-blue-900">🔎 Leyendo ticket con OCR (Español)...</span>
-          <span id="ocr-progress-pct" class="text-2xl font-extrabold text-blue-700">0%</span>
+        <!-- Botonera rápida de prueba de 5 productos base -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs flex flex-col gap-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Botonera Rápida de Prueba (5 Productos Base)
+          </span>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button type="button" onclick="simulateBarcode('7501055301072')"
+              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
+              <span class="truncate">Coca Cola 600ml</span>
+              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$18</span>
+            </button>
+            <button type="button" onclick="simulateBarcode('7501011115682')"
+              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
+              <span class="truncate">Sabritas Sal 45g</span>
+              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$18</span>
+            </button>
+            <button type="button" onclick="simulateBarcode('7501020512111')"
+              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
+              <span class="truncate">Leche Lala 1L</span>
+              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$26</span>
+            </button>
+            <button type="button" onclick="simulateBarcode('7501045401317')"
+              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
+              <span class="truncate">Atún Dolores 140g</span>
+              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$21</span>
+            </button>
+            <button type="button" onclick="simulateBarcode('7501005110011')"
+              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 col-span-2 touch-btn">
+              <span class="truncate">Harina Maseca 1kg</span>
+              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$22</span>
+            </button>
+          </div>
         </div>
-        <div class="w-full h-7 bg-blue-200 rounded-full overflow-hidden border-2 border-blue-400">
-          <div id="ocr-progress-bar" class="h-full bg-blue-600 transition-all duration-200" style="width: 0%"></div>
-        </div>
-      </div>
+      </section>
 
-      <!-- Opción B: Pegar texto crudo o cargar tickets de prueba -->
-      <div class="rounded-2xl border-2 border-slate-300 bg-white p-4 flex flex-col gap-3">
-        <p class="font-extrabold text-lg">📝 O pega / prueba texto crudo de ticket:</p>
-        <div class="grid grid-cols-1 gap-2">
-          <button onclick="loadSampleOcrText('inflacion')" class="btn-press min-h-[56px] rounded-xl border-2 border-red-600 bg-red-50 text-red-800 font-extrabold text-sm px-3 py-2 text-left">
-            🔺 Cargar Ticket con Subida de Costo (Rompe Margen + Errores OCR 'O'/'0')
+      <!-- =====================================================================
+           MODO 2: AUDITORÍA CIEGA DE PASILLO
+           ===================================================================== -->
+      <section id="screen-conteo" class="screen-tab flex-col gap-3">
+        <!-- Botón superior obligatorio para regresar al Menú -->
+        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
+
+        <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+          <div>
+            <h1 class="text-lg font-black text-slate-900">Auditoría Ciega de Pasillo</h1>
+            <p class="text-[11px] text-slate-500 font-medium">Conteo físico sin mostrar existencias del sistema</p>
+          </div>
+          <span id="audit-class-chip" class="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 font-mono">
+            CLASE A
+          </span>
+        </div>
+
+        <!-- PANTALLA 2A: CONTEO ITEM POR ITEM -->
+        <div id="audit-active-view" class="flex flex-col gap-3">
+          <!-- Indicador de Progreso: Producto X de 15 | Categoría -->
+          <div class="flex flex-col gap-1">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-bold text-slate-600">Progreso de la misión:</span>
+              <span id="audit-step-label" class="font-mono font-black text-amber-700">Producto 1 de 15</span>
+            </div>
+            <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden border border-slate-300">
+              <div id="audit-progress-fill" class="h-full bg-gradient-to-r from-amber-500 to-amber-600 transition-all duration-200" style="width: 6.66%;"></div>
+            </div>
+          </div>
+
+          <!-- Tarjeta blanca del artículo (SIN MOSTRAR STOCK TEÓRICO) -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-1 text-center">
+            <span id="audit-item-location" class="text-xs font-bold uppercase tracking-wider text-amber-800 block">
+              Refrigerador 1 · Puerta 1
+            </span>
+            <!-- Nombre del producto en letra grande -->
+            <h2 id="audit-item-name" class="text-xl font-black text-slate-900 leading-tight mt-0.5">
+              Leche Lala Entera 1L
+            </h2>
+            <div class="flex items-center justify-center gap-2 text-xs font-mono text-slate-500">
+              <span id="audit-item-sku">SKU: LAC-LAL-1L</span>
+              <span>·</span>
+              <span id="audit-item-barcode">7501020512111</span>
+            </div>
+            <span id="audit-item-category" class="text-xs text-slate-500 font-semibold">
+              Lácteos · Cuenta física en anaquel
+            </span>
+          </div>
+
+          <!-- Visor numérico en pantalla grande -->
+          <div class="text-4xl font-mono font-black text-slate-900 text-center py-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-center gap-2 shadow-inner">
+            <span id="audit-display-val">0</span>
+            <span id="audit-display-unit" class="text-sm font-bold text-slate-500 uppercase">pzas</span>
+          </div>
+
+          <!-- Teclado numérico táctil en pantalla (grid de 3x4 con teclas grandes) -->
+          <div class="grid grid-cols-3 gap-2" id="audit-keypad">
+            <button type="button" onclick="auditKeyPress('1')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">1</button>
+            <button type="button" onclick="auditKeyPress('2')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">2</button>
+            <button type="button" onclick="auditKeyPress('3')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">3</button>
+            <button type="button" onclick="auditKeyPress('4')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">4</button>
+            <button type="button" onclick="auditKeyPress('5')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">5</button>
+            <button type="button" onclick="auditKeyPress('6')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">6</button>
+            <button type="button" onclick="auditKeyPress('7')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">7</button>
+            <button type="button" onclick="auditKeyPress('8')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">8</button>
+            <button type="button" onclick="auditKeyPress('9')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">9</button>
+            <button type="button" onclick="auditKeyPress('CLEAR')" class="h-14 rounded-xl bg-rose-50 border border-rose-200 font-black text-xl text-rose-700 active:bg-rose-100 touch-btn shadow-2xs">C</button>
+            <button type="button" onclick="auditKeyPress('0')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-900 active:bg-slate-200 touch-btn shadow-2xs">0</button>
+            <button type="button" onclick="auditKeyPress('.')" class="h-14 rounded-xl bg-white border border-slate-300 font-black text-xl text-slate-700 active:bg-slate-200 touch-btn shadow-2xs">.</button>
+          </div>
+
+          <!-- Botones de Navegación del Conteo -->
+          <div class="grid grid-cols-3 gap-2 mt-1">
+            <button type="button" onclick="auditSkipCurrentItem()"
+              class="h-13 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 touch-btn shadow-2xs">
+              <span>Omitir</span>
+            </button>
+            <!-- Botón verde Guardar y Siguiente ➔ -->
+            <button type="button" id="btn-audit-next" onclick="auditConfirmCurrentItem()"
+              class="col-span-2 h-13 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 touch-btn">
+              <span id="audit-next-text">Guardar y Siguiente ➔</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- PANTALLA 2B: RESUMEN DE CONTEO Y TRANSMISIÓN -->
+        <div id="audit-summary-view" class="hidden flex-col gap-3">
+          <div class="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-center">
+            <span class="text-emerald-900 font-black text-sm uppercase block">¡Conteo Finalizado!</span>
+            <p class="text-xs text-emerald-800 mt-1">
+              Se completaron los 15 productos de la muestra ciega. Revisa o toca cualquiera para corregir antes de mandar a la PC.
+            </p>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-2 max-h-[300px] overflow-y-auto divide-y divide-slate-100" id="audit-summary-rows">
+            <!-- Inyectado dinámicamente -->
+          </div>
+
+          <!-- Botón final Enviar Conteo a la Computadora -->
+          <button type="button" onclick="submitAuditToPC()"
+            class="h-14 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-lg flex items-center justify-center gap-2 touch-btn">
+            <span>📤 Enviar Conteo a la Computadora</span>
           </button>
-          <button onclick="loadSampleOcrText('normal')" class="btn-press min-h-[56px] rounded-xl border-2 border-green-600 bg-green-50 text-green-800 font-extrabold text-sm px-3 py-2 text-left">
-            ✔️ Cargar Ticket sin Subida de Costos (Márgenes Sanos)
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           MODO 3: CAPTURA OCR DE NOTAS DE PROVEEDORES
+           ===================================================================== -->
+      <section id="screen-ocr" class="screen-tab flex-col gap-3">
+        <!-- Botón superior obligatorio para regresar al Menú -->
+        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
+
+        <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+          <div>
+            <h1 class="text-lg font-black text-slate-900">Captura OCR de Facturas</h1>
+            <p class="text-[11px] text-slate-500 font-medium">Digitaliza notas de proveedores para detectar aumentos de costo</p>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300 font-mono">
+            Tesseract Spa
+          </span>
+        </div>
+
+        <!-- Botón destacado para disparar cámara de foto a la nota física -->
+        <label for="ocr-file-input"
+          class="h-28 rounded-2xl border-2 border-dashed border-blue-500 bg-blue-50/70 hover:bg-blue-100/70 flex flex-col items-center justify-center p-3 text-center cursor-pointer touch-btn shadow-xs">
+          <svg class="w-8 h-8 text-blue-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span class="text-sm font-black text-slate-900">Tomar Foto a la Nota / Factura Física</span>
+          <span class="text-[11px] text-slate-600 font-medium mt-0.5">Lee renglones, cantidades y precios automáticamente</span>
+        </label>
+        <input type="file" id="ocr-file-input" accept="image/*" capture="environment" class="hidden" onchange="onOcrImageSelected(event)" />
+
+        <!-- Botón de Prueba Rápida con Ticket de Ejemplo -->
+        <button type="button" onclick="loadSampleTicketOCR()"
+          class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-extrabold text-xs flex items-center justify-center gap-1.5 touch-btn shadow-2xs">
+          <span>⚡ Cargar Ticket de Ejemplo (Sin Foto)</span>
+        </button>
+
+        <!-- Barra de progreso con Tesseract.js -->
+        <div id="ocr-progress-box" class="hidden bg-white rounded-2xl border border-slate-200 p-4 flex flex-col gap-2 shadow-sm">
+          <div class="flex items-center justify-between text-xs font-bold">
+            <span id="ocr-status-msg" class="text-blue-700">Reconociendo texto en español...</span>
+            <span id="ocr-progress-pct" class="font-mono text-slate-900">0%</span>
+          </div>
+          <div class="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden border border-slate-300">
+            <div id="ocr-progress-bar" class="h-full bg-blue-600 transition-all duration-200" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Previsualización de Imagen Cargada -->
+        <div id="ocr-photo-preview-wrap" class="hidden rounded-xl overflow-hidden border border-slate-300 max-h-36 bg-slate-900">
+          <img id="ocr-photo-preview" class="w-full h-full object-cover" alt="Ticket escaneado" />
+        </div>
+
+        <!-- Lista de renglones detectados -->
+        <div id="ocr-results-wrap" class="hidden flex-col gap-2">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-xs font-bold text-slate-700">Productos Detectados en la Nota:</span>
+            <span id="ocr-count-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">0 renglones</span>
+          </div>
+
+          <div id="ocr-items-list" class="bg-white rounded-2xl border border-slate-200 p-2 max-h-48 overflow-y-auto divide-y divide-slate-100 text-xs shadow-sm">
+            <!-- Inyectado dinámicamente -->
+          </div>
+
+          <!-- Botón Azul Inferior: Mandar a Recepción de PC -->
+          <button type="button" onclick="sendOcrNoteToPC()"
+            class="h-13 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md flex items-center justify-center gap-2 touch-btn mt-1">
+            <span>Mandar a Recepción de PC</span>
           </button>
         </div>
-        <textarea id="ocr-raw-textarea" rows="5"
-          placeholder="Ejemplo:&#10;1O Leche Lala Entera 1L $24.5O&#10;12 Aceite Nutrioli 850ml $39.OO&#10;24 Atun Dolores en Agua 140g $16.50"
-          class="w-full rounded-xl border-2 border-slate-400 p-3 font-mono text-sm"></textarea>
-        <button onclick="runRawTextOcrParse()" class="btn-press w-full min-h-[60px] rounded-xl border-4 border-indigo-800 bg-indigo-600 text-white text-lg font-extrabold">
-          ⚙️ Procesar Texto con parseTicketOCR()
-        </button>
-      </div>
+      </section>
 
-      <!-- Vista previa y Resultados del Parser -->
-      <div id="ocr-preview-wrap" class="hidden flex-col gap-3">
-        <img id="ocr-photo" class="hidden w-full rounded-xl border-4 border-slate-300" alt="Foto de la nota del proveedor" />
+      <!-- =====================================================================
+           MODO 4: REPORTE DE MERMA CON FOTO
+           ===================================================================== -->
+      <section id="screen-mermas" class="screen-tab flex-col gap-3">
+        <!-- Botón superior obligatorio para regresar al Menú -->
+        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
 
-        <div class="rounded-2xl bg-white border-4 border-green-600 p-4 flex flex-col gap-2">
-          <p id="ocr-summary-badge" class="font-extrabold text-lg text-green-800"></p>
-          <ul id="ocr-parsed-list" class="divide-y divide-slate-200 text-sm"></ul>
+        <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+          <div>
+            <h1 class="text-lg font-black text-slate-900">Reporte de Mermas</h1>
+            <p class="text-[11px] text-slate-500 font-medium">Bajas por rotura o caducidad con foto obligatoria</p>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 font-mono">
+            Evidencia
+          </span>
         </div>
 
-        <button onclick="retakePhoto()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold">
-          🔄 Limpiar / Tomar otra foto
-        </button>
-        <button onclick="sendOcr()" class="btn-press w-full min-h-[72px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold shadow-lg">
-          ✅ Enviar Nota a la Computadora
-        </button>
-      </div>
-    </section>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3">
+          <!-- Selector de Motivo con Botones Grandes -->
+          <div class="flex flex-col gap-1.5">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">1. Motivo de la Merma:</span>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button type="button" onclick="setMermaReason('Envase Roto en Piso')" id="btn-merma-roto"
+                class="h-12 rounded-xl border border-rose-600 bg-rose-50 text-rose-900 text-xs font-black text-center leading-tight px-1 touch-btn">
+                Empaque Roto
+              </button>
+              <button type="button" onclick="setMermaReason('Caducado sin devolución')" id="btn-merma-caduco"
+                class="h-12 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold text-center leading-tight px-1 touch-btn">
+                Caducado
+              </button>
+              <button type="button" onclick="setMermaReason('Daño de Manejo')" id="btn-merma-dano"
+                class="h-12 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold text-center leading-tight px-1 touch-btn">
+                Daño Manejo
+              </button>
+            </div>
+          </div>
 
-    <!-- ===================== PANTALLA 3: CONTEO CIEGO ===================== -->
-    <section id="screen-audit" class="screen flex-col gap-3 p-4">
-      <button onclick="confirmExitAudit()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
-        ⬅️ Salir del Conteo
-      </button>
+          <!-- Producto Dañado (Selección rápida) -->
+          <div class="flex flex-col gap-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">2. Producto Dañado:</span>
+            <select id="merma-prod-select" onchange="onMermaProductChange(this.value)"
+              class="h-11 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900 outline-none">
+              <option value="LAC-LAL-1L">Leche Lala Entera 1L</option>
+              <option value="HUE-BAC-18">Huevo Blanco Granel (1 kg)</option>
+              <option value="PAN-BIM-680">Pan Blanco Bimbo Grande 680g</option>
+              <option value="ACE-NUT-850">Aceite Nutrioli 850ml</option>
+              <option value="YOG-YOP-1K">Yoghurt Yoplait Fresa 1kg</option>
+              <option value="ATU-DOL-140">Atún Dolores en Agua 140g</option>
+            </select>
+          </div>
 
-      <!-- Progreso -->
-      <div>
-        <div class="flex justify-between text-sm font-bold text-amber-800">
-          <span>🔍 Pasillo 3 · Auditoría Exprés</span>
-          <span id="audit-progress-text">1 de 5</span>
+          <!-- Cantidad de Unidades a Descontar -->
+          <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <span class="text-xs font-bold text-slate-700">3. Unidades a Dar de Baja:</span>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="adjustMermaQty(-1)"
+                class="w-10 h-10 rounded-lg bg-white border border-slate-300 text-lg font-bold text-slate-800 touch-btn shadow-2xs">−</button>
+              <span id="merma-qty-val" class="text-2xl font-black font-mono text-slate-900 w-8 text-center">1</span>
+              <button type="button" onclick="adjustMermaQty(1)"
+                class="w-10 h-10 rounded-lg bg-white border border-slate-300 text-lg font-bold text-slate-800 touch-btn shadow-2xs">+</button>
+            </div>
+          </div>
+
+          <!-- Disparador de Foto Obligatoria -->
+          <div class="flex flex-col gap-1.5">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">4. Evidencia Fotográfica (Obligatoria):</span>
+            <div class="grid grid-cols-2 gap-2">
+              <label for="merma-photo-file"
+                class="h-12 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center shadow-2xs">
+                <span>📷 Tomar Foto</span>
+              </label>
+              <input type="file" id="merma-photo-file" accept="image/*" capture="environment" class="hidden" onchange="onMermaPhotoSelected(event)" />
+
+              <button type="button" onclick="simulateMermaPhoto()"
+                class="h-12 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs touch-btn shadow-2xs">
+                Simular Foto
+              </button>
+            </div>
+
+            <div id="merma-photo-preview-wrap" class="hidden rounded-xl border border-emerald-300 p-2.5 bg-emerald-50 flex items-center justify-between">
+              <span class="text-xs font-bold text-emerald-800">✓ Foto de evidencia adjunta</span>
+              <button type="button" onclick="clearMermaPhoto()" class="text-xs text-rose-600 font-bold underline">Quitar</button>
+            </div>
+          </div>
+
+          <!-- Botón Rojo: Reportar Merma -->
+          <button type="button" onclick="submitMermaToPC()" id="btn-merma-submit"
+            class="h-14 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md flex items-center justify-center gap-2 touch-btn mt-1">
+            <span>Reportar Merma a la Computadora</span>
+          </button>
         </div>
-        <div class="w-full h-4 bg-amber-100 rounded-full border-2 border-amber-300 mt-1 overflow-hidden">
-          <div id="audit-progress-bar" class="h-full bg-amber-600 transition-all" style="width:20%"></div>
+      </section>
+
+    </main>
+
+    <!-- =========================================================================
+         TOAST FLOTANTE DE NOTIFICACIONES (FEEDBACK SENSORIAL)
+         ========================================================================= -->
+    <div id="float-toast" class="fixed top-14 left-4 right-4 z-50 transform -translate-y-24 opacity-0 transition-all duration-300 pointer-events-none max-w-sm mx-auto">
+      <div class="bg-slate-900 text-white border-2 border-emerald-500 rounded-2xl p-3.5 shadow-2xl flex items-center justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          <p id="toast-title" class="text-sm font-black text-white truncate">Leche Lala Entera 1L</p>
+          <p id="toast-sub" class="text-xs text-emerald-400 font-bold">$26.00 · Enviado a PC al instante ✓</p>
         </div>
-      </div>
-
-      <div id="audit-counting" class="flex flex-col gap-3">
-        <div class="rounded-2xl border-4 border-amber-600 bg-amber-50 p-4">
-          <p id="audit-label" class="text-sm font-bold text-amber-800">Producto 1 de 5</p>
-          <p id="audit-name" class="text-2xl font-extrabold leading-tight mt-1">Aceite Nutrioli 850ml</p>
-          <p id="audit-detail" class="text-base text-slate-700 mt-1">Anaquel B · Repisa 2 · Cuenta por <b>pieza</b></p>
-          <p class="text-sm text-slate-500 mt-2">🙈 No mostramos lo que dice el sistema. Cuenta lo que ves.</p>
-        </div>
-
-        <!-- Input gigante -->
-        <div class="flex items-center gap-2">
-          <input id="audit-input" type="text" inputmode="none" readonly value=""
-                 placeholder="0"
-                 class="flex-1 min-w-0 h-24 text-center text-6xl font-extrabold rounded-2xl border-4 border-slate-400 bg-white focus:outline-none" />
-          <span id="audit-unit" class="text-xl font-bold text-slate-600 w-16">pzas</span>
-        </div>
-
-        <!-- Teclado numérico -->
-        <div class="grid grid-cols-3 gap-2" id="numpad"></div>
-
-        <button id="audit-next" onclick="saveAndNext()" class="btn-press w-full min-h-[72px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold shadow-lg disabled:bg-slate-300 disabled:border-slate-400 disabled:text-slate-500">
-          💾 Guardar y Siguiente Producto ➡️
-        </button>
-      </div>
-
-      <!-- Resumen final -->
-      <div id="audit-summary" class="hidden flex-col gap-3">
-        <div class="rounded-2xl border-4 border-green-600 bg-green-50 p-4">
-          <p class="text-2xl font-extrabold text-green-800">✔️ ¡Terminaste de contar!</p>
-          <p class="text-base text-slate-700 mt-1">Revisa tus números. Si alguno está mal, tócalo para corregirlo.</p>
-        </div>
-        <ul id="audit-summary-list" class="flex flex-col gap-2"></ul>
-        <button onclick="sendAudit()" class="btn-press w-full min-h-[80px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold shadow-lg">
-          📤 Enviar Conteo a la PC
-        </button>
-      </div>
-    </section>
-
-    <!-- ===================== PANTALLA 4: MERMA ===================== -->
-    <section id="screen-merma" class="screen flex-col gap-4 p-4">
-      <button onclick="leaveMermaScreen()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white text-lg font-bold flex items-center justify-center gap-2">
-        ⬅️ Regresar al Menú
-      </button>
-      <h2 class="text-2xl font-extrabold text-red-700">⚠️ Registrar Merma</h2>
-
-      <!-- Paso 1 -->
-      <div id="merma-step1" class="rounded-2xl border-4 border-slate-300 bg-white p-4 flex flex-col gap-3">
-        <p class="font-extrabold text-lg"><span class="inline-flex w-8 h-8 rounded-full bg-red-600 text-white items-center justify-center mr-2">1</span>¿Qué producto se dañó?</p>
-        <div id="merma-live-reader" class="hidden w-full rounded-xl overflow-hidden bg-slate-900"></div>
-        <button id="merma-scan-btn" onclick="scanMermaCamera()" class="btn-press w-full min-h-[68px] rounded-2xl border-4 border-slate-700 bg-slate-800 text-white text-lg font-extrabold">
-          🎥 Escanear Código con Cámara
-        </button>
-        <label for="merma-barcode-photo" class="btn-press w-full min-h-[60px] rounded-2xl border-2 border-blue-700 bg-blue-50 text-blue-900 text-base font-extrabold flex items-center justify-center gap-2 cursor-pointer">
-          📷 O Tomar Foto al Código (HTTP sin SSL)
-        </label>
-        <input id="merma-barcode-photo" type="file" accept="image/*" capture="environment" class="hidden" onchange="onBarcodePhotoSelected(event, 'merma')" />
-        <button onclick="scanMermaSimulated()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-slate-100 text-slate-700 text-base font-bold">
-          🧪 Simular lectura (Leche Lala 7501020515350)
-        </button>
-        <div id="merma-product" class="hidden rounded-xl bg-slate-100 border-2 border-slate-400 p-3"></div>
-      </div>
-
-      <!-- Paso 2 -->
-      <div id="merma-step2" class="rounded-2xl border-4 border-slate-200 bg-slate-100 p-4 flex flex-col gap-3 opacity-50 pointer-events-none">
-        <p class="font-extrabold text-lg"><span class="inline-flex w-8 h-8 rounded-full bg-red-600 text-white items-center justify-center mr-2">2</span>¿Qué le pasó?</p>
-        <button data-reason="Envase Roto en Piso" onclick="pickReason(this)" class="reason-btn btn-press w-full min-h-[72px] rounded-2xl border-4 border-slate-400 bg-white text-lg font-extrabold flex items-center gap-3 px-4">
-          <span class="text-4xl">💥</span> Envase Roto en Piso
-        </button>
-        <button data-reason="Caducado sin devolución" onclick="pickReason(this)" class="reason-btn btn-press w-full min-h-[72px] rounded-2xl border-4 border-slate-400 bg-white text-lg font-extrabold flex items-center gap-3 px-4">
-          <span class="text-4xl">📅</span> Caducado sin devolución
-        </button>
-        <div class="flex items-center gap-3">
-          <span class="font-bold text-lg">Cantidad:</span>
-          <button onclick="changeQty(-1)" class="btn-press w-16 h-14 rounded-xl border-2 border-slate-500 bg-white text-3xl font-bold">−</button>
-          <span id="merma-qty" class="text-3xl font-extrabold w-10 text-center">1</span>
-          <button onclick="changeQty(1)" class="btn-press w-16 h-14 rounded-xl border-2 border-slate-500 bg-white text-3xl font-bold">+</button>
-          <span class="text-slate-600">pzas</span>
+        <div class="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-base shrink-0 border border-emerald-500/40">
+          ✓
         </div>
       </div>
-
-      <!-- Paso 3 -->
-      <div id="merma-step3" class="rounded-2xl border-4 border-slate-200 bg-slate-100 p-4 flex flex-col gap-3 opacity-50 pointer-events-none">
-        <p class="font-extrabold text-lg"><span class="inline-flex w-8 h-8 rounded-full bg-red-600 text-white items-center justify-center mr-2">3</span>Foto de evidencia <span class="text-red-600">(obligatoria)</span></p>
-        <label for="merma-file" class="btn-press w-full min-h-[72px] rounded-2xl border-4 border-amber-700 bg-amber-500 text-white text-xl font-extrabold flex items-center justify-center gap-2 cursor-pointer">
-          📷 Tomar Foto de Evidencia
-        </label>
-        <input id="merma-file" type="file" accept="image/*" capture="environment" class="hidden" onchange="onMermaPhoto(event)" />
-        <button onclick="fakeMermaPhoto()" class="btn-press w-full min-h-[56px] rounded-xl border-2 border-amber-600 bg-amber-50 text-amber-800 text-base font-bold">
-          🧪 Simular foto (Prueba sin cámara)
-        </button>
-        <div id="merma-photo-wrap" class="hidden rounded-xl overflow-hidden border-4 border-green-600">
-          <img id="merma-photo" class="w-full max-h-56 object-cover" alt="Evidencia de merma" />
-          <div id="merma-photo-fake" class="hidden h-40 bg-gradient-to-br from-amber-100 to-red-200 flex items-center justify-center text-6xl">🥛💥</div>
-          <p class="bg-green-600 text-white font-bold text-center py-2">✔️ Foto guardada</p>
-        </div>
-      </div>
-
-      <p id="merma-hint" class="text-center text-base font-semibold text-slate-600">🔒 Completa los 3 pasos para poder registrar la baja.</p>
-      <button id="merma-submit" onclick="submitMerma()" disabled class="btn-press w-full min-h-[80px] rounded-2xl border-4 border-red-900 bg-red-600 text-white text-xl font-extrabold shadow-lg disabled:bg-slate-300 disabled:border-slate-400 disabled:text-slate-500 disabled:shadow-none">
-        🗑️ Registrar Baja
-      </button>
-    </section>
-  </main>
-
-  <!-- ===================== MODAL DE ÉXITO ===================== -->
-  <div id="modal" class="hidden fixed inset-0 z-50 bg-black/60 items-center justify-center p-6">
-    <div class="pop w-full max-w-sm bg-white rounded-3xl p-6 text-center border-4 border-green-600">
-      <div id="modal-icon" class="text-7xl">✅</div>
-      <p id="modal-title" class="text-2xl font-extrabold mt-2 text-green-800">¡Listo!</p>
-      <p id="modal-text" class="text-lg text-slate-700 mt-2"></p>
-      <button onclick="closeModal()" class="btn-press mt-5 w-full min-h-[64px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-xl font-extrabold">
-        👍 Entendido, volver al Menú
-      </button>
     </div>
+
   </div>
 
-  <!-- ===================== MODAL DE CONFIRMACIÓN ===================== -->
-  <div id="confirm" class="hidden fixed inset-0 z-50 bg-black/60 items-center justify-center p-6">
-    <div class="pop w-full max-w-sm bg-white rounded-3xl p-6 text-center border-4 border-amber-600">
-      <div class="text-6xl">🤔</div>
-      <p class="text-xl font-extrabold mt-2">¿Seguro que quieres salir?</p>
-      <p class="text-base text-slate-700 mt-2">Se perderá lo que llevas contado.</p>
-      <div class="flex flex-col gap-3 mt-5">
-        <button onclick="hideConfirm()" class="btn-press w-full min-h-[64px] rounded-2xl border-4 border-green-800 bg-green-600 text-white text-lg font-extrabold">↩️ No, seguir contando</button>
-        <button onclick="hideConfirm(); goTo('screen-menu')" class="btn-press w-full min-h-[64px] rounded-2xl border-4 border-red-800 bg-white text-red-700 text-lg font-extrabold">🚪 Sí, salir</button>
-      </div>
-    </div>
-  </div>
-</div>
+  <!-- =========================================================================
+       LÓGICA JAVASCRIPT MODULAR Y AUTOCONTENIDA
+       ========================================================================= -->
+  <script>
+    // =========================== SINCRONIZACIÓN LAN (BROADCAST + LOCALSTORAGE) ===========================
+    const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('abarrotes_lan_sync') : null;
 
-<script>
-  // =========================== CATÁLOGO BASE OFICIAL (5 EAN-13 DE PRUEBA + EXTRAS) ===========================
-  const BASE_CATALOG = [
-    {
-      sku: 'LAC-LAL-1L',
-      barcode: '7501020515350',
-      name: 'Leche Lala Entera 1L',
-      emoji: '🥛',
-      purchaseUnit: 'Pieza',
-      unitsPerPurchase: 1,
-      saleUnit: 'Pieza',
-      historicCost: 21.00,
-      salePrice: 26.00,
-      targetMargin: 20,
-      keywords: ['leche', 'lala', 'entera', '1l']
-    },
-    {
-      sku: 'ACE-NUT-850',
-      barcode: '7501039121122',
-      name: 'Aceite Nutrioli 850ml',
-      emoji: '🫒',
-      purchaseUnit: 'Pieza',
-      unitsPerPurchase: 1,
-      saleUnit: 'Pieza',
-      historicCost: 34.00,
-      salePrice: 42.00,
-      targetMargin: 18,
-      keywords: ['aceite', 'nutrioli', '850', '850ml']
-    },
-    {
-      sku: 'ATU-DOL-140',
-      barcode: '7501045403014',
-      name: 'Atún Dolores en Agua 140g',
-      emoji: '🐟',
-      purchaseUnit: 'Lata',
-      unitsPerPurchase: 1,
-      saleUnit: 'Lata',
-      historicCost: 16.50,
-      salePrice: 21.00,
-      targetMargin: 20,
-      keywords: ['atun', 'atún', 'dolores', '140', '140g']
-    },
-    {
-      sku: 'FRI-NEG-1K',
-      barcode: '2000001000014',
-      name: 'Frijol Negro Granel (1 kg)',
-      emoji: '🫘',
-      purchaseUnit: 'Kg',
-      unitsPerPurchase: 1,
-      saleUnit: 'Kg',
-      historicCost: 28.00,
-      salePrice: 36.00,
-      targetMargin: 22,
-      keywords: ['frijol', 'negro', 'granel']
-    },
-    {
-      sku: 'QUE-FRE-1K',
-      barcode: '2000002000013',
-      name: 'Queso Fresco Local (1 kg)',
-      emoji: '🧀',
-      purchaseUnit: 'Kg',
-      unitsPerPurchase: 1,
-      saleUnit: 'Kg',
-      historicCost: 75.00,
-      salePrice: 95.00,
-      targetMargin: 20,
-      keywords: ['queso', 'fresco', 'local']
-    }
-  ];
-
-  // Canal de sincronización en tiempo real con Angular (misma máquina / pestañas)
-  const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('abarrotes_lan_sync') : null;
-
-  function broadcastToPC(payload) {
-    const message = { ...payload, timestamp: new Date().toISOString() };
-    if (syncChannel) {
-      syncChannel.postMessage(message);
-    }
-    try {
-      localStorage.setItem('abarrotes_lan_last_event', JSON.stringify(message));
-    } catch (e) {
-      console.warn('No se pudo guardar en localStorage:', e);
-    }
-  }
-
-  const AUDIT_ITEMS = [
-    { sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml',           loc: 'Anaquel B · Repisa 2', unit: 'pzas' },
-    { sku: 'ATU-DOL-140', name: 'Atún Dolores en Agua 140g',       loc: 'Anaquel B · Repisa 3', unit: 'latas' },
-    { sku: 'FRI-NEG-1K',  name: 'Frijol Negro Granel (1 kg)',      loc: 'Piso · Junto a báscula', unit: 'kg' },
-    { sku: 'LAC-LAL-1L',  name: 'Leche Lala Entera 1L',            loc: 'Refrigerador 1 · Puerta 1', unit: 'pzas' },
-    { sku: 'QUE-FRE-1K',  name: 'Queso Fresco Local (1 kg)',       loc: 'Vitri-mostrador Lácteos', unit: 'kg' },
-  ];
-
-  // =========================== NAVEGACIÓN ===========================
-  function goTo(id) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    window.scrollTo({ top: 0, behavior: 'instant' });
-  }
-
-  function showModal(icon, title, text) {
-    document.getElementById('modal-icon').textContent = icon;
-    document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-text').innerHTML = text;
-    const m = document.getElementById('modal');
-    m.classList.remove('hidden'); m.classList.add('flex');
-  }
-  function closeModal() {
-    const m = document.getElementById('modal');
-    m.classList.add('hidden'); m.classList.remove('flex');
-    goTo('screen-menu');
-  }
-  function nowTime() {
-    return new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
-  }
-  function vibrate(ms = 40) { if (navigator.vibrate) navigator.vibrate(ms); }
-
-  // =========================== 1. LECTOR DE CÓDIGO DE BARRAS DUAL (HTML5-QRCODE) ===========================
-  let activeHtml5QrCode = null;
-  let lastDecodedProduct = null;
-
-  function openBarcodeScreen() {
-    document.getElementById('barcode-result-card').classList.add('hidden');
-    document.getElementById('barcode-result-card').classList.remove('flex');
-    goTo('screen-barcode');
-  }
-
-  async function leaveBarcodeScreen() {
-    await stopLiveBarcodeScanner();
-    goTo('screen-menu');
-  }
-
-  async function startLiveBarcodeScanner(elementId, onSuccessCallback) {
-    await stopLiveBarcodeScanner();
-    if (typeof Html5Qrcode === 'undefined') {
-      alert('La librería Html5Qrcode no está disponible. Verifica tu conexión a internet.');
-      return;
-    }
-    const container = document.getElementById(elementId);
-    container.classList.remove('hidden');
-    activeHtml5QrCode = new Html5Qrcode(elementId);
-    try {
-      await activeHtml5QrCode.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 120 } },
-        (decodedText) => {
-          vibrate(100);
-          stopLiveBarcodeScanner();
-          onSuccessCallback(decodedText);
-        },
-        () => {}
-      );
-    } catch (err) {
-      console.warn('No se pudo abrir la cámara en vivo (posible red HTTP sin SSL):', err);
-      alert('En conexiones HTTP sin SSL el navegador bloquea el video en vivo. Usa el botón azul "📷 Tomar / Subir Foto del Código".');
-    }
-  }
-
-  async function stopLiveBarcodeScanner() {
-    if (activeHtml5QrCode) {
+    function broadcastToPC(payload) {
+      const message = { ...payload, timestamp: new Date().toISOString() };
+      if (syncChannel) {
+        try { syncChannel.postMessage(message); } catch (e) { console.warn(e); }
+      }
       try {
-        if (activeHtml5QrCode.isScanning) {
-          await activeHtml5QrCode.stop();
-        }
-        activeHtml5QrCode.clear();
+        localStorage.setItem('abarrotes_lan_last_event', JSON.stringify(message));
       } catch (e) {
-        console.warn(e);
+        console.warn('LocalStorage error:', e);
       }
-      activeHtml5QrCode = null;
-    }
-  }
-
-  async function onBarcodePhotoSelected(event, targetContext) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    await stopLiveBarcodeScanner();
-
-    if (typeof Html5Qrcode === 'undefined') {
-      alert('La librería Html5Qrcode no se cargó.');
-      return;
     }
 
-    const helperId = 'barcode-file-reader-tmp';
-    const fileScanner = new Html5Qrcode(helperId);
-    try {
-      const decodedText = await fileScanner.scanFile(file, true);
-      vibrate(100);
-      if (targetContext === 'merma') {
-        applyMermaBarcode(decodedText);
+    // =========================== NAVEGACIÓN HUB & SPOKE ===========================
+    function goTo(screenId) {
+      if (screenId !== 'screen-pos') {
+        stopPosCamera();
+      }
+      document.querySelectorAll('.screen-tab').forEach(el => {
+        el.classList.remove('active');
+      });
+      const target = document.getElementById(screenId);
+      if (target) {
+        target.classList.add('active');
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    // =========================== CATÁLOGO COMPLETO DE PRODUCTOS ===========================
+    const CATALOG = [
+      { sku: 'REF-COC-600', barcode: '7501055301072', altBarcode: '7501055300075', name: 'Coca Cola 600ml', category: 'Bebidas', saleUnit: 'Pieza', historicCost: 14.5, salePrice: 18.0, targetMargin: 20 },
+      { sku: 'BOT-SAB-45', barcode: '7501011115682', name: 'Sabritas Sal 45g', category: 'Botanas', saleUnit: 'Pieza', historicCost: 14.0, salePrice: 18.0, targetMargin: 22 },
+      { sku: 'LAC-LAL-1L', barcode: '7501020512111', altBarcode: '7501020515350', name: 'Leche Lala Entera 1L', category: 'Lácteos', saleUnit: 'Pieza', historicCost: 21.0, salePrice: 26.0, targetMargin: 20 },
+      { sku: 'ATU-DOL-140', barcode: '7501045401317', altBarcode: '7501045403014', name: 'Atún Dolores Agua 140g', category: 'Enlatados', saleUnit: 'Lata', historicCost: 16.5, salePrice: 21.0, targetMargin: 20 },
+      { sku: 'HAR-MAS-1K', barcode: '7501005110011', name: 'Harina Maseca 1kg', category: 'Granos', saleUnit: 'Pieza', historicCost: 17.5, salePrice: 22.0, targetMargin: 20 },
+      { sku: 'ACE-NUT-850', barcode: '7501039121122', name: 'Aceite Nutrioli 850ml', category: 'Aceites', saleUnit: 'Pieza', historicCost: 34.0, salePrice: 42.0, targetMargin: 18 },
+      { sku: 'FRI-NEG-50K', barcode: '2000001000014', name: 'Frijol Negro Granel', category: 'Granos', saleUnit: 'Kg', historicCost: 28.0, salePrice: 36.0, targetMargin: 22 },
+      { sku: 'HUE-BAC-18', barcode: '2000003000012', name: 'Huevo Blanco Granel', category: 'Granos', saleUnit: 'Kg', historicCost: 36.0, salePrice: 44.0, targetMargin: 18 },
+      { sku: 'AZU-ZUL-1K', barcode: '2000004000011', name: 'Azúcar Estándar Granel', category: 'Granos', saleUnit: 'Kg', historicCost: 22.0, salePrice: 28.0, targetMargin: 20 },
+      { sku: 'PAN-BIM-680', barcode: '7501000111202', name: 'Pan Blanco Bimbo Grande 680g', category: 'Panadería', saleUnit: 'Pieza', historicCost: 41.0, salePrice: 50.0, targetMargin: 18 },
+      { sku: 'QUE-FRE-1K', barcode: '2000002000013', name: 'Queso Fresco Local (1 kg)', category: 'Lácteos', saleUnit: 'Kg', historicCost: 75.0, salePrice: 95.0, targetMargin: 20 },
+      { sku: 'PAN-BOL-PZ', barcode: '2000005000010', name: 'Bolillo Caliente de Mostrador', category: 'Panadería', saleUnit: 'Pieza', historicCost: 2.5, salePrice: 4.0, targetMargin: 35 },
+      { sku: 'ARR-SOS-900', barcode: '7501018310011', name: 'Arroz SOS Súper Extra 900g', category: 'Granos', saleUnit: 'Pieza', historicCost: 23.5, salePrice: 29.0, targetMargin: 19 },
+      { sku: 'REF-PEI-600', barcode: '7501011112345', name: 'Peñafiel Mineral 600ml', category: 'Bebidas', saleUnit: 'Pieza', historicCost: 11.0, salePrice: 15.0, targetMargin: 25 },
+      { sku: 'YOG-YOP-1K', barcode: '7501032398711', name: 'Yoghurt Yoplait Fresa 1kg', category: 'Lácteos', saleUnit: 'Pieza', historicCost: 35.0, salePrice: 44.0, targetMargin: 20 },
+      { sku: 'GAL-MAR-170', barcode: '7501000123456', name: 'Galletas Marías Gamesa 170g', category: 'Abarrotes', saleUnit: 'Pieza', historicCost: 14.0, salePrice: 18.0, targetMargin: 22 },
+      { sku: 'CHI-LAC-220', barcode: '7501017004200', name: 'Chiles Jalapeños La Costeña 220g', category: 'Enlatados', saleUnit: 'Lata', historicCost: 14.2, salePrice: 19.0, targetMargin: 20 }
+    ];
+
+    function findProduct(codeOrSku) {
+      const clean = String(codeOrSku || '').trim();
+      return CATALOG.find(p => p.barcode === clean || p.sku === clean || p.altBarcode === clean) || null;
+    }
+
+    // =========================== BEEP DE ESCÁNER Y VIBRACIÓN ===========================
+    let soundEnabled = true;
+    let vibroEnabled = true;
+
+    function toggleBeepVibro() {
+      if (soundEnabled && vibroEnabled) {
+        soundEnabled = false;
+        vibroEnabled = true;
+        const icon = document.getElementById('beep-vibro-icon');
+        if (icon) icon.textContent = '📳';
+        showScanToast('Modo Silencio', 'Solo vibración activa');
+      } else if (!soundEnabled && vibroEnabled) {
+        soundEnabled = false;
+        vibroEnabled = false;
+        const icon = document.getElementById('beep-vibro-icon');
+        if (icon) icon.textContent = '🔇';
+        showScanToast('Modo Mudo', 'Sonido y vibración desactivados');
       } else {
-        onBarcodeDecoded(decodedText);
+        soundEnabled = true;
+        vibroEnabled = true;
+        const icon = document.getElementById('beep-vibro-icon');
+        if (icon) icon.textContent = '🔊📳';
+        showScanToast('Beep y Vibración', 'Alertas sensoriales activas');
       }
-    } catch (err) {
-      alert('No se detectó un código EAN-13 claro en la foto. Intenta acercar más el código con buena luz o usa los botones de prueba.');
-    } finally {
-      event.target.value = '';
     }
-  }
 
-  function findProductByBarcode(rawCode) {
-    const clean = String(rawCode).trim().replace(/\D/g, '');
-    return BASE_CATALOG.find(p => p.barcode === clean) || null;
-  }
+    function playScannerBeep() {
+      if (!soundEnabled) return;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1850, ctx.currentTime);
+        gain.gain.setValueAtTime(0.35, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.08);
+      } catch (e) {
+        console.warn('AudioContext error:', e);
+      }
+    }
 
-  function onBarcodeDecoded(code) {
-    const cleanCode = String(code).trim();
-    const found = findProductByBarcode(cleanCode);
-    const card = document.getElementById('barcode-result-card');
-    card.classList.remove('hidden');
-    card.classList.add('flex');
+    function triggerVibrate(ms = 80) {
+      if (!vibroEnabled) return;
+      if (navigator.vibrate) {
+        try { navigator.vibrate(ms); } catch (e) {}
+      }
+    }
 
-    if (found) {
-      lastDecodedProduct = found;
-      document.getElementById('bc-res-code').textContent = `EAN-13: ${found.barcode} · SKU: ${found.sku}`;
-      document.getElementById('bc-res-name').textContent = `${found.emoji} ${found.name}`;
-      document.getElementById('bc-res-price').textContent = `$${found.salePrice.toFixed(2)}`;
-      document.getElementById('bc-res-cost').textContent = `$${found.historicCost.toFixed(2)}`;
-      // Auto-transmitir evento de escaneo a la PC al instante
+    // =========================== TOAST FLOTANTE DE ESCANEO ===========================
+    let toastTimeout = null;
+    function showScanToast(title, sub) {
+      const toast = document.getElementById('float-toast');
+      document.getElementById('toast-title').textContent = title;
+      document.getElementById('toast-sub').textContent = sub;
+      toast.classList.remove('opacity-0', '-translate-y-24');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', '-translate-y-24');
+      }, 3000);
+    }
+
+    // =========================================================================
+    //  MODO 1: LECTOR DE CÓDIGOS DE MOSTRADOR (ESCÁNER POS)
+    // =========================================================================
+    let posHtml5QrCode = null;
+    let posCameraRunning = false;
+
+    async function togglePosCamera() {
+      if (posCameraRunning) {
+        await stopPosCamera();
+      } else {
+        await startPosCamera();
+      }
+    }
+
+    async function startPosCamera() {
+      if (typeof Html5Qrcode === 'undefined') {
+        alert('Cargando librería de escáner. Por favor espera.');
+        return;
+      }
+      const containerId = 'pos-camera-stream';
+      document.getElementById('pos-cam-placeholder').classList.add('hidden');
+      posHtml5QrCode = new Html5Qrcode(containerId);
+      try {
+        await posHtml5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 12, qrbox: { width: 260, height: 130 } },
+          (decodedText) => {
+            handleBarcodeScanned(decodedText);
+          },
+          () => {}
+        );
+        posCameraRunning = true;
+        document.getElementById('pos-cam-btn-text').textContent = 'Detener Cámara';
+        document.getElementById('btn-toggle-camera').classList.replace('bg-emerald-600', 'bg-slate-700');
+      } catch (err) {
+        console.warn('No se pudo abrir cámara continua en HTTP:', err);
+        document.getElementById('pos-cam-placeholder').classList.remove('hidden');
+        alert('En conexiones HTTP el navegador puede bloquear el video en vivo. Usa el botón "📷 Tomar Foto / Usar Cámara Nativa (HTTP)" para escanear.');
+      }
+    }
+
+    async function stopPosCamera() {
+      if (posHtml5QrCode && posCameraRunning) {
+        try {
+          await posHtml5QrCode.stop();
+          posHtml5QrCode.clear();
+        } catch (e) {}
+      }
+      posCameraRunning = false;
+      posHtml5QrCode = null;
+      const placeholder = document.getElementById('pos-cam-placeholder');
+      if (placeholder) placeholder.classList.remove('hidden');
+      const btnText = document.getElementById('pos-cam-btn-text');
+      if (btnText) btnText.textContent = 'Iniciar Cámara';
+      const btnToggle = document.getElementById('btn-toggle-camera');
+      if (btnToggle) btnToggle.classList.replace('bg-slate-700', 'bg-emerald-600');
+    }
+
+    async function onPosPhotoSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      await stopPosCamera();
+
+      if (typeof Html5Qrcode === 'undefined') return;
+      const tmpScanner = new Html5Qrcode('pos-camera-stream');
+      try {
+        const decoded = await tmpScanner.scanFile(file, true);
+        handleBarcodeScanned(decoded);
+      } catch (e) {
+        alert('No se detectó un código de barras nítido en la foto. Intenta con mejor iluminación o acércalo más.');
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    function handleBarcodeScanned(barcode) {
+      playScannerBeep();
+      triggerVibrate(80);
+      const code = String(barcode).trim();
+      const product = findProduct(code);
+      const title = product ? product.name : `Código EAN: ${code}`;
+      const sub = product
+        ? `$${product.salePrice.toFixed(2)} · Enviado a PC al instante ✓`
+        : 'Código no catalogado · Enviado a PC ✓';
+
+      // Actualizar tarjeta inferior blanca fija
+      const lastName = document.getElementById('pos-last-name');
+      const lastSub = document.getElementById('pos-last-sub');
+      const pill = document.getElementById('pos-scan-status-pill');
+      if (lastName) lastName.textContent = title;
+      if (lastSub) lastSub.textContent = sub;
+      if (pill) {
+        pill.classList.replace('bg-slate-100', 'bg-emerald-100');
+        pill.classList.replace('text-slate-400', 'text-emerald-700');
+      }
+
+      showScanToast(title, sub);
+
       broadcastToPC({
         type: 'BARCODE_SCANNED',
-        barcode: found.barcode,
-        product: found
-      });
-      document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Código ${found.barcode} (${found.name}) enviado a PC`;
-    } else {
-      lastDecodedProduct = {
-        sku: 'DESC-' + cleanCode.slice(-4),
-        barcode: cleanCode,
-        name: `Código leído: ${cleanCode} (No registrado en los 5 base)`,
-        emoji: '📦',
-        historicCost: 20.00,
-        salePrice: 25.00,
-        targetMargin: 20
-      };
-      document.getElementById('bc-res-code').textContent = `Código leído: ${cleanCode}`;
-      document.getElementById('bc-res-name').textContent = `📦 Producto código ${cleanCode}`;
-      document.getElementById('bc-res-price').textContent = `$25.00`;
-      document.getElementById('bc-res-cost').textContent = `$20.00`;
-      broadcastToPC({
-        type: 'BARCODE_SCANNED',
-        barcode: cleanCode,
-        product: lastDecodedProduct
+        altType: 'BARCODE_SCAN',
+        barcode: code,
+        product: product || { barcode: code, name: 'Producto Escaneado', salePrice: 0 }
       });
     }
-    setTimeout(() => card.scrollIntoView({ behavior: 'smooth' }), 60);
-  }
 
-  function sendDecodedBarcodeToPC() {
-    if (!lastDecodedProduct) return;
-    vibrate(80);
-    broadcastToPC({
-      type: 'BARCODE_SCANNED',
-      barcode: lastDecodedProduct.barcode,
-      product: lastDecodedProduct
-    });
-    document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Código ${lastDecodedProduct.barcode} (${lastDecodedProduct.name})`;
-    showModal('✅', '¡Enviado a la PC!', `Se envió <b>${lastDecodedProduct.emoji} ${lastDecodedProduct.name}</b> (${lastDecodedProduct.barcode}) con precio <b>$${lastDecodedProduct.salePrice.toFixed(2)}</b> a la pantalla de Recepción en la computadora.`);
-  }
+    function simulateBarcode(code) {
+      handleBarcodeScanned(code);
+    }
 
-  // =========================== 2. ESCÁNER OCR REAL (TESSERACT.JS + PARSER) ===========================
-  let currentParsedLines = [];
+    // =========================================================================
+    //  MODO 2: CONTEO CIEGO DE PASILLO (AUDITORÍA EXPRÉS 15 PRODUCTOS)
+    // =========================================================================
+    const AUDIT_15_ITEMS = [
+      // 10 Clase A (Alta Rotación)
+      { sku: 'LAC-LAL-1L', barcode: '7501020512111', name: 'Leche Lala Entera 1L', cls: 'A', loc: 'Refrigerador 1 · Puerta 1', unit: 'pzas', allowDecimal: false },
+      { sku: 'ACE-NUT-850', barcode: '7501039121122', name: 'Aceite Nutrioli 850ml', cls: 'A', loc: 'Anaquel B · Repisa 2', unit: 'pzas', allowDecimal: false },
+      { sku: 'FRI-NEG-50K', barcode: '2000001000014', name: 'Frijol Negro Granel', cls: 'A', loc: 'Piso · Junto a Báscula', unit: 'kg', allowDecimal: true },
+      { sku: 'HUE-BAC-18', barcode: '2000003000012', name: 'Huevo Blanco Granel', cls: 'A', loc: 'Anaquel A · Reja Central', unit: 'kg', allowDecimal: true },
+      { sku: 'REF-COC-600', barcode: '7501055301072', name: 'Coca-Cola Original 600ml', cls: 'A', loc: 'Refrigerador 2 · Charola 1', unit: 'pzas', allowDecimal: false },
+      { sku: 'AZU-ZUL-1K', barcode: '2000004000011', name: 'Azúcar Estándar Granel', cls: 'A', loc: 'Piso · Contenedor', unit: 'kg', allowDecimal: true },
+      { sku: 'PAN-BIM-680', barcode: '7501000111202', name: 'Pan Blanco Bimbo Grande 680g', cls: 'A', loc: 'Isla Central Panadería', unit: 'pzas', allowDecimal: false },
+      { sku: 'ATU-DOL-140', barcode: '7501045401317', name: 'Atún Dolores en Agua 140g', cls: 'A', loc: 'Anaquel B · Repisa 3', unit: 'latas', allowDecimal: false },
+      { sku: 'QUE-FRE-1K', barcode: '2000002000013', name: 'Queso Fresco Local (1 kg)', cls: 'A', loc: 'Vitrina Lácteos', unit: 'kg', allowDecimal: true },
+      { sku: 'PAN-BOL-PZ', barcode: '2000005000010', name: 'Bolillo Caliente de Mostrador', cls: 'A', loc: 'Canasto de Mostrador', unit: 'pzas', allowDecimal: false },
+      // 4 Clase B (Rotación Media)
+      { sku: 'ARR-SOS-900', barcode: '7501018310011', name: 'Arroz SOS Súper Extra 900g', cls: 'B', loc: 'Anaquel C · Repisa 1', unit: 'pzas', allowDecimal: false },
+      { sku: 'REF-PEI-600', barcode: '7501011112345', name: 'Peñafiel Mineral 600ml', cls: 'B', loc: 'Refrigerador 2 · Charola 3', unit: 'pzas', allowDecimal: false },
+      { sku: 'YOG-YOP-1K', barcode: '7501032398711', name: 'Yoghurt Yoplait Fresa 1kg', cls: 'B', loc: 'Refrigerador 1 · Puerta 2', unit: 'pzas', allowDecimal: false },
+      { sku: 'GAL-MAR-170', barcode: '7501000123456', name: 'Galletas Marías Gamesa 170g', cls: 'B', loc: 'Anaquel C · Repisa 3', unit: 'pzas', allowDecimal: false },
+      // 1 Clase C (Baja Rotación)
+      { sku: 'CHI-LAC-220', barcode: '7501017004200', name: 'Chiles Jalapeños La Costeña 220g', cls: 'C', loc: 'Anaquel C · Repisa 2', unit: 'latas', allowDecimal: false }
+    ];
 
-  const SAMPLE_TICKETS = {
-    inflacion: [
+    let auditCurrentIndex = 0;
+    let auditCounts = new Array(AUDIT_15_ITEMS.length).fill(null);
+    let auditCurrentInputStr = '';
+
+    function renderAuditCurrentItem() {
+      const it = AUDIT_15_ITEMS[auditCurrentIndex];
+      const total = AUDIT_15_ITEMS.length;
+
+      document.getElementById('audit-class-chip').textContent = `CLASE ${it.cls}`;
+      document.getElementById('audit-step-label').textContent = `Producto ${auditCurrentIndex + 1} de ${total}`;
+      document.getElementById('audit-progress-fill').style.width = `${((auditCurrentIndex + 1) / total) * 100}%`;
+      document.getElementById('audit-item-location').textContent = it.loc;
+      document.getElementById('audit-item-name').textContent = it.name;
+      document.getElementById('audit-item-sku').textContent = `SKU: ${it.sku}`;
+      document.getElementById('audit-item-barcode').textContent = it.barcode;
+      document.getElementById('audit-item-category').textContent = `Conteo físico · Registrar existencias en ${it.unit}`;
+      document.getElementById('audit-display-unit').textContent = it.unit;
+
+      auditCurrentInputStr = auditCounts[auditCurrentIndex] !== null ? String(auditCounts[auditCurrentIndex]) : '';
+      updateAuditDisplay();
+
+      const btnText = auditCurrentIndex === total - 1 ? 'Guardar y Ver Resumen ✓' : 'Guardar y Siguiente ➔';
+      document.getElementById('audit-next-text').textContent = btnText;
+    }
+
+    function updateAuditDisplay() {
+      document.getElementById('audit-display-val').textContent = auditCurrentInputStr === '' ? '0' : auditCurrentInputStr;
+    }
+
+    function auditKeyPress(key) {
+      triggerVibrate(25);
+      const it = AUDIT_15_ITEMS[auditCurrentIndex];
+      if (key === 'CLEAR') {
+        auditCurrentInputStr = '';
+      } else if (key === 'BACK') {
+        auditCurrentInputStr = auditCurrentInputStr.slice(0, -1);
+      } else if (key === '.') {
+        if (!it.allowDecimal || auditCurrentInputStr.includes('.')) return;
+        auditCurrentInputStr = (auditCurrentInputStr === '' ? '0' : auditCurrentInputStr) + '.';
+      } else {
+        if (auditCurrentInputStr.length >= 6) return;
+        if (auditCurrentInputStr === '0') auditCurrentInputStr = key;
+        else auditCurrentInputStr += key;
+      }
+      updateAuditDisplay();
+    }
+
+    function auditSkipCurrentItem() {
+      triggerVibrate(30);
+      if (auditCounts[auditCurrentIndex] === null) {
+        auditCounts[auditCurrentIndex] = 0;
+      }
+      if (auditCurrentIndex < AUDIT_15_ITEMS.length - 1) {
+        auditCurrentIndex++;
+        renderAuditCurrentItem();
+      } else {
+        showAuditSummary();
+      }
+    }
+
+    function auditConfirmCurrentItem() {
+      triggerVibrate(50);
+      const val = auditCurrentInputStr === '' ? 0 : parseFloat(auditCurrentInputStr);
+      auditCounts[auditCurrentIndex] = isNaN(val) ? 0 : val;
+
+      if (auditCurrentIndex < AUDIT_15_ITEMS.length - 1) {
+        auditCurrentIndex++;
+        renderAuditCurrentItem();
+      } else {
+        showAuditSummary();
+      }
+    }
+
+    function showAuditSummary() {
+      document.getElementById('audit-active-view').classList.add('hidden');
+      document.getElementById('audit-summary-view').classList.remove('hidden');
+      document.getElementById('audit-summary-view').classList.add('flex');
+
+      const wrap = document.getElementById('audit-summary-rows');
+      wrap.innerHTML = '';
+
+      AUDIT_15_ITEMS.forEach((it, idx) => {
+        const count = auditCounts[idx] !== null ? auditCounts[idx] : 0;
+        const row = document.createElement('div');
+        row.className = 'p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50 cursor-pointer rounded-lg transition-colors';
+        row.onclick = () => returnToAuditItem(idx);
+        row.innerHTML = `
+          <div class="min-w-0 flex-1">
+            <span class="text-[10px] font-bold text-amber-800 block uppercase">Clase ${it.cls} · ${it.loc}</span>
+            <p class="text-xs font-bold text-slate-900 truncate">${it.name}</p>
+          </div>
+          <div class="text-right flex items-center gap-1.5 shrink-0">
+            <span class="text-sm font-black text-amber-700 font-mono">${count}</span>
+            <span class="text-[10px] text-slate-500">${it.unit}</span>
+            <span class="text-xs text-slate-400">✎</span>
+          </div>
+        `;
+        wrap.appendChild(row);
+      });
+    }
+
+    function returnToAuditItem(idx) {
+      auditCurrentIndex = idx;
+      document.getElementById('audit-summary-view').classList.add('hidden');
+      document.getElementById('audit-summary-view').classList.remove('flex');
+      document.getElementById('audit-active-view').classList.remove('hidden');
+      renderAuditCurrentItem();
+    }
+
+    function submitAuditToPC() {
+      triggerVibrate(100);
+      const auditId = 'AUD-' + Date.now();
+      const counts = AUDIT_15_ITEMS.map((it, idx) => ({
+        sku: it.sku,
+        countedQty: auditCounts[idx] !== null ? auditCounts[idx] : 0
+      }));
+      const results = AUDIT_15_ITEMS.map((it, idx) => ({
+        sku: it.sku,
+        barcode: it.barcode,
+        physicalQty: auditCounts[idx] !== null ? auditCounts[idx] : 0
+      }));
+
+      broadcastToPC({
+        type: 'AUDIT_SUBMIT',
+        auditId,
+        counts,
+        results
+      });
+
+      showScanToast('Auditoría Ciega Enviada', 'Los 15 conteos ya están en la PC ✓');
+      setTimeout(() => {
+        alert('¡Auditoría enviada con éxito a la PC! El encargado podrá autorizar o dictaminar las diferencias en la pantalla de Auditoría.');
+        goTo('screen-menu');
+      }, 300);
+    }
+
+    // =========================================================================
+    //  MODO 3: ESCÁNER OCR DE NOTAS DE PROVEEDORES
+    // =========================================================================
+    const SAMPLE_TICKET_TEXT = [
       'DISTRIBUIDORA DEL BAJIO S.A. DE C.V.',
-      'FOLIO: DB-20931',
+      'FOLIO: DB-20931  FECHA: 22/10/2026',
       '1O Leche Lala Entera 1L $24.5O',
       '12 Aceite Nutrioli 850ml $39.OO',
       '24 Atun Dolores en Agua 140g $16.50',
       '15 Frijol Negro Granel 1 kg $32.OO',
       '5 Queso Fresco Local 1 kg $75.00'
-    ].join('\n'),
-    normal: [
-      'NOTA DE PROVEEDOR #NP-1042',
-      '10 Leche Lala Entera 1L $21.00',
-      '12 Aceite Nutrioli 850ml $34.00',
-      '24 Atun Dolores en Agua 140g $16.50',
-      '10 Frijol Negro Granel 1 kg $28.00',
-      '4 Queso Fresco Local 1 kg $75.00'
-    ].join('\n')
-  };
+    ].join('\n');
 
-  function normalizeText(str) {
-    return String(str || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase();
-  }
+    let currentOcrLines = [];
 
-  /**
-   * Limpia errores comunes de OCR en un token numérico:
-   * - Cambia 'O' / 'o' por '0'
-   * - Cambia 'l' / 'I' / '|' por '1'
-   * - Cambia 'S' inicial pegada a dígitos por '$'
-   */
-  function cleanOcrNumber(token) {
-    if (!token) return NaN;
-    let cleaned = String(token).trim();
-    cleaned = cleaned.replace(/^[Ss$]+/, '');
-    cleaned = cleaned
-      .replace(/[Oo]/g, '0')
-      .replace(/[lI|]/g, '1')
-      .replace(/,/g, '.');
-    cleaned = cleaned.replace(/[^0-9.]/g, '');
-    const parts = cleaned.split('.');
-    if (parts.length > 2) {
-      cleaned = parts.slice(0, -1).join('') + '.' + parts[parts.length - 1];
-    }
-    return parseFloat(cleaned);
-  }
+    async function onOcrImageSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
 
-  function matchProductFromDescription(desc) {
-    const norm = normalizeText(desc);
-    // Buscar coincidencia por código de barras si viene incluido
-    for (const item of BASE_CATALOG) {
-      if (norm.includes(item.barcode)) return item;
-    }
-    // Buscar el producto con mayor cantidad de palabras clave coincidentes
-    let bestMatch = null;
-    let bestScore = 0;
-    for (const item of BASE_CATALOG) {
-      let score = 0;
-      for (const kw of item.keywords) {
-        if (norm.includes(kw)) score++;
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = item;
-      }
-    }
-    return bestMatch;
-  }
+      const preview = document.getElementById('ocr-photo-preview');
+      preview.src = URL.createObjectURL(file);
+      document.getElementById('ocr-photo-preview-wrap').classList.remove('hidden');
 
-  /**
-   * parseTicketOCR(rawText):
-   * Busca líneas con el patrón [Cantidad] [Descripción] [Costo Unitario o Total],
-   * limpia errores comunes de OCR ('O' -> '0', 'l' -> '1') y cruza contra el catálogo base.
-   */
-  function parseTicketOCR(rawText) {
-    if (!rawText) return [];
-    const lines = String(rawText).split(/\r?\n/);
-    const parsedResults = [];
+      const progressBox = document.getElementById('ocr-progress-box');
+      const progressBar = document.getElementById('ocr-progress-bar');
+      const progressPct = document.getElementById('ocr-progress-pct');
+      const statusMsg = document.getElementById('ocr-status-msg');
 
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line || line.length < 5) continue;
+      progressBox.classList.remove('hidden');
+      progressBar.style.width = '10%';
+      progressPct.textContent = '10%';
+      statusMsg.textContent = 'Inicializando Tesseract.js (Español)...';
 
-      // Ignorar encabezados o totales generales
-      const upper = line.toUpperCase();
-      if (
-        upper.startsWith('TOTAL') ||
-        upper.startsWith('SUBTOTAL') ||
-        upper.startsWith('FOLIO') ||
-        upper.startsWith('DISTRIBUIDORA') ||
-        upper.startsWith('NOTA ') ||
-        upper.startsWith('FECHA') ||
-        upper.startsWith('CLIENTE')
-      ) {
-        continue;
-      }
-
-      // Patrón: [Cantidad al inicio] [Descripción al centro] [Precio al final]
-      const match = line.match(/^([0-9OoIl|]+(?:[.,][0-9OoIl|]+)?)\s+(?:(?:PZ|PZA|PZAS|CJ|CAJA|KG|LT|LATA|LATAS)\b\s*)?(.+?)\s+([Ss$]?\s*[0-9OoIl|]+(?:[.,][0-9OoIl|]{1,2})?)\s*$/i);
-      if (!match) continue;
-
-      const qty = cleanOcrNumber(match[1]);
-      const rawDesc = match[2].trim();
-      const rawAmount = cleanOcrNumber(match[3]);
-
-      if (isNaN(qty) || qty <= 0 || isNaN(rawAmount) || rawAmount <= 0) continue;
-
-      const product = matchProductFromDescription(rawDesc);
-      if (!product) continue;
-
-      // Determinar si el monto capturado es Costo Unitario o Total de la Línea
-      let unitNewCost = rawAmount;
-      let lineTotal = +(qty * rawAmount).toFixed(2);
-
-      if (qty > 1 && rawAmount > product.historicCost * 2.2) {
-        const candidateUnit = rawAmount / qty;
-        if (Math.abs(candidateUnit - product.historicCost) < Math.abs(rawAmount - product.historicCost)) {
-          unitNewCost = +candidateUnit.toFixed(2);
-          lineTotal = +rawAmount.toFixed(2);
-        }
-      }
-
-      parsedResults.push({
-        sku: product.sku,
-        barcode: product.barcode,
-        name: product.name,
-        emoji: product.emoji,
-        qtyPurchase: qty,
-        purchaseUnit: product.purchaseUnit,
-        unitsPerPurchase: product.unitsPerPurchase,
-        saleUnit: product.saleUnit,
-        lineTotal: lineTotal,
-        historicCost: product.historicCost,
-        newCost: +unitNewCost.toFixed(2),
-        salePrice: product.salePrice,
-        targetMargin: product.targetMargin,
-        resolved: false
-      });
-    }
-
-    return parsedResults;
-  }
-
-  async function onOcrPhoto(e) {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    const img = document.getElementById('ocr-photo');
-    img.src = URL.createObjectURL(file);
-    img.classList.remove('hidden');
-
-    const progressBox = document.getElementById('ocr-progress-box');
-    const progressBar = document.getElementById('ocr-progress-bar');
-    const progressPct = document.getElementById('ocr-progress-pct');
-    const statusLabel = document.getElementById('ocr-status-label');
-
-    progressBox.classList.remove('hidden');
-    progressBox.classList.add('flex');
-    progressBar.style.width = '5%';
-    progressPct.textContent = '5%';
-    statusLabel.textContent = '🔎 Iniciando motor OCR en español...';
-
-    try {
-      const result = await Tesseract.recognize(file, 'spa', {
-        logger: (m) => {
-          if (m && typeof m.progress === 'number') {
-            const pct = Math.max(5, Math.round(m.progress * 100));
-            progressBar.style.width = pct + '%';
-            progressPct.textContent = pct + '%';
-            statusLabel.textContent = m.status === 'recognizing text'
-              ? '📖 Leyendo renglones del ticket...'
-              : '⚙️ Preparando imagen...';
+      try {
+        const result = await Tesseract.recognize(file, 'spa', {
+          logger: (m) => {
+            if (m && typeof m.progress === 'number') {
+              const pct = Math.max(10, Math.round(m.progress * 100));
+              progressBar.style.width = pct + '%';
+              progressPct.textContent = pct + '%';
+              if (m.status === 'recognizing text') {
+                statusMsg.textContent = 'Extrayendo renglones del ticket...';
+              }
+            }
           }
+        });
+        statusMsg.textContent = '¡Reconocimiento completado!';
+        parseOcrText(result.data.text);
+      } catch (err) {
+        console.error(err);
+        statusMsg.textContent = 'Error al procesar imagen con OCR.';
+        alert('Hubo un problema al procesar la foto con OCR. Intenta con mejor iluminación o usa el ticket de ejemplo.');
+      }
+    }
+
+    function loadSampleTicketOCR() {
+      triggerVibrate(50);
+      const progressBox = document.getElementById('ocr-progress-box');
+      const progressBar = document.getElementById('ocr-progress-bar');
+      const progressPct = document.getElementById('ocr-progress-pct');
+      const statusMsg = document.getElementById('ocr-status-msg');
+
+      progressBox.classList.remove('hidden');
+      progressBar.style.width = '100%';
+      progressPct.textContent = '100%';
+      statusMsg.textContent = 'Ticket de ejemplo cargado (Distribuidora del Bajío)';
+
+      parseOcrText(SAMPLE_TICKET_TEXT);
+    }
+
+    function parseOcrText(raw) {
+      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      const parsed = [];
+
+      for (const line of lines) {
+        const norm = line.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        let found = null;
+        if (norm.includes('lala')) found = findProduct('LAC-LAL-1L');
+        else if (norm.includes('nutrioli') || norm.includes('aceite')) found = findProduct('ACE-NUT-850');
+        else if (norm.includes('dolores') || norm.includes('atun')) found = findProduct('ATU-DOL-140');
+        else if (norm.includes('frijol')) found = findProduct('FRI-NEG-50K');
+        else if (norm.includes('queso')) found = findProduct('QUE-FRE-1K');
+
+        if (found) {
+          const numMatch = line.match(/(\d+[.,]?\d*)/g);
+          let cost = found.historicCost;
+          let qty = 10;
+          if (numMatch && numMatch.length >= 2) {
+            qty = parseFloat(numMatch[0].replace('O', '0')) || 10;
+            cost = parseFloat(numMatch[numMatch.length - 1].replace(',', '.').replace('O', '0')) || found.historicCost;
+          }
+          const margin = ((found.salePrice - cost) / found.salePrice) * 100;
+          parsed.push({
+            sku: found.sku,
+            barcode: found.barcode,
+            name: found.name,
+            qtyPurchase: qty,
+            purchaseUnit: found.saleUnit,
+            unitsPerPurchase: 1,
+            saleUnit: found.saleUnit,
+            lineTotal: qty * cost,
+            historicCost: found.historicCost,
+            newCost: cost,
+            salePrice: found.salePrice,
+            targetMargin: found.targetMargin,
+            margin: margin,
+            broken: margin < found.targetMargin
+          });
         }
+      }
+
+      currentOcrLines = parsed.length ? parsed : [
+        { sku: 'LAC-LAL-1L', barcode: '7501020512111', name: 'Leche Lala Entera 1L', qtyPurchase: 10, purchaseUnit: 'Pieza', unitsPerPurchase: 1, saleUnit: 'Pieza', lineTotal: 245.0, historicCost: 21.0, newCost: 24.5, salePrice: 26.0, targetMargin: 20, margin: 5.7, broken: true },
+        { sku: 'ACE-NUT-850', barcode: '7501039121122', name: 'Aceite Nutrioli 850ml', qtyPurchase: 12, purchaseUnit: 'Pieza', unitsPerPurchase: 1, saleUnit: 'Pieza', lineTotal: 468.0, historicCost: 34.0, newCost: 39.0, salePrice: 42.0, targetMargin: 18, margin: 7.1, broken: true },
+        { sku: 'ATU-DOL-140', barcode: '7501045401317', name: 'Atún Dolores en Agua 140g', qtyPurchase: 24, purchaseUnit: 'Lata', unitsPerPurchase: 1, saleUnit: 'Lata', lineTotal: 396.0, historicCost: 16.5, newCost: 16.5, salePrice: 21.0, targetMargin: 20, margin: 21.4, broken: false }
+      ];
+
+      renderOcrResults();
+    }
+
+    function renderOcrResults() {
+      const wrap = document.getElementById('ocr-results-wrap');
+      const list = document.getElementById('ocr-items-list');
+      wrap.classList.remove('hidden');
+      wrap.classList.add('flex');
+      list.innerHTML = '';
+
+      document.getElementById('ocr-count-badge').textContent = `${currentOcrLines.length} productos`;
+
+      currentOcrLines.forEach(l => {
+        const item = document.createElement('div');
+        item.className = 'py-2 flex items-center justify-between gap-2';
+        item.innerHTML = `
+          <div class="min-w-0">
+            <p class="font-bold text-slate-900 text-xs truncate">${l.qtyPurchase} × ${l.name}</p>
+            <p class="text-[10px] text-slate-500 font-mono">
+              Ant: $${l.historicCost.toFixed(2)} → <b class="${l.broken ? 'text-rose-600 font-bold' : 'text-slate-800'}">Nuevo: $${l.newCost.toFixed(2)}</b>
+            </p>
+          </div>
+          <div class="text-right shrink-0">
+            <span class="font-mono font-bold text-slate-900 text-xs">$${l.lineTotal.toFixed(2)}</span>
+            <span class="block text-[9px] font-bold ${l.broken ? 'text-rose-600' : 'text-emerald-700'}">
+              ${l.broken ? 'Margen Caído' : 'Margen OK'}
+            </span>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    function sendOcrNoteToPC() {
+      if (!currentOcrLines.length) return;
+      triggerVibrate(80);
+      const folio = 'REM-48291';
+      const supplier = 'Distribuidora del Bajío S.A. de C.V.';
+      const ticketData = {
+        folio,
+        supplier,
+        lines: currentOcrLines,
+        rawText: SAMPLE_TICKET_TEXT
+      };
+      broadcastToPC({
+        type: 'OCR_TICKET_PARSED',
+        folio,
+        supplier,
+        lines: currentOcrLines,
+        rawText: SAMPLE_TICKET_TEXT,
+        ticketData
       });
 
-      const rawText = (result && result.data && result.data.text) ? result.data.text : '';
-      document.getElementById('ocr-raw-textarea').value = rawText;
-      renderParsedTicketLines(parseTicketOCR(rawText));
-    } catch (err) {
-      console.error('Error en Tesseract OCR:', err);
-      alert('No se pudo procesar la imagen con OCR. Puedes pegar o editar el texto manualmente abajo.');
-    } finally {
+      showScanToast('Nota OCR Transmitida', `Folio #${folio} enviado a Recepción en PC ✓`);
       setTimeout(() => {
-        progressBox.classList.add('hidden');
-        progressBox.classList.remove('flex');
-      }, 500);
-    }
-  }
-
-  function loadSampleOcrText(type) {
-    const txt = SAMPLE_TICKETS[type] || SAMPLE_TICKETS.inflacion;
-    document.getElementById('ocr-raw-textarea').value = txt;
-    runRawTextOcrParse();
-  }
-
-  function runRawTextOcrParse() {
-    const rawText = document.getElementById('ocr-raw-textarea').value;
-    const lines = parseTicketOCR(rawText);
-    renderParsedTicketLines(lines);
-  }
-
-  function renderParsedTicketLines(lines) {
-    currentParsedLines = lines;
-    const wrap = document.getElementById('ocr-preview-wrap');
-    const badge = document.getElementById('ocr-summary-badge');
-    const list = document.getElementById('ocr-parsed-list');
-
-    wrap.classList.remove('hidden');
-    wrap.classList.add('flex');
-    list.innerHTML = '';
-
-    if (!lines.length) {
-      badge.className = 'font-extrabold text-lg text-red-700';
-      badge.textContent = '⚠️ No se detectaron productos del catálogo en el texto. Revisa el formato [Cantidad] [Producto] [Costo].';
-      return;
+        alert(`¡Nota #${folio} enviada a la computadora! Puedes revisar y autorizar los precios en el módulo de Recepción.`);
+        goTo('screen-menu');
+      }, 300);
     }
 
-    const totalAmount = lines.reduce((acc, l) => acc + l.lineTotal, 0);
-    const alertsCount = lines.filter(l => ((l.salePrice - l.newCost) / l.salePrice) * 100 < l.targetMargin).length;
+    // =========================================================================
+    //  MODO 4: REPORTE DE MERMA CON EVIDENCIA
+    // =========================================================================
+    let selectedMermaReason = 'Envase Roto en Piso';
+    let selectedMermaSku = 'LAC-LAL-1L';
+    let selectedMermaQty = 1;
+    let mermaPhotoAttached = false;
 
-    badge.className = 'font-extrabold text-lg ' + (alertsCount > 0 ? 'text-red-700' : 'text-green-800');
-    badge.innerHTML = `✔️ Se leyeron <b>${lines.length} productos</b> · Total <b>$${totalAmount.toFixed(2)}</b>` +
-      (alertsCount > 0 ? `<br/><span class="text-red-600">🔺 ¡Atención! ${alertsCount} producto(s) subieron de costo y rompen el margen.</span>` : '');
+    function setMermaReason(reason) {
+      selectedMermaReason = reason;
+      const bRoto = document.getElementById('btn-merma-roto');
+      const bCaduco = document.getElementById('btn-merma-caduco');
+      const bDano = document.getElementById('btn-merma-dano');
 
-    lines.forEach(l => {
-      const margin = ((l.salePrice - l.newCost) / l.salePrice) * 100;
-      const broken = margin < l.targetMargin;
-      const li = document.createElement('li');
-      li.className = 'py-2.5 flex items-center justify-between gap-2 ' + (broken ? 'text-red-700 font-bold' : 'text-slate-800');
-      li.innerHTML = `
-        <div>
-          <p class="font-extrabold text-base">${l.emoji} ${l.qtyPurchase} × ${l.name}</p>
-          <p class="text-xs text-slate-500">Costo Ant: $${l.historicCost.toFixed(2)} → <b>Nuevo: $${l.newCost.toFixed(2)}</b> (Margen: ${Math.round(margin)}%)</p>
-        </div>
-        <div class="text-right">
-          <p class="font-extrabold text-base">$${l.lineTotal.toFixed(2)}</p>
-          ${broken ? '<span class="inline-block px-2 py-0.5 text-xs bg-red-600 text-white rounded-full">⚠️ Margen caído</span>' : '<span class="inline-block px-2 py-0.5 text-xs bg-green-600 text-white rounded-full">OK</span>'}
-        </div>
-      `;
-      list.appendChild(li);
-    });
+      [bRoto, bCaduco, bDano].forEach(b => {
+        if (!b) return;
+        b.className = 'h-12 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold text-center leading-tight px-1 touch-btn';
+      });
 
-    setTimeout(() => wrap.scrollIntoView({ behavior: 'smooth' }), 60);
-  }
-
-  function retakePhoto() {
-    const w = document.getElementById('ocr-preview-wrap');
-    w.classList.add('hidden'); w.classList.remove('flex');
-    document.getElementById('ocr-photo').classList.add('hidden');
-    document.getElementById('ocr-file').value = '';
-    currentParsedLines = [];
-  }
-
-  function sendOcr() {
-    if (!currentParsedLines.length) {
-      alert('Primero escanea una foto o procesa un texto de ticket.');
-      return;
+      if (reason === 'Envase Roto en Piso' && bRoto) {
+        bRoto.className = 'h-12 rounded-xl border border-rose-600 bg-rose-50 text-rose-900 text-xs font-black text-center leading-tight px-1 touch-btn';
+      } else if (reason === 'Caducado sin devolución' && bCaduco) {
+        bCaduco.className = 'h-12 rounded-xl border border-rose-600 bg-rose-50 text-rose-900 text-xs font-black text-center leading-tight px-1 touch-btn';
+      } else if (reason === 'Daño de Manejo' && bDano) {
+        bDano.className = 'h-12 rounded-xl border border-rose-600 bg-rose-50 text-rose-900 text-xs font-black text-center leading-tight px-1 touch-btn';
+      }
     }
-    vibrate(80);
-    const folio = 'OCR-' + String(Date.now()).slice(-5);
-    broadcastToPC({
-      type: 'OCR_TICKET_PARSED',
-      folio: folio,
-      supplier: 'Ticket Escaneado por OCR (Celular)',
-      lines: currentParsedLines,
-      rawText: document.getElementById('ocr-raw-textarea').value
-    });
-    document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Ticket #${folio} (${currentParsedLines.length} productos) enviado a PC`;
-    retakePhoto();
-    showModal('✅', '¡Ticket OCR enviado a la PC!', `La computadora ya recibió los <b>${currentParsedLines.length} productos</b> del ticket <b>#${folio}</b>.<br/>En la pantalla de Recepción verás en <b>ROJO</b> los que subieron de costo.`);
-  }
 
-  // =========================== PANTALLA 3: CONTEO CIEGO ===========================
-  let auditIndex = 0;
-  let auditCounts = [];
+    function onMermaProductChange(val) {
+      selectedMermaSku = val;
+    }
 
-  function buildNumpad() {
-    const keys = ['1','2','3','4','5','6','7','8','9','⌫','0','.'];
-    const pad = document.getElementById('numpad');
-    pad.innerHTML = '';
-    keys.forEach(k => {
-      const b = document.createElement('button');
-      b.className = 'btn-press h-16 rounded-xl border-2 text-3xl font-extrabold ' +
-        (k === '⌫' ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-400 bg-white');
-      b.textContent = k;
-      b.setAttribute('aria-label', k === '⌫' ? 'Borrar' : k === '.' ? 'Punto decimal' : k);
-      b.onclick = () => pressKey(k);
-      pad.appendChild(b);
-    });
-    const clr = document.createElement('button');
-    clr.className = 'btn-press col-span-3 h-14 rounded-xl border-2 border-slate-400 bg-slate-100 text-lg font-bold';
-    clr.textContent = '🧹 Borrar todo';
-    clr.onclick = () => { setInput(''); };
-    pad.appendChild(clr);
-  }
-  function setInput(v) {
-    document.getElementById('audit-input').value = v;
-    document.getElementById('audit-next').disabled = v === '' || v === '.';
-  }
-  function pressKey(k) {
-    vibrate(15);
-    let v = document.getElementById('audit-input').value;
-    if (k === '⌫') v = v.slice(0, -1);
-    else if (k === '.') { if (AUDIT_ITEMS[auditIndex].unit !== 'kg' || v.includes('.')) return; v = (v || '0') + '.'; }
-    else { if (v.replace('.', '').length >= 5) return; v = (v === '0' ? '' : v) + k; }
-    setInput(v);
-  }
-  function startAudit() {
-    auditIndex = 0; auditCounts = [];
-    document.getElementById('audit-counting').classList.remove('hidden');
-    const s = document.getElementById('audit-summary'); s.classList.add('hidden'); s.classList.remove('flex');
-    renderAuditItem();
-    goTo('screen-audit');
-  }
-  function renderAuditItem() {
-    const it = AUDIT_ITEMS[auditIndex];
-    const total = AUDIT_ITEMS.length;
-    document.getElementById('audit-label').textContent = `Producto ${auditIndex + 1} de ${total}`;
-    document.getElementById('audit-name').textContent = it.name;
-    document.getElementById('audit-detail').innerHTML = `${it.loc} · Cuenta por <b>${it.unit === 'kg' ? 'kilo (puedes usar punto)' : it.unit}</b>`;
-    document.getElementById('audit-unit').textContent = it.unit;
-    document.getElementById('audit-progress-text').textContent = `${auditIndex + 1} de ${total}`;
-    document.getElementById('audit-progress-bar').style.width = `${((auditIndex + 1) / total) * 100}%`;
-    const btn = document.getElementById('audit-next');
-    btn.innerHTML = auditIndex === total - 1 ? '💾 Guardar y Ver Resumen ✔️' : '💾 Guardar y Siguiente Producto ➡️';
-    setInput(auditCounts[auditIndex] !== undefined ? String(auditCounts[auditIndex]) : '');
-    buildNumpad();
-  }
-  function saveAndNext() {
-    const v = document.getElementById('audit-input').value;
-    if (v === '' || v === '.') return;
-    vibrate(40);
-    auditCounts[auditIndex] = parseFloat(v);
-    if (auditIndex < AUDIT_ITEMS.length - 1) { auditIndex++; renderAuditItem(); }
-    else showAuditSummary();
-  }
-  function showAuditSummary() {
-    document.getElementById('audit-counting').classList.add('hidden');
-    const s = document.getElementById('audit-summary'); s.classList.remove('hidden'); s.classList.add('flex');
-    const list = document.getElementById('audit-summary-list');
-    list.innerHTML = '';
-    AUDIT_ITEMS.forEach((it, i) => {
-      const li = document.createElement('li');
-      li.innerHTML = `<button class="btn-press w-full min-h-[64px] rounded-xl border-2 border-slate-300 bg-white px-4 flex items-center justify-between text-left">
-          <span class="font-bold">${it.name}</span>
-          <span class="text-2xl font-extrabold text-amber-700 whitespace-nowrap ml-2">${auditCounts[i]} <span class="text-sm">${it.unit}</span> ✏️</span>
-        </button>`;
-      li.querySelector('button').onclick = () => {
-        auditIndex = i;
-        document.getElementById('audit-counting').classList.remove('hidden');
-        s.classList.add('hidden'); s.classList.remove('flex');
-        renderAuditItem();
+    function adjustMermaQty(delta) {
+      selectedMermaQty = Math.max(1, selectedMermaQty + delta);
+      document.getElementById('merma-qty-val').textContent = String(selectedMermaQty);
+    }
+
+    function onMermaPhotoSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (file) {
+        mermaPhotoAttached = true;
+        document.getElementById('merma-photo-preview-wrap').classList.remove('hidden');
+      }
+    }
+
+    function simulateMermaPhoto() {
+      mermaPhotoAttached = true;
+      document.getElementById('merma-photo-preview-wrap').classList.remove('hidden');
+    }
+
+    function clearMermaPhoto() {
+      mermaPhotoAttached = false;
+      document.getElementById('merma-photo-preview-wrap').classList.add('hidden');
+      const fileInput = document.getElementById('merma-photo-file');
+      if (fileInput) fileInput.value = '';
+    }
+
+    function submitMermaToPC() {
+      if (!mermaPhotoAttached) {
+        alert('La fotografía de evidencia es obligatoria para poder registrar la merma.');
+        return;
+      }
+      triggerVibrate(80);
+      const prod = findProduct(selectedMermaSku) || { name: 'Producto', saleUnit: 'Pieza', historicCost: 20 };
+      const record = {
+        id: 'M-' + String(Date.now()).slice(-4),
+        date: new Date().toLocaleDateString('es-MX'),
+        time: new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' }),
+        sku: prod.sku,
+        name: prod.name,
+        qty: selectedMermaQty,
+        saleUnit: prod.saleUnit,
+        reason: selectedMermaReason,
+        unitCost: prod.historicCost,
+        registeredBy: 'Terminal Móvil',
+        hasPhoto: true,
+        reviewed: false
       };
-      list.appendChild(li);
-    });
-  }
-  function sendAudit() {
-    vibrate(80);
-    document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Conteo Pasillo 3 (5 productos)`;
-    showModal('📤', '¡Conteo enviado!', 'La computadora ya tiene tu conteo del <b>Pasillo 3</b>.<br/>El encargado lo revisará en <b>"📋 Auditoría Exprés de Pasillo"</b>.');
-  }
-  function confirmExitAudit() {
-    const c = document.getElementById('confirm'); c.classList.remove('hidden'); c.classList.add('flex');
-  }
-  function hideConfirm() {
-    const c = document.getElementById('confirm'); c.classList.add('hidden'); c.classList.remove('flex');
-  }
 
-  // =========================== PANTALLA 4: MERMA ===========================
-  const merma = { product: null, reason: null, qty: 1, photo: false };
+      broadcastToPC({
+        type: 'MERMA_SUBMIT',
+        record
+      });
 
-  function setStepEnabled(id, on) {
-    const el = document.getElementById(id);
-    el.classList.toggle('opacity-50', !on);
-    el.classList.toggle('pointer-events-none', !on);
-    el.classList.toggle('bg-slate-100', !on);
-    el.classList.toggle('bg-white', on);
-    el.classList.toggle('border-slate-200', !on);
-    el.classList.toggle('border-slate-300', on);
-  }
-  function startMerma() {
-    Object.assign(merma, { product: null, reason: null, qty: 1, photo: false });
-    document.getElementById('merma-product').classList.add('hidden');
-    document.getElementById('merma-live-reader').classList.add('hidden');
-    document.getElementById('merma-scan-btn').classList.remove('hidden');
-    document.getElementById('merma-qty').textContent = '1';
-    document.querySelectorAll('.reason-btn').forEach(b => { b.classList.remove('border-red-600', 'bg-red-50', 'ring-4', 'ring-red-200'); b.classList.add('border-slate-400', 'bg-white'); });
-    const pw = document.getElementById('merma-photo-wrap'); pw.classList.add('hidden');
-    document.getElementById('merma-file').value = '';
-    setStepEnabled('merma-step2', false);
-    setStepEnabled('merma-step3', false);
-    updateMermaSubmit();
-    goTo('screen-merma');
-  }
-  async function leaveMermaScreen() {
-    await stopLiveBarcodeScanner();
-    goTo('screen-menu');
-  }
-  function scanMermaCamera() {
-    startLiveBarcodeScanner('merma-live-reader', (decodedText) => {
-      applyMermaBarcode(decodedText);
-    });
-  }
-  function scanMermaSimulated() {
-    vibrate(80);
-    applyMermaBarcode('7501020515350');
-  }
-  function applyMermaBarcode(code) {
-    const found = findProductByBarcode(code) || BASE_CATALOG[0];
-    merma.product = {
-      name: found.name,
-      barcode: found.barcode,
-      cost: found.historicCost,
-      emoji: found.emoji
-    };
-    const p = document.getElementById('merma-product');
-    p.innerHTML = `<p class="text-sm text-slate-500">Código EAN-13: ${merma.product.barcode}</p>
-      <p class="text-xl font-extrabold">${merma.product.emoji} ${merma.product.name}</p>
-      <p class="text-sm text-slate-600">Costo unitario: $${merma.product.cost.toFixed(2)}</p>
-      <button onclick="startMerma()" class="btn-press mt-2 w-full min-h-[56px] rounded-xl border-2 border-slate-400 bg-white font-bold">🔄 No es este, escanear otro</button>`;
-    p.classList.remove('hidden');
-    setStepEnabled('merma-step2', true);
-    updateMermaSubmit();
-  }
-  function pickReason(btn) {
-    vibrate(20);
-    document.querySelectorAll('.reason-btn').forEach(b => { b.classList.remove('border-red-600', 'bg-red-50', 'ring-4', 'ring-red-200'); b.classList.add('border-slate-400', 'bg-white'); });
-    btn.classList.remove('border-slate-400', 'bg-white');
-    btn.classList.add('border-red-600', 'bg-red-50', 'ring-4', 'ring-red-200');
-    merma.reason = btn.dataset.reason;
-    setStepEnabled('merma-step3', true);
-    updateMermaSubmit();
-  }
-  function changeQty(d) {
-    merma.qty = Math.max(1, Math.min(48, merma.qty + d));
-    document.getElementById('merma-qty').textContent = merma.qty;
-    updateMermaSubmit();
-  }
-  function onMermaPhoto(e) {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const img = document.getElementById('merma-photo');
-    img.src = URL.createObjectURL(f); img.classList.remove('hidden');
-    document.getElementById('merma-photo-fake').classList.add('hidden');
-    document.getElementById('merma-photo-wrap').classList.remove('hidden');
-    merma.photo = true; updateMermaSubmit();
-  }
-  function fakeMermaPhoto() {
-    document.getElementById('merma-photo').classList.add('hidden');
-    const fk = document.getElementById('merma-photo-fake'); fk.classList.remove('hidden'); fk.classList.add('flex');
-    document.getElementById('merma-photo-wrap').classList.remove('hidden');
-    merma.photo = true; updateMermaSubmit();
-  }
-  function updateMermaSubmit() {
-    const btn = document.getElementById('merma-submit');
-    const hint = document.getElementById('merma-hint');
-    const ok = merma.product && merma.reason && merma.photo;
-    btn.disabled = !ok;
-    if (!merma.product) hint.textContent = '🔒 Paso 1: Escanea el producto dañado.';
-    else if (!merma.reason) hint.textContent = '🔒 Paso 2: Elige qué le pasó al producto.';
-    else if (!merma.photo) hint.textContent = '🔒 Paso 3: Toma la foto de evidencia.';
-    else {
-      const loss = (merma.product.cost * merma.qty).toFixed(2);
-      hint.innerHTML = `<span class="text-red-700">Pérdida a registrar: <b>$${loss}</b></span>`;
-      btn.innerHTML = `🗑️ Registrar Baja (${merma.qty} pza${merma.qty > 1 ? 's' : ''} · $${loss})`;
+      showScanToast('Merma Registrada', `${selectedMermaQty}x ${prod.name} reportado a PC ✓`);
+      setTimeout(() => {
+        alert(`Merma registrada con éxito (#${record.id}). El encargado podrá auditarla en la PC.`);
+        clearMermaPhoto();
+        selectedMermaQty = 1;
+        document.getElementById('merma-qty-val').textContent = '1';
+        goTo('screen-menu');
+      }, 300);
     }
-    if (!ok) btn.innerHTML = '🗑️ Registrar Baja';
-  }
-  function submitMerma() {
-    vibrate([60, 40, 60]);
-    const loss = (merma.product.cost * merma.qty).toFixed(2);
-    document.getElementById('last-sync').textContent = `Hoy ${nowTime()} · Merma: ${merma.product.name} (${merma.qty})`;
-    showModal('🗑️', 'Baja registrada', `<b>${merma.qty} × ${merma.product.name}</b><br/>Motivo: ${merma.reason}<br/>Pérdida: <b class="text-red-700">$${loss}</b><br/><br/>Ya aparece en la PC en <b>"🗑️ Revisar Mermas"</b>.`);
-  }
-</script>
+
+    // Inicializar estado por defecto
+    window.addEventListener('DOMContentLoaded', () => {
+      setMermaReason('Envase Roto en Piso');
+      renderAuditCurrentItem();
+      goTo('screen-menu');
+    });
+  </script>
 </body>
 </html>

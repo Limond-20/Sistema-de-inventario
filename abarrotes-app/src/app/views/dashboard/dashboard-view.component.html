@@ -29,6 +29,11 @@
     <!-- BOTÓN 2: RECEPCIÓN DE MERCANCÍA (AZUL PIZARRA) -->
     <a routerLink="/recepcion"
       class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
+      @if (marginAlertsCount() > 0) {
+        <span class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full text-xs font-bold px-2 py-0.5 shadow-md z-10">
+          {{ marginAlertsCount() }}
+        </span>
+      }
       <!-- Badge de margen caído si existe -->
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-slate-950 text-slate-300 text-xs font-black tracking-wider uppercase border border-slate-700">
@@ -59,6 +64,11 @@
     <!-- BOTÓN 3: AUDITORÍA EXPRÉS DE PASILLOS (ÁMBAR) -->
     <a routerLink="/auditoria"
       class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-amber-600 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 p-5 flex flex-col justify-between shadow-md transition-all group">
+      @if (pendingAuditMissionCount() > 0) {
+        <span class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full text-xs font-bold px-2 py-0.5 shadow-md z-10">
+          {{ pendingAuditMissionCount() }}
+        </span>
+      }
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-amber-950 text-amber-200 text-xs font-black tracking-wider uppercase border border-amber-700/40">
           CONTEO FÍSICO CIEGO
@@ -136,6 +146,11 @@
     <!-- BOTÓN 6: MERMAS Y CONSUMOS INTERNOS (ROJO TENUE) -->
     <a routerLink="/mermas"
       class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-rose-800 bg-gradient-to-br from-rose-900 to-rose-950 hover:from-rose-800 hover:to-rose-900 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
+      @if (urgentFefoCount() > 0) {
+        <span class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full text-xs font-bold px-2 py-0.5 shadow-md z-10">
+          {{ urgentFefoCount() }}
+        </span>
+      }
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-rose-950 text-rose-200 text-xs font-black tracking-wider uppercase border border-rose-700/50">
           MERMAS Y CONSUMOS

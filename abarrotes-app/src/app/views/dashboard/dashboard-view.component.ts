@@ -18,6 +18,11 @@ export class DashboardViewComponent {
   protected readonly selectedDiscrepancies = signal<ClassificationDiscrepancy[]>([]);
 
   // ---------- Indicadores de Badges para los Módulos ----------
+  /** Getters para alertas numéricas directas */
+  protected readonly marginAlertsCount = computed(() => this.inv.getMarginDropAlertsCount());
+  protected readonly pendingAuditMissionCount = computed(() => this.inv.getPendingAuditMissionCount());
+  protected readonly urgentFefoCount = computed(() => this.inv.getUrgentFefoCount());
+
   /** Discrepancias pendientes de la propuesta mensual ABC */
   protected readonly pendingAbcCount = computed(() => {
     if (this.inv.abcProposalDismissed()) return 0;

@@ -184,26 +184,33 @@
   }
 </section>
 
-<!-- ===================== SELECTOR DE MODO ===================== -->
-<div class="grid md:grid-cols-2 gap-3 mb-5" role="tablist" aria-label="Forma de capturar la nota">
-  <button type="button" role="tab" [attr.aria-selected]="mode() === 'ocr'" (click)="setMode('ocr')"
-    class="h-13 rounded-xl border px-4 text-sm font-bold flex items-center justify-between gap-3 transition-all"
-    [class]="mode() === 'ocr'
-      ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
-      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
-    <span>Nota Recibida por OCR (Celular / Foto)</span>
-    @if (inv.ocrNote()) {
-      <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950">Activa</span>
-    }
-  </button>
+<!-- ===================== SELECTOR DE MODO Y ACCIONES ===================== -->
+<div class="flex flex-col sm:flex-row gap-3 mb-5 items-stretch">
+  <div class="flex-1 grid md:grid-cols-2 gap-3" role="tablist" aria-label="Forma de capturar la nota">
+    <button type="button" role="tab" [attr.aria-selected]="mode() === 'ocr'" (click)="setMode('ocr')"
+      class="h-13 rounded-xl border px-4 text-sm font-bold flex items-center justify-between gap-3 transition-all"
+      [class]="mode() === 'ocr'
+        ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
+      <span>Nota Recibida por OCR (Celular / Foto)</span>
+      @if (inv.ocrNote()) {
+        <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950">Activa</span>
+      }
+    </button>
 
-  <button type="button" role="tab" [attr.aria-selected]="mode() === 'manual'" (click)="setMode('manual')"
-    class="h-13 rounded-xl border px-4 text-sm font-bold flex items-center justify-between gap-3 transition-all"
-    [class]="mode() === 'manual'
-      ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
-      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
-    <span>Captura Manual de Factura / Nota</span>
-    <span class="text-xs text-slate-400 font-normal">Sin foto</span>
+    <button type="button" role="tab" [attr.aria-selected]="mode() === 'manual'" (click)="setMode('manual')"
+      class="h-13 rounded-xl border px-4 text-sm font-bold flex items-center justify-between gap-3 transition-all"
+      [class]="mode() === 'manual'
+        ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
+      <span>Captura Manual de Factura / Nota</span>
+      <span class="text-xs text-slate-400 font-normal">Sin foto</span>
+    </button>
+  </div>
+
+  <button type="button" (click)="openQuickProductModal()"
+    class="h-13 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors shrink-0">
+    <span>+ Alta Rápida de Producto</span>
   </button>
 </div>
 
@@ -450,4 +457,98 @@
       </button>
     </section>
   }
+}
+
+<!-- ===================== MODAL ALTA RÁPIDA DE PRODUCTO NUEVO ===================== -->
+@if (quickProductModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white text-slate-900 rounded-2xl shadow-xl w-full max-w-lg border border-slate-700 overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-bold">Alta Rápida de Producto No Registrado</h3>
+          <p class="text-xs text-slate-400">Ingreso exprés al catálogo y a la nota activa</p>
+        </div>
+        <button type="button" (click)="closeQuickProductModal()" class="text-xs text-slate-400 hover:text-white font-bold">
+          Cerrar
+        </button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-3.5">
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-bold text-slate-700">Nombre del producto y gramaje / presentación:</span>
+          <input type="text" [ngModel]="quickName()" (ngModelChange)="quickName.set($event)"
+            placeholder="Ej. Galletas Emperador Chocolate 101g"
+            class="h-11 rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm font-bold text-slate-900 focus:bg-white focus:border-slate-500 outline-none" />
+        </label>
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Categoría:</span>
+            <select [ngModel]="quickCategory()" (ngModelChange)="quickCategory.set($event)"
+              class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-900">
+              <option value="Abarrotes">Abarrotes</option>
+              <option value="Lácteos">Lácteos</option>
+              <option value="Enlatados">Enlatados</option>
+              <option value="Bebidas">Bebidas</option>
+              <option value="Botanas">Botanas</option>
+              <option value="Limpieza">Limpieza</option>
+              <option value="Panadería">Panadería</option>
+            </select>
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Tipo de venta:</span>
+            <div class="flex items-center gap-3 h-10">
+              <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                <input type="radio" [checked]="!quickIsBulk()" (change)="quickIsBulk.set(false)" />
+                <span>Pieza (EAN-13)</span>
+              </label>
+              <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                <input type="radio" [checked]="quickIsBulk()" (change)="quickIsBulk.set(true)" />
+                <span>Granel (Báscula)</span>
+              </label>
+            </div>
+          </label>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Cantidad nota:</span>
+            <input type="number" min="1" [ngModel]="quickQty()" (ngModelChange)="quickQty.set($event)"
+              class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-bold font-mono text-slate-900" />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Costo compra ($):</span>
+            <input type="number" min="0.5" step="0.5" [ngModel]="quickCost()" (ngModelChange)="quickCost.set($event)"
+              class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-bold font-mono text-slate-900" />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Margen meta (%):</span>
+            <input type="number" min="5" max="80" [ngModel]="quickMargin()" (ngModelChange)="quickMargin.set($event)"
+              class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-bold font-mono text-slate-900" />
+          </label>
+        </div>
+
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs flex justify-between items-center">
+          <span class="text-slate-600 font-medium">Precio público con Redondeo Comercial:</span>
+          <span class="text-base font-black font-mono text-slate-900">
+            ${{ (quickCost() / (1 - (quickMargin() || 20) / 100)) | number:'1.2-2' }}
+          </span>
+        </div>
+
+        <div class="flex justify-end gap-2.5 pt-2">
+          <button type="button" (click)="closeQuickProductModal()"
+            class="h-11 px-4 rounded-xl border border-slate-300 font-bold text-xs text-slate-700 hover:bg-slate-50">
+            Cancelar
+          </button>
+          <button type="button" [disabled]="!quickName().trim() || !quickCost()" (click)="confirmQuickProduct()"
+            class="h-11 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs shadow-2xs">
+            Dar de Alta y Agregar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 }

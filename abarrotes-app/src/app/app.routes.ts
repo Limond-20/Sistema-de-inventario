@@ -5,6 +5,7 @@ import { ReceptionViewComponent } from './views/reception/reception-view.compone
 import { AuditDictamenViewComponent } from './views/audit-dictamen/audit-dictamen-view.component';
 import { CatalogViewComponent } from './views/catalog/catalog-view.component';
 import { ShrinkViewComponent } from './views/shrink/shrink-view.component';
+import { FefoViewComponent } from './views/fefo/fefo-view.component';
 
 export const routes: Routes = [
   { path: '', component: DashboardViewComponent, title: 'Inicio · Abarrotes Doña Lupe' },
@@ -13,5 +14,6 @@ export const routes: Routes = [
   { path: 'auditoria', component: AuditDictamenViewComponent, title: 'Auditoría Exprés de Pasillo' },
   { path: 'catalogo', component: CatalogViewComponent, title: 'Catálogo ABC, ROP y Precios' },
   { path: 'mermas', component: ShrinkViewComponent, title: 'Revisar Mermas' },
+  { path: 'fefo', component: FefoViewComponent, title: 'Caducidades y Cambio Físico (FEFO)' },
   { path: '**', redirectTo: '' },
 ];

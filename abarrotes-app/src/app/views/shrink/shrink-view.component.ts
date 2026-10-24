@@ -1,10 +1,11 @@
 import { Component, computed, inject } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { MockInventoryService } from '../../services/mock-inventory.service';
 
 @Component({
   selector: 'app-shrink-view',
-  imports: [CurrencyPipe],
+  imports: [CurrencyPipe, RouterLink],
   template: `
     <!-- ===================== ENCABEZADO EJECUTIVO ===================== -->
     <section class="mb-5 flex flex-wrap items-end justify-between gap-4 pb-3 border-b border-slate-200">
@@ -18,9 +19,20 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
         </p>
       </div>
 
-      <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3.5 py-2 shadow-2xs text-xs font-semibold text-slate-600">
-        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-        <span>Sincronización móvil activa</span>
+      <div class="flex items-center gap-2">
+        <a routerLink="/fefo"
+          class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition-colors">
+          <span>Cambios Físicos FEFO</span>
+          @if (inv.getUrgentFefoCount() > 0) {
+            <span class="px-1.5 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-bold font-mono">
+              {{ inv.getUrgentFefoCount() }}
+            </span>
+          }
+        </a>
+        <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3.5 py-2 shadow-2xs text-xs font-semibold text-slate-600">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Sincronización móvil activa</span>
+        </div>
       </div>
     </section>
 
