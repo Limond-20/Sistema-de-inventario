@@ -9,7 +9,6 @@ import {
   Product,
 } from '../../services/mock-inventory.service';
 
-type CatalogTab = 'quick' | 'bulk' | 'all';
 type BulkCalcMode = 'weight' | 'amount';
 
 @Component({
@@ -22,8 +21,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone);
   private readonly route = inject(ActivatedRoute);
 
-  // ---------- Pestañas y Búsqueda ----------
-  protected readonly activeTab = signal<CatalogTab>('quick');
+  // ---------- Búsqueda y Feedback ----------
   protected readonly searchQuery = signal<string>('');
   protected readonly syncNotification = signal<string | null>(null);
   protected readonly saleFeedback = signal<{ ok: boolean; text: string } | null>(null);
@@ -34,7 +32,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       sku: 'LAC-LAL-1L',
       barcode: '7501020515350',
       name: 'Leche Lala Entera 1L',
-      emoji: '🥛',
+      emoji: '',
       saleUnit: 'Pieza',
       isBulk: false,
       qty: 2,
@@ -45,7 +43,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       sku: 'QUE-FRE-1K',
       barcode: '2000002000013',
       name: 'Queso Fresco Local (1 kg)',
-      emoji: '🧀',
+      emoji: '',
       saleUnit: 'Kg',
       isBulk: true,
       qty: 0.263,
@@ -71,6 +69,15 @@ export class PosViewComponent implements OnInit, OnDestroy {
   protected readonly abonoAmount = signal<number>(200);
   protected readonly abonoFeedback = signal<string | null>(null);
 
+  // ---------- Modal Consumo Interno ----------
+  protected readonly internalConsumptionModalOpen = signal<boolean>(false);
+  protected readonly consumptionResponsible = signal<string>('Dueño (Don Lupe)');
+  protected readonly responsibleOptions: string[] = [
+    'Dueño (Don Lupe)',
+    'Empleado 1 (Toño)',
+    'Personal de Mostrador',
+  ];
+
   private syncChannel: BroadcastChannel | null = null;
   private readonly storageListener = (ev: StorageEvent) => {
     if (ev.key === 'abarrotes_lan_last_event' && ev.newValue) {
@@ -83,31 +90,24 @@ export class PosViewComponent implements OnInit, OnDestroy {
     }
   };
 
-  // ---------- Accesos Rápidos y Sugerencias Clase A ----------
-  protected readonly suggestions = this.inv.quickAccessSuggestions;
-  protected readonly pinnedCount = computed(() => this.inv.pinnedQuickAccessSkus().length);
+  // ---------- Accesos Rápidos en Carrusel ----------
+  protected readonly quickAccessProducts = computed(() => {
+    const pinnedSet = new Set(this.inv.pinnedQuickAccessSkus());
+    return this.inv.products().filter((p) => pinnedSet.has(p.sku));
+  });
 
-  // ---------- Computadas del Catálogo ----------
+  // ---------- Lista Completa de Productos (Sin filtros, búsqueda rápida opcional) ----------
   protected readonly displayedProducts = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
-    const tab = this.activeTab();
-    const pinnedSet = new Set(this.inv.pinnedQuickAccessSkus());
-
-    return this.inv.products().filter((p) => {
-      let matchesTab = true;
-      if (tab === 'quick') {
-        matchesTab = pinnedSet.has(p.sku);
-      } else if (tab === 'bulk') {
-        matchesTab = p.isBulk;
-      }
-      const matchesSearch =
-        !q ||
+    const all = this.inv.products();
+    if (!q) return all;
+    return all.filter(
+      (p) =>
         p.name.toLowerCase().includes(q) ||
         p.barcode.includes(q) ||
         p.sku.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q);
-      return matchesTab && matchesSearch;
-    });
+        p.category.toLowerCase().includes(q),
+    );
   });
 
   // ---------- Computadas del Carrito ----------
@@ -249,12 +249,12 @@ export class PosViewComponent implements OnInit, OnDestroy {
     if (product.isBulk && product.saleUnit === 'Kg') {
       this.openBulkCalculator(product);
       this.syncNotification.set(
-        `📱 Código de granel recibido (${product.barcode}): Indica los kilos o pesos ($) a despachar de ${product.name}.`,
+        `Código de granel recibido (${product.barcode}): Indica kilos o pesos a despachar de ${product.name}.`,
       );
     } else {
       this.addUnitToCart(product, 1);
       this.syncNotification.set(
-        `📱 Escaneado desde el celular: +1 ${product.emoji} ${product.name} ($${product.salePrice.toFixed(2)}) agregado al ticket.`,
+        `Escaneado desde el celular: +1 ${product.name} ($${product.salePrice.toFixed(2)}) agregado al ticket.`,
       );
     }
   }
@@ -327,7 +327,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
           sku: prod.sku,
           barcode: prod.barcode,
           name: prod.name,
-          emoji: prod.emoji,
+          emoji: '',
           saleUnit: prod.saleUnit,
           isBulk: prod.isBulk,
           qty: qtyKg,
@@ -358,7 +358,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
           sku: product.sku,
           barcode: product.barcode,
           name: product.name,
-          emoji: product.emoji,
+          emoji: '',
           saleUnit: product.saleUnit,
           isBulk: product.isBulk,
           qty: delta,
@@ -429,11 +429,9 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   confirmCashSale(): void {
     if (!this.canConfirmCash()) return;
-    const res = this.inv.processSale(this.cart(), 'EFECTIVO');
+    const res = this.inv.processCashSale(this.cart(), Number(this.cashReceived()) || 0);
     if (res.ok) {
-      const changeMsg =
-        this.cashChange() > 0 ? ` · Cambio a entregar: $${this.cashChange().toFixed(2)}` : '';
-      this.saleFeedback.set({ ok: true, text: `✅ ${res.message}${changeMsg}` });
+      this.saleFeedback.set({ ok: true, text: res.message });
       this.cart.set([]);
       this.closeCashModal();
     } else {
@@ -461,11 +459,33 @@ export class PosViewComponent implements OnInit, OnDestroy {
     const customer = this.selectedCustomer();
     if (!customer) return;
 
-    const res = this.inv.processSale(this.cart(), 'FIADO', customer.id);
+    const res = this.inv.processCreditSale(this.cart(), customer.id);
     if (res.ok) {
-      this.saleFeedback.set({ ok: true, text: `📓 ${res.message}` });
+      this.saleFeedback.set({ ok: true, text: res.message });
       this.cart.set([]);
       this.closeCreditModal();
+    } else {
+      this.saleFeedback.set({ ok: false, text: res.message });
+    }
+  }
+
+  // ---------- Modal Consumo Interno ----------
+  openInternalConsumptionModal(): void {
+    if (!this.cart().length) return;
+    this.internalConsumptionModalOpen.set(true);
+  }
+
+  closeInternalConsumptionModal(): void {
+    this.internalConsumptionModalOpen.set(false);
+  }
+
+  confirmInternalConsumption(): void {
+    if (!this.cart().length) return;
+    const res = this.inv.processInternalConsumption(this.cart(), this.consumptionResponsible());
+    if (res.ok) {
+      this.saleFeedback.set({ ok: true, text: res.message });
+      this.cart.set([]);
+      this.closeInternalConsumptionModal();
     } else {
       this.saleFeedback.set({ ok: false, text: res.message });
     }

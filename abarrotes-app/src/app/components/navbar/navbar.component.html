@@ -4,8 +4,8 @@
   <!-- LADO IZQUIERDO: NOMBRE DE LA TIENDA Y ESTATUS OFFLINE -->
   <div class="flex items-center gap-3">
     <a routerLink="/" class="flex items-center gap-2 group" title="Ir al Menú Principal de Módulos">
-      <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-lg font-black shadow-xs group-hover:bg-emerald-500 transition-colors">
-        🏪
+      <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-xs font-black shadow-xs group-hover:bg-emerald-500 transition-colors">
+        PV
       </div>
       <div>
         <span class="block text-sm font-black tracking-tight leading-none text-white">{{ inv.storeName }}</span>
@@ -17,7 +17,7 @@
 
     <!-- Estatus Local Offline -->
     <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700 text-slate-300 text-xs font-bold">
-      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
       <span class="text-[11px] tracking-wide text-emerald-300 font-extrabold">MODO LOCAL (OFFLINE)</span>
     </div>
 
@@ -25,8 +25,7 @@
     @if (!isHome()) {
       <a routerLink="/"
         class="btn h-8 px-3 rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all">
-        <span>🏠</span>
-        <span>MENÚ PRINCIPAL</span>
+        <span>Menú Principal</span>
       </a>
     }
   </div>
@@ -53,14 +52,13 @@
         ? 'border-emerald-600 bg-emerald-950/50 text-emerald-300 hover:bg-emerald-900/60'
         : 'border-blue-700 bg-blue-900/40 text-blue-200 hover:bg-blue-800/50'">
       <span class="w-2 h-2 rounded-full" [class]="inv.phoneLinked() ? 'bg-emerald-400' : 'bg-blue-400'"></span>
-      <span>{{ inv.phoneLinked() ? '📱 Celular Conectado' : '📱 Celular (QR)' }}</span>
+      <span>{{ inv.phoneLinked() ? 'Móvil Conectado' : 'Móvil (QR)' }}</span>
     </button>
 
     <!-- Efectivo Actual en Cajón -->
     <div class="h-8 px-3 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-200 flex items-center gap-1.5 text-xs font-black tabular-nums">
-      <span class="text-emerald-400">💵</span>
       <span class="text-[11px] text-emerald-400/90 font-bold uppercase tracking-wider">Cajón:</span>
-      <span class="text-sm font-black text-white">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
+      <span class="text-sm font-black text-white font-mono">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
     </div>
 
     <!-- Botón Cerrar Turno -->
@@ -68,7 +66,6 @@
       type="button"
       (click)="openCloseShift()"
       class="btn h-8 px-3 rounded-lg border border-red-700 bg-red-600/90 hover:bg-red-600 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all">
-      <span>🔒</span>
       <span>Cerrar Turno</span>
     </button>
   </div>
@@ -77,14 +74,11 @@
 <!-- ===================== MODAL VINCULACIÓN QR ===================== -->
 @if (qrOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-    <div class="bg-white text-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl border-2 border-slate-700 overflow-hidden">
-      <div class="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between">
-        <h2 class="text-lg font-black flex items-center gap-2">
-          <span>📱</span>
-          <span>Vincular Celular a la Terminal de Mostrador</span>
-        </h2>
-        <button type="button" (click)="closeQr()" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold hover:bg-slate-700 flex items-center justify-center">
-          ✖️
+    <div class="bg-white text-slate-900 rounded-2xl shadow-xl w-full max-w-2xl border border-slate-700 overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <h2 class="text-base font-bold">Vincular Celular a la Terminal de Mostrador</h2>
+        <button type="button" (click)="closeQr()" class="text-xs text-slate-400 hover:text-white font-bold">
+          Cerrar
         </button>
       </div>
 
@@ -121,8 +115,8 @@
         <button type="button" (click)="closeQr()" class="h-11 px-5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-700 hover:bg-slate-100">
           Cerrar
         </button>
-        <button type="button" (click)="simulateLink()" class="h-11 px-6 rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white font-black text-sm hover:bg-emerald-700">
-          ✅ Simular Celular Ya Conectado
+        <button type="button" (click)="simulateLink()" class="h-11 px-6 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 shadow-2xs">
+          Simular Celular Ya Conectado
         </button>
       </div>
     </div>
@@ -132,70 +126,66 @@
 <!-- ===================== MODAL CORTE / CERRAR TURNO ===================== -->
 @if (closeShiftModalOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-    <div class="bg-white text-slate-900 rounded-3xl shadow-2xl w-full max-w-xl border-2 border-slate-700 overflow-hidden">
-      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-        <h2 class="text-lg font-black flex items-center gap-2">
-          <span>🔒</span>
-          <span>Corte de Caja y Cierre de Turno</span>
-        </h2>
-        <button type="button" (click)="closeCloseShiftModal()" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold hover:bg-slate-700 flex items-center justify-center">
-          ✖️
+    <div class="bg-white text-slate-900 rounded-2xl shadow-xl w-full max-w-xl border border-slate-700 overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <h2 class="text-base font-bold">Corte de Caja y Cierre de Turno</h2>
+        <button type="button" (click)="closeCloseShiftModal()" class="text-xs font-bold text-slate-400 hover:text-white">
+          Cerrar
         </button>
       </div>
 
       <div class="p-6">
         @if (shiftClosedSuccess()) {
-          <div class="rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-6 text-center flex flex-col items-center gap-3">
-            <span class="text-5xl">✅</span>
-            <h3 class="text-xl font-black text-emerald-900">¡Turno Cerrado Correctamente!</h3>
+          <div class="rounded-xl border border-emerald-300 bg-emerald-50 p-6 text-center flex flex-col items-center gap-3">
+            <h3 class="text-lg font-bold text-emerald-950">Turno Cerrado Correctamente</h3>
             <p class="text-sm text-slate-700">
-              Se ha registrado el arqueo de caja con un efectivo esperado de <b>{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</b>.
+              Se ha registrado el arqueo de caja con un efectivo esperado de <b class="font-mono">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</b>.
             </p>
             <button type="button" (click)="closeCloseShiftModal()"
-              class="mt-2 h-12 px-6 rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white font-black text-sm hover:bg-emerald-700">
+              class="mt-2 h-11 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs">
               Aceptar y Continuar
             </button>
           </div>
         } @else {
-          <p class="text-sm text-slate-600 mb-4">
+          <p class="text-xs text-slate-500 mb-4 font-semibold uppercase tracking-wider">
             Resumen contable acumulado para el cajón en este turno:
           </p>
 
-          <div class="space-y-2.5 text-sm">
+          <div class="space-y-2 text-sm">
             <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span class="text-slate-600 font-semibold">Fondo Inicial de Caja:</span>
-              <span class="font-black text-slate-900 tabular-nums">{{ inv.cashRegister().openingFloat | currency:'MXN':'symbol-narrow' }}</span>
+              <span class="text-slate-600 font-semibold text-xs">Fondo Inicial de Caja:</span>
+              <span class="font-bold text-slate-900 font-mono">{{ inv.cashRegister().openingFloat | currency:'MXN':'symbol-narrow' }}</span>
             </div>
-            <div class="flex items-center justify-between p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-              <span class="text-emerald-900 font-bold">Ventas en Efectivo Hoy:</span>
-              <span class="font-black text-emerald-700 tabular-nums">+{{ inv.cashRegister().cashSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="text-slate-700 font-semibold text-xs">Ventas en Efectivo Hoy:</span>
+              <span class="font-bold text-slate-900 font-mono">+{{ inv.cashRegister().cashSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
             </div>
-            <div class="flex items-center justify-between p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-              <span class="text-emerald-900 font-bold">Abonos de Deudores Recibidos:</span>
-              <span class="font-black text-emerald-700 tabular-nums">+{{ inv.cashRegister().creditPaymentsReceived | currency:'MXN':'symbol-narrow' }}</span>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="text-slate-700 font-semibold text-xs">Abonos Recibidos en Efectivo:</span>
+              <span class="font-bold text-slate-900 font-mono">+{{ inv.cashRegister().creditPaymentsReceived | currency:'MXN':'symbol-narrow' }}</span>
             </div>
-            <div class="flex items-center justify-between p-3 rounded-xl bg-amber-50/70 border border-amber-200">
-              <span class="text-amber-900 font-bold">Ventas en Libreta (Fiado / Pendiente):</span>
-              <span class="font-black text-amber-800 tabular-nums">{{ inv.cashRegister().creditSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="text-slate-700 font-semibold text-xs">Ventas en Libreta (Fiado):</span>
+              <span class="font-medium text-slate-600 font-mono">{{ inv.cashRegister().creditSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
             </div>
           </div>
 
-          <div class="mt-4 p-4 rounded-2xl bg-slate-900 text-white flex items-center justify-between">
+          <div class="mt-4 p-4 rounded-xl bg-slate-900 text-white flex items-center justify-between">
             <div>
-              <span class="block text-xs font-bold uppercase tracking-wider text-slate-400">Efectivo Total que debe haber en Cajón:</span>
-              <span class="text-2xl font-black text-emerald-400 tabular-nums">
+              <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Efectivo Total en Cajón:</span>
+              <span class="text-2xl font-black text-emerald-400 font-mono">
                 {{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}
               </span>
             </div>
-            <span class="text-xs text-slate-400 font-mono">(Efectivo + Abonos)</span>
+            <span class="text-xs text-slate-400 font-mono">(Fondo + Ventas + Abonos)</span>
           </div>
 
-          <div class="mt-6 flex justify-end gap-3">
-            <button type="button" (click)="closeCloseShiftModal()" class="h-12 px-5 rounded-xl border border-slate-300 font-bold text-sm text-slate-700 hover:bg-slate-100">
+          <div class="mt-5 flex justify-end gap-2.5">
+            <button type="button" (click)="closeCloseShiftModal()" class="h-11 px-4 rounded-xl border border-slate-300 font-bold text-xs text-slate-700 hover:bg-slate-50">
               Cancelar
             </button>
-            <button type="button" (click)="confirmCloseShift()" class="h-12 px-6 rounded-xl border-2 border-red-800 bg-red-600 text-white font-black text-sm hover:bg-red-700 shadow-sm">
-              🔒 Confirmar y Cerrar Turno
+            <button type="button" (click)="confirmCloseShift()" class="h-11 px-5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-2xs">
+              Confirmar y Cerrar Turno
             </button>
           </div>
         }

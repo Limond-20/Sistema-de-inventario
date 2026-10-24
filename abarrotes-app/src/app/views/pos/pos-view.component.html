@@ -1,367 +1,321 @@
-<!-- ===================== ENCABEZADO SUPERIOR COMPACTO ===================== -->
-<section class="mb-5 flex flex-wrap items-center justify-between gap-4">
-  <div>
-    <div class="flex items-center gap-2.5">
-      <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold uppercase tracking-wider border border-emerald-300">
-        Punto de Venta Conectado
+<!-- ===================== ENCABEZADO SUPERIOR COMPACTO Y LIMPIO ===================== -->
+<section class="mb-4 flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl font-black text-slate-900 tracking-tight">Punto de Venta</h1>
+    <div class="h-4 w-px bg-slate-300"></div>
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+      <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+      Terminal Lista
+    </span>
+    @if (inv.phoneLinked()) {
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">
+        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+        Lector Móvil Activo
       </span>
-      <span class="px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-bold border border-indigo-200">
-        📡 Escáner Celular Activo (BroadcastChannel)
-      </span>
-    </div>
-    <h1 class="text-3xl font-black text-slate-900 mt-1">🛒 Mostrador: Cobrar y Libreta de Fiado</h1>
+    }
   </div>
 
-  <!-- Mini resumen de Caja en Vivo -->
-  <div class="flex flex-wrap items-center gap-3">
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-3">
-      <span class="text-2xl">💵</span>
-      <div>
-        <p class="text-xs font-bold uppercase text-slate-500">Efectivo en Cajón Hoy</p>
-        <p class="text-xl font-black text-emerald-700">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</p>
-      </div>
+  <!-- Resumen de Caja y Acceso a Libreta -->
+  <div class="flex items-center gap-3">
+    <div class="bg-white rounded-xl border border-slate-200 px-3.5 py-1.5 flex items-center gap-2.5 shadow-2xs">
+      <span class="text-xs font-bold uppercase text-slate-500">Efectivo en Cajón:</span>
+      <span class="text-base font-black text-slate-900 font-mono">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
     </div>
 
     <button type="button" (click)="openCreditModal()"
-      class="h-14 px-5 rounded-2xl border-2 border-amber-500 bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold text-base flex items-center gap-2 shadow-sm transition-all">
-      <span class="text-2xl">📓</span>
-      <span>Ver Libreta / Registrar Abono ({{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }})</span>
+      class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition-all">
+      <span>Libreta de Fiado</span>
+      <span class="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[11px] text-slate-700 font-extrabold">
+        {{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }}
+      </span>
     </button>
   </div>
 </section>
 
-<!-- ===================== NOTIFICACIONES DE SINCRONIZACIÓN O VENTA ===================== -->
+<!-- ===================== NOTIFICACIONES DE EVENTOS ===================== -->
 @if (syncNotification(); as syncMsg) {
-  <div class="mb-4 rounded-2xl border-2 border-indigo-600 bg-indigo-50 px-5 py-3.5 text-indigo-950 font-bold flex items-center justify-between gap-4 shadow-sm">
+  <div class="mb-3 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-2.5 text-blue-900 font-medium text-sm flex items-center justify-between gap-4">
     <span>{{ syncMsg }}</span>
-    <button type="button" (click)="syncNotification.set(null)" class="h-10 px-4 rounded-xl bg-white border border-indigo-300 text-sm font-bold">
-      ✖️ Cerrar
+    <button type="button" (click)="syncNotification.set(null)" class="text-xs font-bold text-blue-700 hover:underline">
+      Cerrar
     </button>
   </div>
 }
 
 @if (saleFeedback(); as fb) {
-  <div class="mb-4 rounded-2xl border-2 px-5 py-4 font-extrabold text-lg flex items-center justify-between gap-4 shadow-sm"
-    [class]="fb.ok ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-red-600 bg-red-50 text-red-900'">
+  <div class="mb-3 rounded-xl border px-4 py-3 font-bold text-sm flex items-center justify-between gap-4"
+    [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900'">
     <span>{{ fb.text }}</span>
-    <button type="button" (click)="saleFeedback.set(null)" class="h-11 px-4 rounded-xl bg-white border border-slate-300 text-sm font-bold text-slate-800">
-      👍 Entendido
+    <button type="button" (click)="saleFeedback.set(null)" class="h-8 px-3 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800">
+      Aceptar
     </button>
   </div>
 }
 
-<!-- ===================== PANTALLA DIVIDIDA 2 COLUMNAS (60% IZQUIERDA / 40% DERECHA) ===================== -->
-<div class="grid lg:grid-cols-12 gap-6 items-start">
+<!-- ===================== CUERPO PRINCIPAL: 2 COLUMNAS (60% IZQUIERDA / 40% DERECHA) ===================== -->
+<div class="grid lg:grid-cols-12 gap-5 items-start">
 
   <!-- =========================================================================
-       COLUMNA IZQUIERDA (60% ANCHO = 7/12): SELECTOR RÁPIDO, GRANEL Y ESCÁNER
+       COLUMNA IZQUIERDA (60% ANCHO): BUSCADOR + CARRUSEL RÁPIDO + LISTA COMPLETA
        ========================================================================= -->
-  <section class="lg:col-span-7 flex flex-col gap-4">
+  <section class="lg:col-span-7 flex flex-col gap-3">
 
-    <!-- Barra de búsqueda / Escáner de código de barras -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-      <label class="flex-1 flex items-center gap-3 px-3 h-14 rounded-xl bg-slate-50 border border-slate-300 focus-within:border-blue-600">
-        <span class="text-2xl" aria-hidden="true">▮▯▮</span>
+    <!-- Buscador / Escáner directo -->
+    <div class="bg-white rounded-xl border border-slate-200 p-2 flex items-center gap-2 shadow-2xs">
+      <div class="flex-1 flex items-center gap-2.5 px-3 h-11 bg-slate-50 rounded-lg border border-slate-200 focus-within:border-slate-400 focus-within:bg-white transition-all">
+        <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
         <input
           type="text"
           [ngModel]="searchQuery()"
           (ngModelChange)="searchQuery.set($event)"
           (keyup.enter)="onSearchOrBarcodeSubmit()"
-          placeholder="Escanea el código EAN-13 o escribe el producto (ej. Queso, Lala, Frijol)..."
-          class="flex-1 bg-transparent text-lg font-semibold text-slate-900 outline-none"
+          placeholder="Escanear código de barras o escribir producto..."
+          class="flex-1 bg-transparent text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
         />
-      </label>
-      @if (searchQuery()) {
-        <button type="button" (click)="searchQuery.set('')"
-          class="h-14 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 font-bold text-slate-700">
-          ✖️ Limpiar
-        </button>
-      }
+        @if (searchQuery()) {
+          <button type="button" (click)="searchQuery.set('')" class="text-xs font-bold text-slate-400 hover:text-slate-700">
+            Limpiar
+          </button>
+        }
+      </div>
       <button type="button" (click)="onSearchOrBarcodeSubmit()"
-        class="h-14 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base shadow-sm">
-        ➕ Buscar / Agregar
+        class="h-11 px-5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition-colors shrink-0">
+        Buscar / Agregar
       </button>
     </div>
 
-    <!-- Pestañas Grandes: [ 📌 Accesos Rápidos ] vs [ ⚖️ Granel ] vs [ 📦 Todo el Catálogo ] -->
-    <div class="grid grid-cols-3 gap-2.5" role="tablist">
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="activeTab() === 'quick'"
-        (click)="activeTab.set('quick')"
-        class="h-14 sm:h-16 rounded-2xl border-2 px-2 text-sm sm:text-base font-extrabold flex items-center justify-center gap-1.5 transition-all"
-        [class]="activeTab() === 'quick'
-          ? 'border-blue-700 bg-blue-600 text-white shadow-md'
-          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
-        <span class="text-xl">📌</span>
-        <span>Accesos Rápidos ({{ pinnedCount() }})</span>
-      </button>
+    <!-- CARRUSEL SUPERIOR DE ACCESOS RÁPIDOS (Cuadros / Contenedores táctiles) -->
+    <div class="flex flex-col gap-1.5">
+      <div class="flex items-center justify-between px-1">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Acceso Rápido</span>
+        <span class="text-[11px] text-slate-400">Deslizar para ver más</span>
+      </div>
 
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="activeTab() === 'bulk'"
-        (click)="activeTab.set('bulk')"
-        class="h-14 sm:h-16 rounded-2xl border-2 px-2 text-sm sm:text-base font-extrabold flex items-center justify-center gap-1.5 transition-all"
-        [class]="activeTab() === 'bulk'
-          ? 'border-blue-700 bg-blue-600 text-white shadow-md'
-          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
-        <span class="text-xl">⚖️</span>
-        <span>Granel / Báscula</span>
-      </button>
-
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="activeTab() === 'all'"
-        (click)="activeTab.set('all')"
-        class="h-14 sm:h-16 rounded-2xl border-2 px-2 text-sm sm:text-base font-extrabold flex items-center justify-center gap-1.5 transition-all"
-        [class]="activeTab() === 'all'
-          ? 'border-blue-700 bg-blue-600 text-white shadow-md'
-          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-sm'">
-        <span class="text-xl">📦</span>
-        <span>Todos ({{ inv.products().length }})</span>
-      </button>
+      <div class="flex gap-2.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
+        @for (p of quickAccessProducts(); track p.sku) {
+          <button
+            type="button"
+            (click)="onProductCardClick(p)"
+            class="min-w-[145px] max-w-[155px] h-[78px] p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50 text-left flex flex-col justify-between shrink-0 shadow-2xs transition-all group">
+            <div class="flex items-center justify-between w-full">
+              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate max-w-[85px]">{{ p.category }}</span>
+              <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                {{ p.saleUnit }}
+              </span>
+            </div>
+            <p class="text-xs font-bold text-slate-900 leading-tight line-clamp-2 group-hover:text-slate-950">
+              {{ p.name }}
+            </p>
+            <div class="flex items-center justify-between w-full pt-0.5">
+              <span class="text-sm font-black text-slate-900 font-mono">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+              <span class="text-[10px] font-semibold text-slate-400">{{ p.isBulk ? 'Granel' : 'Pza' }}</span>
+            </div>
+          </button>
+        }
+      </div>
     </div>
 
-    <!-- Sugerencias de Clase A para Acceso Rápido -->
-    @if (suggestions().length > 0) {
-      <div class="flex flex-col gap-2">
-        @for (sug of suggestions().slice(0, 2); track sug.sku) {
-          <div class="rounded-2xl border-2 border-amber-300 bg-amber-50/95 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-            <div class="flex items-center gap-2">
-              <span class="text-2xl">💡</span>
-              <p class="text-xs sm:text-sm font-extrabold text-amber-950">
-                Sugerencia: El producto <b>{{ sug.name }}</b> genera alta utilidad (Clase A). ¿Fijar en acceso rápido?
+    <!-- LISTA COMPLETA DE PRODUCTOS (PLANA, SIN CUADROS NI CONTENEDORES INDIVIDUALES) -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs flex flex-col">
+      <!-- Encabezado de la lista -->
+      <div class="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+        <div class="w-7/12">Producto y Presentación</div>
+        <div class="w-2/12 text-center">Existencia</div>
+        <div class="w-3/12 text-right">Precio / Acción</div>
+      </div>
+
+      <!-- Filas de la lista -->
+      <div class="divide-y divide-slate-100 max-h-[calc(100vh-310px)] overflow-y-auto">
+        @for (p of displayedProducts(); track p.sku) {
+          <div
+            (click)="onProductCardClick(p)"
+            class="px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-slate-50 cursor-pointer transition-colors group">
+            
+            <!-- Columna Producto y Presentación -->
+            <div class="w-7/12 min-w-0 pr-2">
+              <p class="text-sm font-bold text-slate-900 leading-snug group-hover:text-blue-700 transition-colors truncate">
+                {{ p.name }}
+              </p>
+              <p class="text-xs text-slate-400 font-mono truncate">
+                <span>{{ p.category }}</span>
+                @if (!p.isBulk) {
+                  <span> · {{ p.barcode }}</span>
+                } @else {
+                  <span> · Granel</span>
+                }
               </p>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <button type="button" (click)="pinSuggestion(sug.sku)"
-                class="btn h-9 px-3 rounded-lg border border-amber-700 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 shadow-2xs">
-                <span>📌</span>
-                <span>Fijar</span>
-              </button>
-              <button type="button" (click)="dismissSuggestion(sug.sku)"
-                class="btn h-9 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-600 font-bold text-xs">
-                ✖️ Descartar
+
+            <!-- Columna Existencia -->
+            <div class="w-2/12 text-center">
+              <span class="text-xs font-bold font-mono"
+                [class]="p.stock <= p.rop ? 'text-amber-700 bg-amber-50 px-2 py-0.5 rounded' : 'text-slate-700'">
+                {{ p.stock | number:'1.0-2' }} {{ p.saleUnit }}
+              </span>
+            </div>
+
+            <!-- Columna Precio y Botón rápido -->
+            <div class="w-3/12 flex items-center justify-end gap-2.5">
+              <span class="text-sm font-black text-slate-900 font-mono">
+                {{ p.salePrice | currency:'MXN':'symbol-narrow' }}
+              </span>
+              <button
+                type="button"
+                (click)="$event.stopPropagation(); onProductCardClick(p)"
+                class="h-8 px-2.5 rounded-lg border text-xs font-bold transition-all"
+                [class]="p.isBulk && p.saleUnit === 'Kg'
+                  ? 'border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-900'
+                  : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'">
+                {{ p.isBulk && p.saleUnit === 'Kg' ? 'Pesar' : '+ Agregar' }}
               </button>
             </div>
+          </div>
+        } @empty {
+          <div class="p-8 text-center text-slate-500">
+            <p class="text-sm font-semibold">No se encontraron productos con "{{ searchQuery() }}"</p>
+            <button type="button" (click)="searchQuery.set('')" class="mt-2 text-xs font-bold text-blue-600 hover:underline">
+              Mostrar lista completa
+            </button>
           </div>
         }
       </div>
-    }
-
-    <!-- Cuadrícula Bento de Productos -->
-    <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
-      @for (p of displayedProducts(); track p.sku) {
-        <div
-          class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:border-blue-400 transition-all flex flex-col justify-between gap-3">
-          <div>
-            <!-- Badges superiores: Clase ABC + Granel + Fijar en Acceso Rápido -->
-            <div class="flex items-center justify-between gap-1.5 mb-2">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold"
-                  [class]="p.abcClass === 'A'
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : (p.abcClass === 'B' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-700 border border-slate-300')">
-                  {{ p.abcClass === 'A' ? '🔥 A' : (p.abcClass === 'B' ? '⚡ B' : '💤 C') }}
-                </span>
-
-                @if (p.isBulk) {
-                  <span class="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold">
-                    ⚖️ Granel
-                  </span>
-                } @else {
-                  <span class="font-mono text-[11px] text-slate-400">{{ p.barcode }}</span>
-                }
-              </div>
-
-              <!-- Botón Pin Manual para Fijar / Desfijar -->
-              <button
-                type="button"
-                (click)="togglePin(p.sku, $event)"
-                [title]="isPinned(p.sku) ? 'Quitar de accesos rápidos' : 'Fijar en accesos rápidos de mostrador'"
-                class="h-7 px-2 rounded-lg border text-xs font-bold flex items-center gap-1 transition-all"
-                [class]="isPinned(p.sku)
-                  ? 'border-amber-400 bg-amber-100 text-amber-900'
-                  : 'border-slate-200 bg-slate-50 text-slate-400 hover:text-slate-800 hover:border-slate-400'">
-                <span>{{ isPinned(p.sku) ? '📌' : '📍' }}</span>
-                <span class="text-[10px] hidden sm:inline">{{ isPinned(p.sku) ? 'Fijado' : 'Fijar' }}</span>
-              </button>
-            </div>
-
-            <!-- Nombre e Icono -->
-            <div class="flex items-start gap-2.5">
-              <span class="text-4xl leading-none select-none">{{ p.emoji }}</span>
-              <div>
-                <h3 class="text-base font-extrabold text-slate-900 leading-snug">{{ p.name }}</h3>
-                <p class="text-xs font-semibold mt-0.5"
-                  [class]="p.stock <= p.rop ? 'text-amber-700 font-bold' : 'text-slate-500'">
-                  Hay: {{ p.stock | number:'1.0-2' }} {{ p.saleUnit }}
-                  @if (p.stock <= p.rop) { · ⚠️ Bajo ROP ({{ p.rop }}) }
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Precio y Botón de Acción Grande -->
-          <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-            <div>
-              <span class="block text-xs text-slate-400 font-bold uppercase">Precio</span>
-              <span class="text-2xl font-black text-slate-900">
-                {{ p.salePrice | currency:'MXN':'symbol-narrow' }}
-              </span>
-              <span class="text-xs text-slate-500">/{{ p.saleUnit }}</span>
-            </div>
-
-            <button
-              type="button"
-              (click)="onProductCardClick(p)"
-              class="h-14 px-4 rounded-xl font-extrabold text-sm flex items-center gap-1.5 shadow-sm transition-all"
-              [class]="p.isBulk && p.saleUnit === 'Kg'
-                ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-2 border-amber-700'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-emerald-800'">
-              @if (p.isBulk && p.saleUnit === 'Kg') {
-                <span>⚖️ Pesar / $</span>
-              } @else {
-                <span>➕ Agregar</span>
-              }
-            </button>
-          </div>
-        </div>
-      } @empty {
-        <div class="sm:col-span-2 xl:col-span-3 bg-white rounded-2xl border border-slate-200 p-8 text-center">
-          <p class="text-xl font-bold text-slate-700">No encontramos ningún producto con "{{ searchQuery() }}"</p>
-          <button type="button" (click)="searchQuery.set('')" class="mt-3 h-14 px-6 rounded-xl bg-slate-100 font-bold text-slate-800">
-            Mostrar todos los productos
-          </button>
-        </div>
-      }
     </div>
+
   </section>
 
   <!-- =========================================================================
-       COLUMNA DERECHA (40% ANCHO = 5/12): TICKET ACTIVO Y CIERRE DE VENTA
+       COLUMNA DERECHA (40% ANCHO): TICKET ACTIVO Y CIERRE DE VENTA
        ========================================================================= -->
-  <aside class="lg:col-span-5 bg-white rounded-2xl border-2 border-slate-200 shadow-md flex flex-col overflow-hidden sticky top-24">
+  <aside class="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col overflow-hidden sticky top-16">
 
     <!-- Cabecera del Ticket -->
-    <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+    <div class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
       <div>
-        <h2 class="text-xl font-extrabold flex items-center gap-2">
-          <span>🧾</span>
-          <span>Cuenta del Cliente</span>
-        </h2>
-        <p class="text-xs text-slate-300">{{ cartItemsCount() }} renglones en el ticket actual</p>
+        <h2 class="text-base font-bold tracking-tight">Ticket Actual</h2>
+        <p class="text-xs text-slate-400">{{ cartItemsCount() }} producto(s) en cuenta</p>
       </div>
       @if (cart().length > 0) {
         <button type="button" (click)="clearCart()"
-          class="h-11 px-3.5 rounded-xl bg-slate-800 hover:bg-red-900/80 text-slate-200 border border-slate-700 text-xs font-bold">
-          🗑️ Vaciar
+          class="h-8 px-3 rounded-lg bg-slate-800 hover:bg-red-950 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition-colors">
+          Vaciar
         </button>
       }
     </div>
 
     <!-- Lista de Artículos en el Ticket -->
-    <div class="divide-y divide-slate-200 max-h-[380px] overflow-y-auto px-4 py-2">
+    <div class="divide-y divide-slate-100 max-h-[300px] overflow-y-auto px-4 py-1">
       @for (item of cart(); track item.sku) {
-        <div class="py-3.5 flex items-center justify-between gap-3">
+        <div class="py-2.5 flex items-center justify-between gap-3">
           <div class="min-w-0 flex-1">
-            <p class="text-base font-extrabold text-slate-900 truncate">
-              {{ item.emoji }} {{ item.name }}
+            <p class="text-sm font-bold text-slate-900 truncate">
+              {{ item.name }}
             </p>
-            <p class="text-xs font-semibold text-slate-500">
+            <p class="text-xs text-slate-500">
               @if (item.saleUnit === 'Kg') {
-                <span class="text-amber-800 font-bold">
-                  ⚖️ {{ item.qty | number:'1.3-3' }} kg ({{ item.qty * 1000 | number:'1.0-0' }} g)
+                <span class="font-bold text-slate-700">
+                  {{ item.qty | number:'1.3-3' }} kg ({{ item.qty * 1000 | number:'1.0-0' }} g)
                 </span>
-                · a {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}/kg
+                · {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}/kg
               } @else {
-                <span>{{ item.qty | number:'1.0-2' }} × {{ item.unitPrice | currency:'MXN':'symbol-narrow' }} c/u</span>
+                <span>{{ item.qty | number:'1.0-2' }} × {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}</span>
               }
             </p>
           </div>
 
-          <!-- Controles grandes +/- y Subtotal -->
-          <div class="flex items-center gap-1.5">
-            <button type="button" (click)="adjustCartItemQty(item, -1)" aria-label="Disminuir cantidad"
-              class="w-11 h-11 rounded-xl border-2 border-slate-300 bg-slate-50 hover:bg-slate-100 text-xl font-black text-slate-800">
+          <!-- Controles de cantidad -->
+          <div class="flex items-center gap-1">
+            <button type="button" (click)="adjustCartItemQty(item, -1)" aria-label="Disminuir"
+              class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
               −
             </button>
-            <span class="min-w-[46px] text-center font-extrabold text-base text-slate-900">
+            <span class="min-w-[36px] text-center font-bold text-sm text-slate-900 font-mono">
               {{ item.saleUnit === 'Kg' ? (item.qty | number:'1.2-2') : (item.qty | number:'1.0-0') }}
             </span>
-            <button type="button" (click)="adjustCartItemQty(item, 1)" aria-label="Aumentar cantidad"
-              class="w-11 h-11 rounded-xl border-2 border-slate-300 bg-slate-50 hover:bg-slate-100 text-xl font-black text-slate-800">
+            <button type="button" (click)="adjustCartItemQty(item, 1)" aria-label="Aumentar"
+              class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
               +
             </button>
           </div>
 
-          <div class="text-right min-w-[78px]">
-            <p class="text-lg font-black text-slate-900">{{ item.subtotal | currency:'MXN':'symbol-narrow' }}</p>
-            <button type="button" (click)="removeCartItem(item.sku)" class="text-xs font-bold text-red-600 hover:underline">
+          <!-- Subtotal y Quitar -->
+          <div class="text-right min-w-[70px]">
+            <p class="text-sm font-black text-slate-900 font-mono">{{ item.subtotal | currency:'MXN':'symbol-narrow' }}</p>
+            <button type="button" (click)="removeCartItem(item.sku)" class="text-[11px] font-semibold text-slate-400 hover:text-red-600 transition-colors">
               Quitar
             </button>
           </div>
         </div>
       } @empty {
-        <div class="py-12 text-center text-slate-500">
-          <p class="text-5xl mb-2">🛒</p>
-          <p class="text-lg font-bold text-slate-700">El ticket está vacío</p>
-          <p class="text-sm">Toca cualquier producto de la izquierda o escanea con el celular.</p>
+        <div class="py-10 text-center text-slate-400">
+          <p class="text-sm font-semibold text-slate-600">Ticket vacío</p>
+          <p class="text-xs mt-0.5">Selecciona productos de la lista o escanea un código.</p>
         </div>
       }
     </div>
 
-    <!-- Total Gigante -->
-    <div class="bg-slate-50 border-t-2 border-slate-200 px-5 py-4 flex items-center justify-between">
-      <div>
-        <span class="block text-xs font-extrabold uppercase tracking-wider text-slate-500">Total a Pagar</span>
-        <span class="text-xs text-slate-500">Impuestos incluidos · Descuenta stock al instante</span>
-      </div>
-      <span class="text-4xl font-black text-slate-900">
+    <!-- Total a Pagar -->
+    <div class="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between">
+      <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Total a Pagar</span>
+      <span class="text-3xl font-black text-slate-900 font-mono">
         {{ cartTotal() | currency:'MXN':'symbol-narrow' }}
       </span>
     </div>
 
-    <!-- 2 Botones Gigantes de Cierre de Venta -->
-    <div class="p-4 bg-white border-t border-slate-200 flex flex-col gap-3">
+    <!-- Botones de Acción de Cobro -->
+    <div class="p-3 bg-white border-t border-slate-200 flex flex-col gap-2">
+      <!-- Cobrar en Efectivo (Principal) -->
       <button
         type="button"
         [disabled]="cart().length === 0"
         (click)="openCashModal()"
-        class="h-16 w-full rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-extrabold shadow-md flex items-center justify-center gap-3 disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400 disabled:shadow-none">
-        <span class="text-2xl">💵</span>
-        <span>Cobrar en Efectivo ({{ cartTotal() | currency:'MXN':'symbol-narrow' }})</span>
+        class="h-14 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-lg font-bold shadow-2xs flex items-center justify-center gap-2 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition-colors">
+        <span>Cobrar Efectivo</span>
+        <span class="font-mono font-black">({{ cartTotal() | currency:'MXN':'symbol-narrow' }})</span>
       </button>
 
+      <!-- Crédito y Consumo Interno -->
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          [disabled]="cart().length === 0"
+          (click)="openCreditModal()"
+          class="h-11 rounded-xl border border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-950 text-sm font-bold flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors">
+          Cargar a Crédito
+        </button>
+
+        <button
+          type="button"
+          [disabled]="cart().length === 0"
+          (click)="openInternalConsumptionModal()"
+          class="h-11 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-bold flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors">
+          Consumo Interno
+        </button>
+      </div>
+
+      <!-- Abono a cuenta -->
       <button
         type="button"
-        [disabled]="cart().length === 0"
         (click)="openCreditModal()"
-        class="h-16 w-full rounded-2xl border-2 border-amber-700 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xl font-extrabold shadow-md flex items-center justify-center gap-3 disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400 disabled:shadow-none">
-        <span class="text-2xl">📓</span>
-        <span>Anotar en Fiado (Crédito Vecinos)</span>
+        class="h-9 w-full rounded-lg text-xs font-bold text-slate-600 hover:text-blue-700 hover:bg-slate-50 flex items-center justify-center transition-colors">
+        Recibir Abono de Crédito Vecinal
       </button>
     </div>
 
-    <!-- Kardex en Vivo (Últimos 3 movimientos) -->
-    <div class="bg-slate-50 border-t border-slate-200 px-5 py-3">
-      <p class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">⚡ Kardex en Tiempo Real</p>
-      <ul class="space-y-1.5 text-xs">
-        @for (k of inv.kardex().slice(0, 3); track k.id) {
-          <li class="flex items-center justify-between gap-2 text-slate-700">
-            <span class="truncate">
-              <b class="text-slate-900">{{ k.timestamp }}</b> · {{ k.description }}
-            </span>
-            <span class="font-extrabold whitespace-nowrap"
-              [class]="k.type === 'VENTA_FIADO' ? 'text-amber-700' : 'text-emerald-700'">
+    <!-- Kardex en Vivo Sutil -->
+    <div class="bg-slate-50 border-t border-slate-200 px-4 py-2 text-xs">
+      <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Últimos movimientos</p>
+      <div class="space-y-1 text-slate-600">
+        @for (k of inv.kardex().slice(0, 2); track k.id) {
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="truncate pr-2"><b>{{ k.timestamp }}</b> · {{ k.description }}</span>
+            <span class="font-bold font-mono shrink-0" [class]="k.type === 'VENTA_FIADO' ? 'text-amber-800' : 'text-slate-900'">
               {{ k.amount | currency:'MXN':'symbol-narrow' }}
             </span>
-          </li>
+          </div>
         }
-      </ul>
+      </div>
     </div>
   </aside>
 </div>
@@ -371,131 +325,122 @@
      ===================================================================== -->
 @if (bulkModalProduct(); as prod) {
   <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-xl overflow-hidden">
       <!-- Cabecera -->
-      <div class="bg-amber-500 text-slate-950 px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span class="text-4xl">{{ prod.emoji }}</span>
-          <div>
-            <p class="text-xs font-extrabold uppercase tracking-wider">Despacho de Granel Dual</p>
-            <h3 class="text-2xl font-black">{{ prod.name }}</h3>
-          </div>
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Despacho de Granel</p>
+          <h3 class="text-lg font-bold leading-tight">{{ prod.name }}</h3>
         </div>
         <div class="text-right">
-          <span class="text-xs font-bold block">PRECIO POR {{ prod.saleUnit | uppercase }}</span>
-          <span class="text-2xl font-black">{{ prod.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+          <span class="text-xs text-slate-400 block font-medium">Precio por {{ prod.saleUnit }}</span>
+          <span class="text-lg font-bold font-mono text-emerald-400">{{ prod.salePrice | currency:'MXN':'symbol-narrow' }}</span>
         </div>
       </div>
 
-      <div class="p-6 flex flex-col gap-5">
-        <!-- Selector Dual Gigante: Por Monto ($) vs Por Peso (Kg/g) -->
-        <div class="grid sm:grid-cols-2 gap-3">
+      <div class="p-5 flex flex-col gap-4">
+        <!-- Selector Dual: Por Monto ($) vs Por Peso (Kg) -->
+        <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
             (click)="bulkMode.set('amount')"
-            class="h-16 rounded-2xl border-2 px-4 text-left flex items-center gap-3 transition-all"
+            class="h-10 rounded-lg text-xs font-bold transition-all"
             [class]="bulkMode() === 'amount'
-              ? 'border-emerald-700 bg-emerald-600 text-white shadow-md'
-              : 'border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100'">
-            <span class="text-3xl">💲</span>
-            <div>
-              <span class="block text-base font-extrabold leading-tight">Por Monto en Pesos ($)</span>
-              <span class="block text-xs opacity-90">Ej. "Deme $25 pesos de queso"</span>
-            </div>
+              ? 'bg-white text-slate-900 shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900'">
+            Por Monto en Dinero ($)
           </button>
 
           <button
             type="button"
             (click)="bulkMode.set('weight')"
-            class="h-16 rounded-2xl border-2 px-4 text-left flex items-center gap-3 transition-all"
+            class="h-10 rounded-lg text-xs font-bold transition-all"
             [class]="bulkMode() === 'weight'
-              ? 'border-blue-700 bg-blue-600 text-white shadow-md'
-              : 'border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100'">
-            <span class="text-3xl">⚖️</span>
-            <div>
-              <span class="block text-base font-extrabold leading-tight">Por Peso de Báscula (Kg)</span>
-              <span class="block text-xs opacity-90">Ej. "Medio kilo (0.500 kg)"</span>
-            </div>
+              ? 'bg-white text-slate-900 shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900'">
+            Por Peso en Báscula (Kg)
           </button>
         </div>
 
-        <!-- Modo A: El cliente pide por Monto en Pesos ($) -->
+        <!-- Modo A: Monto en Pesos ($) -->
         @if (bulkMode() === 'amount') {
-          <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-col gap-3">
-            <p class="font-extrabold text-slate-800">¿Cuánto dinero pidió el cliente?</p>
-            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          <div class="flex flex-col gap-2.5">
+            <span class="text-xs font-bold text-slate-600 uppercase">Billetes / Monedas habituales</span>
+            <div class="grid grid-cols-6 gap-2">
               @for (m of [15, 20, 25, 30, 50, 100]; track m) {
                 <button type="button" (click)="setPresetAmount(m)"
-                  class="h-14 rounded-xl border-2 font-extrabold text-lg"
-                  [class]="bulkAmountPesos() === m ? 'border-emerald-700 bg-emerald-100 text-emerald-900' : 'border-slate-300 bg-white text-slate-800'">
+                  class="h-10 rounded-lg border text-xs font-bold font-mono transition-colors"
+                  [class]="bulkAmountPesos() === m
+                    ? 'border-slate-800 bg-slate-800 text-white'
+                    : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
                   ${{ m }}
                 </button>
               }
             </div>
-            <label class="flex items-center gap-3 mt-1">
-              <span class="font-bold text-slate-700">Otro monto ($):</span>
+            <label class="flex items-center justify-between pt-1">
+              <span class="text-xs font-bold text-slate-700">Monto exacto ($):</span>
               <input type="number" min="1" step="1" [ngModel]="bulkAmountPesos()" (ngModelChange)="bulkAmountPesos.set($event)"
-                class="h-14 w-44 rounded-xl border-2 border-slate-400 bg-white px-4 text-2xl font-black text-slate-900" />
+                class="h-11 w-36 rounded-lg border border-slate-300 bg-white px-3 text-lg font-black font-mono text-right text-slate-900" />
             </label>
           </div>
         } @else {
-          <!-- Modo B: El cliente pide por Peso (Kg) -->
-          <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-col gap-3">
-            <p class="font-extrabold text-slate-800">¿Cuánto marcó la báscula (en Kg)?</p>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <!-- Modo B: Peso en Kg -->
+          <div class="flex flex-col gap-2.5">
+            <span class="text-xs font-bold text-slate-600 uppercase">Medidas comunes</span>
+            <div class="grid grid-cols-4 gap-2">
               <button type="button" (click)="setPresetWeight(0.25)"
-                class="h-14 rounded-xl border-2 font-extrabold text-sm"
-                [class]="bulkWeightKg() === 0.25 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
-                ¼ Kg (250 g)
+                class="h-10 rounded-lg border text-xs font-bold transition-colors"
+                [class]="bulkWeightKg() === 0.25 ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
+                250 g (1/4 kg)
               </button>
               <button type="button" (click)="setPresetWeight(0.5)"
-                class="h-14 rounded-xl border-2 font-extrabold text-sm"
-                [class]="bulkWeightKg() === 0.5 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
-                ½ Kg (500 g)
+                class="h-10 rounded-lg border text-xs font-bold transition-colors"
+                [class]="bulkWeightKg() === 0.5 ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
+                500 g (1/2 kg)
               </button>
               <button type="button" (click)="setPresetWeight(1)"
-                class="h-14 rounded-xl border-2 font-extrabold text-sm"
-                [class]="bulkWeightKg() === 1 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
-                1 Kg (1000 g)
+                class="h-10 rounded-lg border text-xs font-bold transition-colors"
+                [class]="bulkWeightKg() === 1 ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
+                1.000 kg
               </button>
               <button type="button" (click)="setPresetWeight(1.5)"
-                class="h-14 rounded-xl border-2 font-extrabold text-sm"
-                [class]="bulkWeightKg() === 1.5 ? 'border-blue-700 bg-blue-100 text-blue-900' : 'border-slate-300 bg-white text-slate-800'">
-                1.5 Kg (1500 g)
+                class="h-10 rounded-lg border text-xs font-bold transition-colors"
+                [class]="bulkWeightKg() === 1.5 ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
+                1.500 kg
               </button>
             </div>
-            <label class="flex items-center gap-3 mt-1">
-              <span class="font-bold text-slate-700">Peso exacto (Kg):</span>
+            <label class="flex items-center justify-between pt-1">
+              <span class="text-xs font-bold text-slate-700">Lectura de báscula (Kg):</span>
               <input type="number" min="0.05" step="0.05" [ngModel]="bulkWeightKg()" (ngModelChange)="bulkWeightKg.set($event)"
-                class="h-14 w-44 rounded-xl border-2 border-slate-400 bg-white px-4 text-2xl font-black text-slate-900" />
+                class="h-11 w-36 rounded-lg border border-slate-300 bg-white px-3 text-lg font-black font-mono text-right text-slate-900" />
             </label>
           </div>
         }
 
-        <!-- Resultado Calculado en Letra Gigante -->
-        <div class="rounded-2xl border-2 border-emerald-600 bg-emerald-50 p-4 grid sm:grid-cols-2 gap-4 items-center">
+        <!-- Resultado Calculado -->
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3.5 flex items-center justify-between">
           <div>
-            <p class="text-xs font-extrabold uppercase text-emerald-800">⚖️ Peso Exacto a Despachar en Báscula</p>
-            <p class="text-3xl font-black text-slate-900">
-              {{ calculatedBulkGrams() }} gramos
-              <span class="text-lg font-bold text-slate-600">({{ calculatedBulkKg() | number:'1.3-3' }} kg)</span>
-            </p>
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Despachar en Báscula</span>
+            <span class="text-xl font-black text-slate-900 font-mono">
+              {{ calculatedBulkGrams() }} g
+              <span class="text-xs font-normal text-slate-500">({{ calculatedBulkKg() | number:'1.3-3' }} kg)</span>
+            </span>
           </div>
-          <div class="sm:text-right">
-            <p class="text-xs font-extrabold uppercase text-emerald-800">💲 Importe a Cobrar</p>
-            <p class="text-4xl font-black text-emerald-700">{{ calculatedBulkSubtotal() | currency:'MXN':'symbol-narrow' }}</p>
+          <div class="text-right">
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Total a Cobrar</span>
+            <span class="text-2xl font-black text-slate-900 font-mono">{{ calculatedBulkSubtotal() | currency:'MXN':'symbol-narrow' }}</span>
           </div>
         </div>
 
         <!-- Botones de Acción -->
-        <div class="grid sm:grid-cols-2 gap-3">
+        <div class="grid grid-cols-2 gap-2 pt-1">
           <button type="button" (click)="closeBulkCalculator()"
-            class="h-16 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-lg font-bold">
-            ✖️ Cancelar
+            class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold">
+            Cancelar
           </button>
           <button type="button" (click)="confirmBulkItem()"
-            class="h-16 rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-extrabold shadow-md">
-            ➕ Agregar al Ticket ({{ calculatedBulkSubtotal() | currency:'MXN':'symbol-narrow' }})
+            class="h-11 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold">
+            Agregar al Ticket ({{ calculatedBulkSubtotal() | currency:'MXN':'symbol-narrow' }})
           </button>
         </div>
       </div>
@@ -504,60 +449,70 @@
 }
 
 <!-- =====================================================================
-     MODAL 2: COBRO EN EFECTIVO Y CALCULADORA DE CAMBIO
+     MODAL 2: COBRO EN EFECTIVO Y CÁLCULO DE CAMBIO
      ===================================================================== -->
 @if (cashModalOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-xl overflow-hidden">
-      <div class="bg-emerald-600 text-white px-6 py-4 flex items-center justify-between">
-        <h3 class="text-2xl font-black">💵 Cobrar en Efectivo</h3>
-        <span class="text-2xl font-black">{{ cartTotal() | currency:'MXN':'symbol-narrow' }}</span>
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-lg overflow-hidden">
+      <!-- Encabezado -->
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <h3 class="text-base font-bold">Cobro en Efectivo</h3>
+        <button type="button" (click)="closeCashModal()" class="text-xs text-slate-400 hover:text-white">Cerrar</button>
       </div>
 
-      <div class="p-6 flex flex-col gap-5">
-        <div>
-          <p class="font-extrabold text-slate-700 mb-2">1. ¿Con qué billete o monto te paga el cliente?</p>
-          <div class="grid grid-cols-3 gap-2.5">
-            <button type="button" (click)="setExactCash()"
-              class="h-14 rounded-xl border-2 border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-extrabold text-base">
-              Pago Exacto ({{ cartTotal() | currency:'MXN':'symbol-narrow' }})
-            </button>
-            @for (bill of [50, 100, 200, 500, 1000]; track bill) {
-              <button type="button" (click)="cashReceived.set(bill)"
-                class="h-14 rounded-xl border-2 font-extrabold text-xl"
-                [class]="cashReceived() === bill ? 'border-emerald-700 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+      <div class="p-5 flex flex-col gap-4">
+        <!-- Total a Cobrar -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+          <span class="text-xs font-bold uppercase text-slate-500">Total de la Venta:</span>
+          <span class="text-3xl font-black text-slate-900 font-mono">{{ cartTotal() | currency:'MXN':'symbol-narrow' }}</span>
+        </div>
+
+        <!-- Selector de Billetes -->
+        <div class="flex flex-col gap-2">
+          <span class="text-xs font-bold text-slate-600 uppercase">Efectivo entregado por cliente:</span>
+          <div class="grid grid-cols-5 gap-2">
+            @for (bill of [50, 100, 200, 500]; track bill) {
+              <button type="button" (click)="setCashBill(bill)"
+                class="h-11 rounded-lg border text-sm font-bold font-mono transition-colors"
+                [class]="cashReceived() === bill
+                  ? 'border-slate-800 bg-slate-800 text-white'
+                  : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
                 ${{ bill }}
               </button>
             }
+            <button type="button" (click)="setExactCash()"
+              class="h-11 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-800">
+              Exacto
+            </button>
           </div>
 
-          <label class="flex items-center justify-between gap-4 mt-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-            <span class="font-bold text-lg text-slate-700">Efectivo recibido ($):</span>
-            <input type="number" min="0" step="1" [ngModel]="cashReceived()" (ngModelChange)="cashReceived.set($event)"
-              class="h-14 w-44 rounded-xl border-2 border-slate-400 bg-white px-4 text-3xl font-black text-right text-slate-900" />
+          <label class="flex items-center justify-between pt-1">
+            <span class="text-xs font-bold text-slate-700">Otro monto recibido ($):</span>
+            <input type="number" min="1" step="1" [ngModel]="cashReceived()" (ngModelChange)="cashReceived.set($event)"
+              class="h-11 w-40 rounded-lg border border-slate-300 bg-white px-3 text-lg font-black font-mono text-right text-slate-900" />
           </label>
         </div>
 
-        <!-- Cambio en Letra Gigante -->
-        <div class="rounded-2xl border-2 p-5 text-center"
-          [class]="cashChange() >= 0 ? 'border-emerald-600 bg-emerald-50' : 'border-red-600 bg-red-50'">
-          @if (cashChange() >= 0) {
-            <p class="text-sm font-extrabold uppercase text-emerald-800">💰 Cambio a Devolver al Cliente</p>
-            <p class="text-5xl font-black text-emerald-700 mt-1">{{ cashChange() | currency:'MXN':'symbol-narrow' }}</p>
-          } @else {
-            <p class="text-sm font-extrabold uppercase text-red-800">⚠️ Falta Dinero por Cubrir</p>
-            <p class="text-4xl font-black text-red-700 mt-1">Faltan {{ -cashChange() | currency:'MXN':'symbol-narrow' }}</p>
-          }
+        <!-- Cambio a entregar -->
+        <div class="rounded-xl border p-4 flex items-center justify-between"
+          [class]="canConfirmCash() ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70'">
+          <span class="text-xs font-bold uppercase" [class]="canConfirmCash() ? 'text-emerald-900' : 'text-amber-900'">
+            {{ canConfirmCash() ? 'Cambio a Entregar:' : 'Monto insuficiente:' }}
+          </span>
+          <span class="text-2xl font-black font-mono" [class]="canConfirmCash() ? 'text-emerald-700' : 'text-amber-800'">
+            {{ (canConfirmCash() ? cashChange() : (cartTotal() - cashReceived())) | currency:'MXN':'symbol-narrow' }}
+          </span>
         </div>
 
-        <div class="grid sm:grid-cols-2 gap-3">
+        <!-- Botones de Acción -->
+        <div class="grid grid-cols-2 gap-2 pt-1">
           <button type="button" (click)="closeCashModal()"
-            class="h-16 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-lg font-bold">
-            ✖️ Regresar
+            class="h-12 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs">
+            Cancelar
           </button>
           <button type="button" [disabled]="!canConfirmCash()" (click)="confirmCashSale()"
-            class="h-16 rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xl font-extrabold shadow-md disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400">
-            ✅ Confirmar Cobro
+            class="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs disabled:bg-slate-200 disabled:text-slate-400">
+            Confirmar y Cobrar
           </button>
         </div>
       </div>
@@ -570,60 +525,59 @@
      ===================================================================== -->
 @if (creditModalOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
       <!-- Encabezado -->
-      <div class="bg-amber-500 text-slate-950 px-6 py-4 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between sticky top-0 z-10">
         <div>
-          <p class="text-xs font-extrabold uppercase tracking-wider">Control de Riesgo y Crédito Vecinal</p>
-          <h3 class="text-2xl font-black">📓 Libreta Digital de "Fiado" y Abonos</h3>
+          <h3 class="text-base font-bold">Libreta de Crédito Vecinal</h3>
+          <p class="text-xs text-slate-400">Cargar saldo a vecinos o registrar abonos en efectivo</p>
         </div>
-        <button type="button" (click)="closeCreditModal()"
-          class="h-12 px-4 rounded-xl bg-white/90 hover:bg-white text-slate-900 font-extrabold text-sm">
-          ✖️ Cerrar Ventana
+        <button type="button" (click)="closeCreditModal()" class="text-xs font-bold text-slate-400 hover:text-white">
+          Cerrar
         </button>
       </div>
 
-      <div class="p-6 grid lg:grid-cols-12 gap-6">
-        <!-- Columna Izquierda (7/12): Selección de Cliente Vecino y Validación de Límite -->
-        <div class="lg:col-span-7 flex flex-col gap-4">
-          <h4 class="text-lg font-extrabold text-slate-900">1. Selecciona al vecino para anotar o revisar su cuenta:</h4>
+      <div class="p-5 grid lg:grid-cols-12 gap-5">
+        <!-- Columna Izquierda: Selección de Cliente y Validación -->
+        <div class="lg:col-span-7 flex flex-col gap-3">
+          <span class="text-xs font-bold text-slate-600 uppercase">Selecciona el cliente:</span>
 
-          <div class="flex flex-col gap-3">
+          <div class="flex flex-col gap-2 max-h-[360px] overflow-y-auto pr-1">
             @for (c of inv.creditCustomers(); track c.id) {
               @let available = c.creditLimit - c.currentBalance;
               <button
                 type="button"
                 (click)="selectCustomerForFiado(c.id)"
-                class="w-full rounded-2xl border-2 p-4 text-left transition-all flex flex-col gap-2"
+                class="w-full rounded-xl border p-3 text-left transition-all flex flex-col gap-1.5"
                 [class]="selectedCustomerId() === c.id
-                  ? (c.status === 'VENCIDO' ? 'border-red-600 bg-red-50 ring-2 ring-red-200' : 'border-blue-600 bg-blue-50/70 ring-2 ring-blue-200')
+                  ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900'
                   : 'border-slate-200 bg-white hover:bg-slate-50'">
                 <div class="flex items-start justify-between gap-2">
                   <div>
-                    <p class="text-lg font-black text-slate-900">{{ c.name }}</p>
-                    <p class="text-xs text-slate-500">📞 {{ c.phone }} · Vence: {{ c.dueDate }}</p>
+                    <p class="text-sm font-bold text-slate-900">{{ c.name }}</p>
+                    <p class="text-xs text-slate-500 font-mono">{{ c.phone }} · Vence: {{ c.dueDate }}</p>
                   </div>
 
-                  <span class="px-2.5 py-1 rounded-full text-xs font-extrabold"
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
                     [class]="c.status === 'AL_CORRIENTE'
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : (c.status === 'LIMITE_ALCANZADO' ? 'bg-amber-100 text-amber-900 border border-amber-400' : 'bg-red-600 text-white')">
-                    {{ c.status === 'AL_CORRIENTE' ? '🟢 AL CORRIENTE' : (c.status === 'LIMITE_ALCANZADO' ? '🟠 LÍMITE ALCANZADO' : '🔴 VENCIDO / BLOQUEADO') }}
+                      ? 'bg-slate-100 text-slate-800'
+                      : (c.status === 'LIMITE_ALCANZADO' ? 'bg-amber-100 text-amber-900' : 'bg-red-100 text-red-800')">
+                    {{ c.status === 'AL_CORRIENTE' ? 'Al Corriente' : (c.status === 'LIMITE_ALCANZADO' ? 'Límite Alcanzado' : 'Vencido') }}
                   </span>
                 </div>
 
-                <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/80 text-sm">
+                <div class="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100 text-xs">
                   <div>
-                    <span class="block text-xs text-slate-500">Deuda Actual</span>
-                    <span class="font-extrabold text-slate-900">{{ c.currentBalance | currency:'MXN':'symbol-narrow' }}</span>
+                    <span class="block text-[10px] text-slate-400 font-bold uppercase">Deuda</span>
+                    <span class="font-bold text-slate-900 font-mono">{{ c.currentBalance | currency:'MXN':'symbol-narrow' }}</span>
                   </div>
                   <div>
-                    <span class="block text-xs text-slate-500">Límite Máximo</span>
-                    <span class="font-bold text-slate-700">{{ c.creditLimit | currency:'MXN':'symbol-narrow' }}</span>
+                    <span class="block text-[10px] text-slate-400 font-bold uppercase">Límite</span>
+                    <span class="font-medium text-slate-600 font-mono">{{ c.creditLimit | currency:'MXN':'symbol-narrow' }}</span>
                   </div>
                   <div class="text-right">
-                    <span class="block text-xs text-slate-500">Disponible</span>
-                    <span class="font-extrabold" [class]="available > 50 ? 'text-emerald-700' : 'text-red-700'">
+                    <span class="block text-[10px] text-slate-400 font-bold uppercase">Disponible</span>
+                    <span class="font-bold font-mono" [class]="available > 50 ? 'text-slate-900' : 'text-red-700'">
                       {{ (available > 0 ? available : 0) | currency:'MXN':'symbol-narrow' }}
                     </span>
                   </div>
@@ -632,43 +586,36 @@
             }
           </div>
 
-          <!-- Dictamen de Aprobación o Bloqueo en ROJO -->
+          <!-- Dictamen de Crédito -->
           @if (cart().length > 0) {
             @let check = creditValidation();
-            <div class="rounded-2xl border-2 p-4"
-              [class]="check.allowed ? 'border-emerald-600 bg-emerald-50 text-emerald-950' : 'border-red-600 bg-red-50 text-red-950'">
-              <p class="font-extrabold text-base leading-snug">{{ check.reason }}</p>
+            <div class="rounded-xl border p-3 text-xs"
+              [class]="check.allowed ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-red-200 bg-red-50 text-red-950'">
+              <p class="font-semibold leading-relaxed">{{ check.reason }}</p>
             </div>
 
             <button
               type="button"
               [disabled]="!check.allowed"
               (click)="confirmCreditSale()"
-              class="h-16 w-full rounded-2xl border-2 text-xl font-extrabold shadow-md transition-all border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-red-100 disabled:border-red-400 disabled:text-red-800 disabled:shadow-none">
-              @if (check.allowed) {
-                📓 Autorizar y Anotar {{ cartTotal() | currency:'MXN':'symbol-narrow' }} en Fiado
-              } @else {
-                🔒 Venta en Fiado Bloqueada (Revisa el motivo arriba)
-              }
+              class="h-12 w-full rounded-xl font-bold text-xs shadow-2xs transition-all bg-slate-800 hover:bg-slate-900 text-white disabled:bg-slate-200 disabled:text-slate-400">
+              Autorizar y Cargar {{ cartTotal() | currency:'MXN':'symbol-narrow' }}
             </button>
           }
         </div>
 
-        <!-- Columna Derecha (5/12): Registrar Abono en Efectivo a Cuenta -->
-        <div class="lg:col-span-5 bg-slate-50 rounded-2xl border-2 border-slate-200 p-5 flex flex-col justify-between gap-4">
-          <div class="flex flex-col gap-3">
-            <div class="flex items-center gap-2">
-              <span class="text-3xl">💵</span>
-              <div>
-                <h4 class="text-lg font-black text-slate-900">Registrar Abono a Cuenta</h4>
-                <p class="text-xs text-slate-600">El dinero recibido entra al Efectivo Real en Cajón y libera el crédito del vecino.</p>
-              </div>
+        <!-- Columna Derecha: Registrar Abono -->
+        <div class="lg:col-span-5 bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col justify-between gap-3">
+          <div class="flex flex-col gap-2.5">
+            <div>
+              <h4 class="text-sm font-bold text-slate-900">Registrar Abono a Cuenta</h4>
+              <p class="text-xs text-slate-500">Ingresa efectivo al cajón y reduce el saldo del cliente.</p>
             </div>
 
             <label class="flex flex-col gap-1">
-              <span class="text-sm font-bold text-slate-700">Vecino que abona:</span>
+              <span class="text-xs font-bold text-slate-700">Cliente que abona:</span>
               <select [ngModel]="abonoCustomerId()" (ngModelChange)="abonoCustomerId.set($event)"
-                class="h-14 rounded-xl border-2 border-slate-300 bg-white px-3 font-bold text-slate-900">
+                class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-900">
                 @for (c of inv.creditCustomers(); track c.id) {
                   <option [value]="c.id">{{ c.name }} (Debe: {{ c.currentBalance | currency:'MXN':'symbol-narrow' }})</option>
                 }
@@ -676,30 +623,97 @@
             </label>
 
             <label class="flex flex-col gap-1">
-              <span class="text-sm font-bold text-slate-700">Monto que entrega en efectivo ($):</span>
+              <span class="text-xs font-bold text-slate-700">Monto entregado ($):</span>
               <input type="number" min="10" step="10" [ngModel]="abonoAmount()" (ngModelChange)="abonoAmount.set($event)"
-                class="h-14 rounded-xl border-2 border-slate-400 bg-white px-4 text-2xl font-black text-slate-900" />
+                class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-base font-black font-mono text-slate-900" />
             </label>
 
             <div class="grid grid-cols-3 gap-2">
               @for (preset of [100, 200, 500]; track preset) {
                 <button type="button" (click)="abonoAmount.set(preset)"
-                  class="h-12 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 font-extrabold text-sm">
+                  class="h-9 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold font-mono">
                   ${{ preset }}
                 </button>
               }
             </div>
 
             @if (abonoFeedback(); as msg) {
-              <div class="rounded-xl border-2 border-emerald-600 bg-emerald-100 p-3 text-emerald-950 text-sm font-extrabold">
-                ✔️ {{ msg }}
+              <div class="rounded-lg border border-slate-200 bg-white p-2.5 text-slate-900 text-xs font-semibold">
+                {{ msg }}
               </div>
             }
           </div>
 
           <button type="button" (click)="submitCustomerAbono()"
-            class="h-16 w-full rounded-2xl border-2 border-blue-800 bg-blue-600 hover:bg-blue-700 text-white text-lg font-extrabold shadow-sm">
-            💰 Registrar Abono en Efectivo
+            class="h-11 w-full rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold">
+            Registrar Abono
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =====================================================================
+     MODAL 4: CONSUMO INTERNO (VALUADO AL COSTO DE COMPRA)
+     ===================================================================== -->
+@if (internalConsumptionModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-lg overflow-hidden">
+      <!-- Cabecera -->
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-bold">Registrar Consumo Interno</h3>
+          <p class="text-xs text-slate-400">Valuado al Costo contable · Sin afectación a cajón</p>
+        </div>
+        <button type="button" (click)="closeInternalConsumptionModal()" class="text-xs text-slate-400 hover:text-white">
+          Cerrar
+        </button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-4">
+        <p class="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 leading-relaxed">
+          Los artículos tomados para alimentos o uso de la tienda descuentan existencias del inventario real valuados al <b>Costo de Compra</b> contable y no ingresan dinero en efectivo ($0.00).
+        </p>
+
+        <!-- Selector de Responsable -->
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-600 mb-2">Responsable:</label>
+          <div class="grid grid-cols-3 gap-2">
+            @for (opt of responsibleOptions; track opt) {
+              <button
+                type="button"
+                (click)="consumptionResponsible.set(opt)"
+                class="h-11 px-2 rounded-lg border text-xs font-bold transition-all text-center"
+                [class]="consumptionResponsible() === opt
+                  ? 'border-slate-800 bg-slate-800 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
+                {{ opt }}
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Resumen de artículos -->
+        <div class="rounded-xl border border-slate-200 p-3 max-h-40 overflow-y-auto divide-y divide-slate-100 text-xs">
+          <p class="font-bold uppercase tracking-wider text-slate-400 mb-1 text-[11px]">Artículos a descontar ({{ cart().length }}):</p>
+          @for (item of cart(); track item.sku) {
+            <div class="py-1.5 flex items-center justify-between">
+              <span class="font-medium text-slate-800">{{ item.name }} (x{{ item.qty }})</span>
+              <span class="font-mono text-slate-500">{{ item.subtotal | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+          }
+        </div>
+
+        <!-- Botones de Acción -->
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button type="button" (click)="closeInternalConsumptionModal()"
+            class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs">
+            Cancelar
+          </button>
+          <button type="button" (click)="confirmInternalConsumption()"
+            class="h-11 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs">
+            Confirmar Consumo
           </button>
         </div>
       </div>

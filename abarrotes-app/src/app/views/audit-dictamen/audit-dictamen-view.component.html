@@ -1,151 +1,143 @@
 <!-- ===================== ENCABEZADO EJECUTIVO ===================== -->
-<section class="mb-6 flex flex-wrap items-end justify-between gap-4">
+<section class="mb-5 flex flex-wrap items-end justify-between gap-4 pb-3 border-b border-slate-200">
   <div>
-    <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-extrabold uppercase tracking-wider border border-amber-300">
+    <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
       Conciliación de Inventario · Auditoría Ciega
     </span>
-    <h1 class="text-3xl sm:text-4xl font-black text-slate-900 mt-1">📋 Auditoría Exprés de Pasillo</h1>
-    <p class="text-base text-slate-600">
-      Conteo del <b>Pasillo 3 (Aceites, Enlatados y Granos)</b> recibido del celular hoy a las 6:52 p.m. · Contó: <b>Toño</b>
+    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Auditoría de Pasillo</h1>
+    <p class="text-sm text-slate-600 mt-0.5">
+      Conteo del <b>Pasillo 3 (Aceites, Enlatados y Granos)</b> recibido del celular hoy a las 6:52 p.m. · Responsable: <b>Toño</b>
     </p>
   </div>
 
-  <div class="flex items-center gap-2 bg-white rounded-2xl border border-slate-200 px-4 py-2.5 shadow-xs text-xs font-bold text-slate-600">
-    <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-    <span>Sincronizado desde el celular sin mostrar existencias teóricas</span>
+  <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-1.5 shadow-2xs text-xs font-semibold text-slate-600">
+    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+    <span>Conteo ciego sincronizado desde móvil</span>
   </div>
 </section>
 
-<!-- ===================== BENTO GRID DE INDICADORES (4 TARJETAS KPI) ===================== -->
-<section class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Productos Contados</span>
-    <p class="text-3xl font-black text-slate-900 mt-1 tabular-nums">{{ rows().length }}</p>
-    <p class="text-xs text-slate-500 mt-0.5">Muestra rápida de Pasillo 3</p>
+<!-- ===================== INDICADORES (4 TARJETAS KPI) ===================== -->
+<section class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Productos Contados</span>
+    <p class="text-2xl font-black text-slate-900 mt-0.5 font-mono">{{ rows().length }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Muestra de Pasillo 3</p>
   </div>
 
-  <div class="rounded-2xl border border-emerald-300 bg-emerald-50/70 p-5 shadow-xs">
-    <span class="text-xs font-extrabold uppercase tracking-wider text-emerald-800">✔️ Cuadran Exacto</span>
-    <p class="text-3xl font-black text-emerald-700 mt-1 tabular-nums">{{ matches() }}</p>
-    <p class="text-xs text-emerald-800/80 mt-0.5">Sin diferencia física vs sistema</p>
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+    <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Cuadran Exacto</span>
+    <p class="text-2xl font-black text-emerald-700 mt-0.5 font-mono">{{ matches() }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Sin diferencia física vs sistema</p>
   </div>
 
-  <div class="rounded-2xl border border-red-300 bg-red-50/70 p-5 shadow-xs">
-    <span class="text-xs font-extrabold uppercase tracking-wider text-red-800">➖ Faltante en Dinero</span>
-    <p class="text-3xl font-black text-red-700 mt-1 tabular-nums">{{ missingMoney() | currency:'MXN':'symbol-narrow' }}</p>
-    <p class="text-xs text-red-800/80 mt-0.5">Posible merma o robo hormiga</p>
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+    <span class="text-[11px] font-bold uppercase tracking-wider text-red-700">Faltante en Dinero</span>
+    <p class="text-2xl font-black text-red-700 mt-0.5 font-mono">{{ missingMoney() | currency:'MXN':'symbol-narrow' }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Posible merma o pérdida</p>
   </div>
 
-  <div class="rounded-2xl border border-amber-300 bg-amber-50/70 p-5 shadow-xs">
-    <span class="text-xs font-extrabold uppercase tracking-wider text-amber-900">➕ Sobrante en Dinero</span>
-    <p class="text-3xl font-black text-amber-800 mt-1 tabular-nums">{{ extraMoney() | currency:'MXN':'symbol-narrow' }}</p>
-    <p class="text-xs text-amber-900/80 mt-0.5">Entrada no registrada o error de conteo</p>
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-600">Sobrante en Dinero</span>
+    <p class="text-2xl font-black text-slate-800 mt-0.5 font-mono">{{ extraMoney() | currency:'MXN':'symbol-narrow' }}</p>
+    <p class="text-xs text-slate-500 mt-0.5">Entrada no capturada o error</p>
   </div>
 </section>
 
 <!-- ===================== TARJETAS DE DICTAMEN POR PRODUCTO ===================== -->
-<section class="flex flex-col gap-4 mb-6">
+<section class="flex flex-col gap-3 mb-5">
   @for (r of rows(); track r.sku) {
-    <article class="rounded-2xl border-2 bg-white p-5 shadow-xs hover:shadow-sm transition-all grid lg:grid-cols-12 gap-5 items-center"
+    <article class="rounded-xl border bg-white p-4 shadow-2xs transition-all grid lg:grid-cols-12 gap-4 items-center"
       [class]="r.diffQty === 0
         ? 'border-slate-200'
         : (r.status === 'autorizado'
-          ? 'border-emerald-500 bg-emerald-50/40'
-          : (r.status === 'reconteo' ? 'border-amber-500 bg-amber-50/40' : 'border-amber-400'))">
+          ? 'border-emerald-300 bg-emerald-50/30'
+          : (r.status === 'reconteo' ? 'border-amber-300 bg-amber-50/30' : 'border-amber-200'))">
 
       <!-- 1. Datos del Producto -->
-      <div class="lg:col-span-3 flex items-start gap-3">
-        <div class="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-3xl shrink-0">
-          {{ r.emoji }}
-        </div>
-        <div>
-          <p class="text-lg font-black text-slate-900 leading-snug">{{ r.name }}</p>
-          <p class="text-xs font-bold text-slate-500 mt-0.5">📍 {{ r.location }}</p>
-          <p class="text-xs text-slate-400 mt-0.5">
-            Costo unitario: <b class="text-slate-600">{{ r.unitCost | currency:'MXN':'symbol-narrow' }}</b> / {{ unitLabel(r, 1) }}
-          </p>
-        </div>
+      <div class="lg:col-span-3">
+        <p class="text-sm font-bold text-slate-900 leading-snug">{{ r.name }}</p>
+        <p class="text-xs text-slate-400 mt-0.5">Ubicación: {{ r.location }}</p>
+        <p class="text-xs text-slate-500 mt-0.5">
+          Costo unitario: <span class="font-mono font-semibold">{{ r.unitCost | currency:'MXN':'symbol-narrow' }}</span> / {{ unitLabel(r, 1) }}
+        </p>
       </div>
 
       <!-- 2. Comparación Sistema vs Conteo Físico vs Diferencia -->
-      <div class="lg:col-span-5 grid grid-cols-3 gap-2.5 text-center">
-        <div class="rounded-xl bg-slate-50 border border-slate-200 p-3">
-          <p class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">💻 En Sistema</p>
-          <p class="text-2xl font-black text-slate-900 mt-0.5 tabular-nums">{{ r.systemQty | number:'1.0-1' }}</p>
-          <p class="text-xs text-slate-500">{{ unitLabel(r, r.systemQty) }}</p>
+      <div class="lg:col-span-5 grid grid-cols-3 gap-2 text-center text-xs">
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-2.5">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">En Sistema</span>
+          <p class="text-lg font-black text-slate-900 mt-0.5 font-mono">{{ r.systemQty | number:'1.0-1' }}</p>
+          <span class="text-[11px] text-slate-500">{{ unitLabel(r, r.systemQty) }}</span>
         </div>
 
-        <div class="rounded-xl bg-blue-50/80 border border-blue-200 p-3">
-          <p class="text-[11px] font-extrabold uppercase tracking-wider text-blue-800">🖐️ En Estante</p>
-          <p class="text-2xl font-black text-blue-950 mt-0.5 tabular-nums">{{ r.countedQty | number:'1.0-1' }}</p>
-          <p class="text-xs text-blue-700/80">{{ unitLabel(r, r.countedQty) }}</p>
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-2.5">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">En Estante</span>
+          <p class="text-lg font-black text-slate-900 mt-0.5 font-mono">{{ r.countedQty | number:'1.0-1' }}</p>
+          <span class="text-[11px] text-slate-500">{{ unitLabel(r, r.countedQty) }}</span>
         </div>
 
-        <div class="rounded-xl border p-3"
+        <div class="rounded-lg border p-2.5"
           [class]="r.diffQty === 0
-            ? 'bg-emerald-50 border-emerald-300'
-            : (r.diffQty < 0 ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300')">
-          <p class="text-[11px] font-extrabold uppercase tracking-wider"
-            [class]="r.diffQty === 0 ? 'text-emerald-800' : (r.diffQty < 0 ? 'text-red-800' : 'text-amber-900')">
+            ? 'bg-slate-50 border-slate-200'
+            : (r.diffQty < 0 ? 'bg-red-50/60 border-red-200' : 'bg-amber-50/60 border-amber-200')">
+          <span class="text-[10px] font-bold uppercase tracking-wider block"
+            [class]="r.diffQty === 0 ? 'text-slate-400' : (r.diffQty < 0 ? 'text-red-700' : 'text-amber-800')">
             Diferencia
-          </p>
-          <p class="text-2xl font-black mt-0.5 tabular-nums"
+          </span>
+          <p class="text-lg font-black mt-0.5 font-mono"
             [class.text-red-700]="r.diffQty < 0"
             [class.text-amber-800]="r.diffQty > 0"
-            [class.text-emerald-700]="r.diffQty === 0">
+            [class.text-slate-900]="r.diffQty === 0">
             {{ r.diffQty > 0 ? '+' : '' }}{{ r.diffQty | number:'1.0-1' }}
           </p>
-          <p class="text-xs font-extrabold tabular-nums"
+          <span class="text-[11px] font-semibold font-mono block"
             [class.text-red-700]="r.diffMoney < 0"
             [class.text-amber-800]="r.diffMoney > 0"
-            [class.text-emerald-700]="r.diffMoney === 0">
+            [class.text-slate-500]="r.diffMoney === 0">
             {{ r.diffMoney === 0 ? 'Cuadra' : ((r.diffMoney > 0 ? '+' : '') + (r.diffMoney | currency:'MXN':'symbol-narrow')) }}
-          </p>
+          </span>
         </div>
       </div>
 
       <!-- 3. Acciones de Dictamen -->
-      <div class="lg:col-span-4 flex flex-col gap-2">
+      <div class="lg:col-span-4 flex flex-col gap-1.5 text-xs">
         @if (r.diffQty === 0) {
-          <div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-800 font-extrabold text-sm flex items-center gap-2">
-            <span class="text-lg">✔️</span>
-            <span>Todo cuadra exacto. No requiere ajuste.</span>
+          <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-slate-600 font-medium text-xs">
+            Existencia verificada. No requiere ajuste.
           </div>
         } @else if (r.status === 'pendiente') {
-          <p class="text-xs font-extrabold px-1" [class]="r.diffQty < 0 ? 'text-red-700' : 'text-amber-800'">
-            @if (r.diffQty < 0) { ⚠️ Faltan {{ -r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
-            @else { ℹ️ Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
+          <p class="text-[11px] font-bold px-0.5" [class]="r.diffQty < 0 ? 'text-red-700' : 'text-amber-800'">
+            @if (r.diffQty < 0) { Faltan {{ -r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
+            @else { Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
           </p>
-          <div class="grid grid-cols-2 gap-2.5">
+          <div class="grid grid-cols-2 gap-2">
             <button type="button" (click)="authorize(r.sku)"
-              class="h-14 rounded-xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold shadow-2xs flex items-center justify-center gap-1.5">
-              <span>✅</span>
-              <span>Autorizar Ajuste</span>
+              class="h-10 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs transition-colors">
+              Autorizar Ajuste
             </button>
             <button type="button" (click)="recount(r.sku)"
-              class="h-14 rounded-xl border-2 border-amber-700 bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-extrabold shadow-2xs flex items-center justify-center gap-1.5">
-              <span>🔁</span>
-              <span>Pedir Reconteo</span>
+              class="h-10 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs transition-colors">
+              Pedir Reconteo
             </button>
           </div>
         } @else if (r.status === 'autorizado') {
-          <div class="flex items-center justify-between gap-2 rounded-xl bg-emerald-100/80 border border-emerald-300 px-3.5 py-2.5">
-            <p class="text-xs font-extrabold text-emerald-950">
-              ✔️ Ajuste aplicado: stock actualizado a <b>{{ r.countedQty | number:'1.0-1' }} {{ unitLabel(r, r.countedQty) }}</b>.
+          <div class="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+            <p class="text-xs text-emerald-950">
+              Ajuste aplicado: stock fijado en <b class="font-mono">{{ r.countedQty | number:'1.0-1' }} {{ unitLabel(r, r.countedQty) }}</b>.
             </p>
             <button type="button" (click)="undo(r.sku)"
-              class="h-10 px-3 rounded-lg border border-slate-300 bg-white text-xs font-extrabold text-slate-700 hover:bg-slate-100 shrink-0">
-              ↩️ Deshacer
+              class="text-xs text-slate-500 hover:text-slate-800 font-semibold underline shrink-0">
+              Deshacer
             </button>
           </div>
         } @else {
-          <div class="flex items-center justify-between gap-2 rounded-xl bg-amber-100/80 border border-amber-300 px-3.5 py-2.5">
-            <p class="text-xs font-extrabold text-amber-950">
-              🔁 Enviado al celular de Toño para segundo conteo.
+          <div class="flex items-center justify-between gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <p class="text-xs text-amber-950">
+              Orden de segundo conteo enviada al celular.
             </p>
             <button type="button" (click)="undo(r.sku)"
-              class="h-10 px-3 rounded-lg border border-slate-300 bg-white text-xs font-extrabold text-slate-700 hover:bg-slate-100 shrink-0">
-              ↩️ Deshacer
+              class="text-xs text-slate-500 hover:text-slate-800 font-semibold underline shrink-0">
+              Deshacer
             </button>
           </div>
         }
@@ -155,20 +147,14 @@
 </section>
 
 @if (allDone()) {
-  <section class="rounded-3xl border-2 border-emerald-500 bg-emerald-50/90 p-6 flex flex-col md:flex-row items-center justify-between gap-5 shadow-sm">
-    <div class="flex items-center gap-4">
-      <div class="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-3xl shrink-0">
-        🎉
-      </div>
-      <div>
-        <p class="text-xl font-black text-emerald-950">¡Dictamen del Pasillo 3 completado!</p>
-        <p class="text-sm text-slate-700">Los ajustes autorizados ya actualizaron el Kardex y las órdenes de reconteo se enviaron al celular.</p>
-      </div>
+  <section class="rounded-xl border border-emerald-300 bg-emerald-50/80 p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
+    <div>
+      <p class="text-base font-bold text-emerald-950">Dictamen de Pasillo 3 concluido</p>
+      <p class="text-xs text-slate-600">Los ajustes autorizados ya actualizaron el stock y el Kardex en el sistema.</p>
     </div>
     <a routerLink="/"
-      class="btn h-14 px-7 rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white text-base font-extrabold flex items-center gap-2 hover:bg-emerald-700 shrink-0 shadow-xs">
-      <span>🏠</span>
-      <span>Volver al Inicio</span>
+      class="h-11 px-5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center justify-center shrink-0 transition-colors">
+      Volver al Inicio
     </a>
   </section>
 }

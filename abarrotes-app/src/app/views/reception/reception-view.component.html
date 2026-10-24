@@ -1,187 +1,179 @@
 <!-- ===================== ENCABEZADO EJECUTIVO ===================== -->
-<section class="mb-6 flex flex-wrap items-end justify-between gap-4">
+<section class="mb-5 flex flex-wrap items-end justify-between gap-4 pb-3 border-b border-slate-200">
   <div>
-    <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-extrabold uppercase tracking-wider border border-blue-200">
+    <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
       Recepción y Blindaje de Márgenes · Costo de Reposición
     </span>
-    <h1 class="text-3xl sm:text-4xl font-black text-slate-900 mt-1">📥 Recibir Mercancía de Proveedor</h1>
-    <p class="text-base text-slate-600">
-      Verifica las notas escaneadas desde el celular. Si un producto <b class="text-red-700">subió de costo</b>, el sistema bloquea la entrada hasta proteger tu ganancia.
+    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Recepción de Mercancía de Proveedor</h1>
+    <p class="text-sm text-slate-600 mt-0.5">
+      Verifica las notas escaneadas desde el celular. Si un producto subió de costo, el sistema bloquea la entrada hasta proteger tu ganancia.
     </p>
   </div>
 
   <!-- Indicadores rápidos de la nota activa -->
   @if (lines().length > 0) {
-    <div class="flex items-center gap-3 bg-white rounded-2xl border border-slate-200 px-4 py-2.5 shadow-xs">
+    <div class="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-3.5 py-2 shadow-2xs">
       <div class="text-right pr-3 border-r border-slate-200">
-        <span class="block text-[11px] font-bold uppercase text-slate-400">Renglones</span>
-        <span class="text-xl font-black text-slate-900 tabular-nums">{{ lines().length }}</span>
+        <span class="block text-[10px] font-bold uppercase text-slate-400">Renglones</span>
+        <span class="text-lg font-bold text-slate-900 font-mono">{{ lines().length }}</span>
       </div>
       <div class="text-right pr-3 border-r border-slate-200">
-        <span class="block text-[11px] font-bold uppercase text-slate-400">Alertas Inflación</span>
-        <span class="text-xl font-black tabular-nums" [class]="pendingCount() > 0 ? 'text-red-600' : 'text-emerald-600'">
+        <span class="block text-[10px] font-bold uppercase text-slate-400">Alertas Margen</span>
+        <span class="text-lg font-black font-mono" [class]="pendingCount() > 0 ? 'text-red-700' : 'text-emerald-700'">
           {{ pendingCount() }}
         </span>
       </div>
       <div class="text-right">
-        <span class="block text-[11px] font-bold uppercase text-slate-400">Total Nota</span>
-        <span class="text-xl font-black text-slate-900 tabular-nums">{{ total() | currency:'MXN':'symbol-narrow' }}</span>
+        <span class="block text-[10px] font-bold uppercase text-slate-400">Total Nota</span>
+        <span class="text-lg font-black text-slate-900 font-mono">{{ total() | currency:'MXN':'symbol-narrow' }}</span>
       </div>
     </div>
   }
 </section>
 
-<!-- ===================== PANEL DESPLEGABLE: SIMULADOR / PRUEBAS OCR Y LECTOR ===================== -->
-<section class="mb-6 rounded-3xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-  <div class="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-    <div class="flex items-center gap-3.5">
-      <div class="w-12 h-12 rounded-2xl bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-2xl">
-        🧪
+<!-- ===================== PANEL: SIMULADOR / PRUEBAS OCR Y LECTOR ===================== -->
+<section class="mb-5 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+  <div class="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <div class="flex items-center gap-2">
+        <h2 class="text-base font-bold leading-tight">Laboratorio de Pruebas OCR y Lector EAN-13</h2>
+        <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold">
+          Sincronización activa
+        </span>
       </div>
-      <div>
-        <div class="flex items-center gap-2">
-          <h2 class="text-xl font-black leading-tight">Laboratorio de Pruebas OCR y Lector EAN-13</h2>
-          <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-xs font-extrabold">
-            ● En vivo
-          </span>
-        </div>
-        <p class="text-xs text-slate-300 mt-0.5">
-          Canal <code class="font-mono bg-slate-800 px-1.5 py-0.5 rounded text-indigo-200">BroadcastChannel('abarrotes_lan_sync')</code> · Sincronizado con <code class="font-mono text-indigo-200">movil-prototipo.html</code>
-        </p>
-      </div>
+      <p class="text-xs text-slate-400 mt-0.5">
+        Canal <code class="font-mono bg-slate-800 px-1 py-0.5 rounded text-slate-300">BroadcastChannel('abarrotes_lan_sync')</code>
+      </p>
     </div>
 
-    <div class="flex flex-wrap items-center gap-2.5">
+    <div class="flex flex-wrap items-center gap-2">
       <a href="/movil-prototipo.html" target="_blank" rel="noopener"
-        class="btn h-14 px-5 rounded-xl border-2 border-emerald-500 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-extrabold flex items-center gap-2 shadow-xs">
-        <span>📱</span>
-        <span>Abrir Celular en Otra Pestaña</span>
+        class="h-10 px-4 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors">
+        Abrir Celular en Otra Pestaña
       </a>
       <button type="button" (click)="toggleLab()"
-        class="h-14 px-5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white text-sm font-extrabold flex items-center gap-2">
-        <span>{{ labOpen() ? '🔼 Ocultar Laboratorio' : '🔽 Mostrar Laboratorio' }}</span>
+        class="h-10 px-4 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-colors">
+        {{ labOpen() ? 'Ocultar Laboratorio' : 'Mostrar Laboratorio' }}
       </button>
     </div>
   </div>
 
   @if (lastSyncBanner(); as msg) {
-    <div class="bg-emerald-600 text-white px-6 py-3 font-extrabold text-base flex items-center justify-between gap-4">
-      <span class="flex items-center gap-2"><span>📡</span> {{ msg }}</span>
-      <button type="button" (click)="lastSyncBanner.set(null)" class="h-10 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-xs font-bold">
-        ✖️ Cerrar aviso
+    <div class="bg-slate-800 text-white px-5 py-2.5 text-xs font-bold flex items-center justify-between gap-4 border-b border-slate-700">
+      <span>{{ msg }}</span>
+      <button type="button" (click)="lastSyncBanner.set(null)" class="text-slate-400 hover:text-white font-semibold">
+        Cerrar
       </button>
     </div>
   }
 
   @if (lastScannedProduct(); as scanned) {
-    <div class="bg-emerald-50/90 border-b border-emerald-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+    <div class="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-4">
       <div>
-        <p class="text-xs font-extrabold uppercase tracking-wider text-emerald-800">▮▯▮ Último Código EAN-13 Decodificado ({{ scanned.time }})</p>
-        <p class="text-xl font-black text-slate-900 mt-0.5">
-          {{ scanned.emoji }} {{ scanned.name }}
-          <span class="font-mono text-sm font-semibold text-slate-500 ml-1">({{ scanned.barcode }})</span>
+        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Último Código EAN-13 Escaneado ({{ scanned.time }})</p>
+        <p class="text-base font-bold text-slate-900 mt-0.5">
+          {{ scanned.name }}
+          <span class="font-mono text-xs text-slate-500 font-normal">({{ scanned.barcode }})</span>
         </p>
       </div>
-      <div class="flex items-center gap-6">
+      <div class="flex items-center gap-5">
         <div class="text-right">
-          <p class="text-[11px] font-bold uppercase text-slate-500">Costo Histórico</p>
-          <p class="text-lg font-extrabold text-slate-800 tabular-nums">{{ scanned.historicCost | currency:'MXN':'symbol-narrow' }}</p>
+          <p class="text-[10px] font-bold uppercase text-slate-400">Costo Histórico</p>
+          <p class="text-sm font-semibold text-slate-700 font-mono">{{ scanned.historicCost | currency:'MXN':'symbol-narrow' }}</p>
         </div>
         <div class="text-right">
-          <p class="text-[11px] font-bold uppercase text-slate-500">Precio Venta Actual</p>
-          <p class="text-2xl font-black text-emerald-700 tabular-nums">{{ scanned.salePrice | currency:'MXN':'symbol-narrow' }}</p>
+          <p class="text-[10px] font-bold uppercase text-slate-400">Precio Venta</p>
+          <p class="text-lg font-black text-slate-900 font-mono">{{ scanned.salePrice | currency:'MXN':'symbol-narrow' }}</p>
         </div>
       </div>
     </div>
   }
 
   @if (labOpen()) {
-    <div class="p-6 bg-slate-50/60 grid lg:grid-cols-12 gap-6">
-      <!-- Columna Izquierda: Imagen OCR + Texto Crudo de Prueba -->
-      <div class="lg:col-span-7 flex flex-col gap-4 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+    <div class="p-5 bg-slate-50 grid lg:grid-cols-12 gap-5">
+      <!-- Columna Izquierda: Imagen OCR + Texto Crudo -->
+      <div class="lg:col-span-7 flex flex-col gap-3.5 bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="text-lg font-black text-slate-900">1. Escáner OCR de Tickets (Tesseract.js en Español)</h3>
-          <span class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">
-            Limpieza 'O'→'0' activa
+          <h3 class="text-sm font-bold text-slate-900">Reconocimiento OCR (Tesseract en Español)</h3>
+          <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold">
+            Limpieza 'O'/'0' activa
           </span>
         </div>
 
-        <div class="flex flex-wrap gap-3">
+        <div>
           <label for="pc-ocr-file"
-            class="btn h-14 px-5 rounded-xl border-2 border-blue-700 bg-blue-600 hover:bg-blue-700 text-white text-base font-extrabold flex items-center gap-2.5 cursor-pointer shadow-xs">
-            <span class="text-xl">📷</span>
-            <span>Subir Foto de Ticket desde la PC (Tesseract OCR)</span>
+            class="h-11 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center justify-center cursor-pointer transition-colors">
+            Subir Foto de Ticket desde PC
           </label>
           <input id="pc-ocr-file" type="file" accept="image/*" class="hidden" (change)="onPcTicketImageSelected($event)" />
         </div>
 
         @if (ocrRunning()) {
-          <div class="rounded-2xl border-2 border-blue-500 bg-blue-50/80 p-4 flex flex-col gap-2">
-            <div class="flex justify-between items-center">
-              <span class="font-extrabold text-base text-blue-950">{{ ocrStatusText() }}</span>
-              <span class="text-xl font-black text-blue-700 tabular-nums">{{ ocrProgress() }}%</span>
+          <div class="rounded-xl border border-blue-200 bg-blue-50/80 p-3 flex flex-col gap-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-semibold text-blue-950">{{ ocrStatusText() }}</span>
+              <span class="font-bold text-blue-700 font-mono">{{ ocrProgress() }}%</span>
             </div>
-            <div class="w-full h-4 bg-blue-200 rounded-full overflow-hidden">
+            <div class="w-full h-2.5 bg-blue-200 rounded-full overflow-hidden">
               <div class="h-full bg-blue-600 transition-all duration-200" [style.width.%]="ocrProgress()"></div>
             </div>
           </div>
         }
 
-        <div class="grid sm:grid-cols-3 gap-2.5">
+        <div class="grid sm:grid-cols-3 gap-2">
           <button type="button" (click)="loadPresetTicket('inflacion')"
-            class="min-h-[56px] rounded-xl border border-red-300 bg-red-50/70 hover:bg-red-100/80 text-red-950 font-extrabold text-xs px-3.5 py-2.5 text-left transition-all">
-            <span class="block text-red-700 font-black mb-0.5">🔺 Ticket Prueba 1</span>
-            Subida en Leche, Aceite y Frijol (con errores 'O'/'0')
+            class="rounded-lg border border-red-200 bg-red-50/60 hover:bg-red-50 text-red-950 text-xs p-2.5 text-left transition-colors">
+            <span class="block text-red-800 font-bold mb-0.5">Ticket Prueba 1</span>
+            Subida en Leche, Aceite y Frijol
           </button>
           <button type="button" (click)="loadPresetTicket('queso_atun')"
-            class="min-h-[56px] rounded-xl border border-amber-300 bg-amber-50/70 hover:bg-amber-100/80 text-amber-950 font-extrabold text-xs px-3.5 py-2.5 text-left transition-all">
-            <span class="block text-amber-800 font-black mb-0.5">🧀 Ticket Prueba 2</span>
-            Alza en Atún Dolores y Queso Fresco
+            class="rounded-lg border border-amber-200 bg-amber-50/60 hover:bg-amber-50 text-amber-950 text-xs p-2.5 text-left transition-colors">
+            <span class="block text-amber-900 font-bold mb-0.5">Ticket Prueba 2</span>
+            Alza en Atún y Queso
           </button>
           <button type="button" (click)="loadPresetTicket('estable')"
-            class="min-h-[56px] rounded-xl border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-950 font-extrabold text-xs px-3.5 py-2.5 text-left transition-all">
-            <span class="block text-emerald-800 font-black mb-0.5">✔️ Ticket Prueba 3</span>
-            Costos sin Inflación (Márgenes Sanos)
+            class="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs p-2.5 text-left transition-colors">
+            <span class="block text-slate-900 font-bold mb-0.5">Ticket Prueba 3</span>
+            Costos sin Variación
           </button>
         </div>
 
-        <label class="flex flex-col gap-1.5">
-          <span class="font-bold text-xs uppercase tracking-wider text-slate-500">
-            Texto crudo del ticket (<code class="font-mono text-slate-700">[Cantidad] [Descripción] [Costo]</code>):
+        <label class="flex flex-col gap-1">
+          <span class="font-semibold text-[11px] uppercase tracking-wider text-slate-500">
+            Texto crudo del ticket (<code class="font-mono text-slate-600">[Cantidad] [Descripción] [Costo]</code>):
           </span>
-          <textarea rows="4" [ngModel]="rawTicketText()" (ngModelChange)="rawTicketText.set($event)"
-            class="w-full rounded-xl border border-slate-300 p-3 font-mono text-sm bg-slate-50 focus:bg-white focus:border-blue-600 outline-none"></textarea>
+          <textarea rows="3" [ngModel]="rawTicketText()" (ngModelChange)="rawTicketText.set($event)"
+            class="w-full rounded-lg border border-slate-300 p-2.5 font-mono text-xs bg-slate-50 focus:bg-white focus:border-slate-500 outline-none"></textarea>
         </label>
 
         <button type="button" (click)="runOcrParserFromText()"
-          class="h-14 rounded-xl border-2 border-indigo-800 bg-indigo-600 hover:bg-indigo-700 text-white text-base font-extrabold shadow-xs flex items-center justify-center gap-2">
-          <span>⚙️</span>
-          <span>Correr Parser OCR y Poblar Tabla en Vivo</span>
+          class="h-11 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors flex items-center justify-center">
+          Procesar Texto OCR y Poblar Tabla
         </button>
       </div>
 
-      <!-- Columna Derecha: Los 5 Productos Base con Códigos EAN-13 Exactos -->
-      <div class="lg:col-span-5 flex flex-col gap-3 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+      <!-- Columna Derecha: Lector EAN-13 Simulado -->
+      <div class="lg:col-span-5 flex flex-col gap-3 bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
         <div>
-          <h3 class="text-lg font-black text-slate-900">2. Lector de Códigos EAN-13 (5 Productos Base)</h3>
+          <h3 class="text-sm font-bold text-slate-900">Lectura de Códigos EAN-13</h3>
           <p class="text-xs text-slate-500 mt-0.5">
-            Toca cualquier producto para simular su lectura con pistola láser o desde el celular:
+            Haz clic en un producto para simular su lectura con escáner:
           </p>
         </div>
 
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-1.5 max-h-[300px] overflow-y-auto pr-1">
           @for (p of baseFiveProducts(); track p.barcode) {
             <button type="button" (click)="simulateBarcodeScanOnPC(p.barcode)"
-              class="min-h-[60px] rounded-xl border border-slate-200 hover:border-emerald-500 bg-slate-50/70 hover:bg-emerald-50/60 px-3.5 py-2.5 text-left flex items-center justify-between gap-2 transition-all">
+              class="rounded-lg border border-slate-200 hover:border-slate-400 bg-white hover:bg-slate-50 p-2.5 text-left flex items-center justify-between gap-2 transition-all">
               <div>
-                <p class="font-mono text-[11px] font-bold text-emerald-700">EAN-13: {{ p.barcode }}</p>
-                <p class="text-sm font-black text-slate-900">{{ p.emoji }} {{ p.name }}</p>
-                <p class="text-xs text-slate-500">Costo Hist: {{ p.historicCost | currency:'MXN':'symbol-narrow' }} · Meta: {{ p.targetMargin }}%</p>
+                <p class="font-mono text-[10px] font-semibold text-slate-500">EAN-13: {{ p.barcode }}</p>
+                <p class="text-xs font-bold text-slate-900">{{ p.name }}</p>
+                <p class="text-[11px] text-slate-400">Costo Hist: {{ p.historicCost | currency:'MXN':'symbol-narrow' }}</p>
               </div>
               <div class="text-right shrink-0">
-                <span class="block text-base font-black text-emerald-700 tabular-nums">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
-                <span class="inline-block mt-0.5 px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[11px] font-extrabold">
-                  ➕ Simular
+                <span class="block text-sm font-bold text-slate-900 font-mono">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+                <span class="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">
+                  Simular
                 </span>
               </div>
             </button>
@@ -192,58 +184,47 @@
   }
 </section>
 
-<!-- ===================== SELECTOR DE MODO (TABS MODERNOS) ===================== -->
-<div class="grid md:grid-cols-2 gap-3 mb-6" role="tablist" aria-label="Forma de capturar la nota">
+<!-- ===================== SELECTOR DE MODO ===================== -->
+<div class="grid md:grid-cols-2 gap-3 mb-5" role="tablist" aria-label="Forma de capturar la nota">
   <button type="button" role="tab" [attr.aria-selected]="mode() === 'ocr'" (click)="setMode('ocr')"
-    class="h-16 rounded-2xl border-2 px-5 text-lg font-extrabold flex items-center justify-between gap-3 transition-all"
+    class="h-13 rounded-xl border px-4 text-sm font-bold flex items-center justify-between gap-3 transition-all"
     [class]="mode() === 'ocr'
-      ? 'border-slate-900 bg-slate-900 text-white shadow-md'
-      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'">
-    <div class="flex items-center gap-3">
-      <span class="text-2xl">📱</span>
-      <span>Cargar Nota recibida del Celular (OCR)</span>
-    </div>
+      ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
+    <span>Nota Recibida por OCR (Celular / Foto)</span>
     @if (inv.ocrNote()) {
-      <span class="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500 text-slate-950">Activa</span>
+      <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950">Activa</span>
     }
   </button>
 
   <button type="button" role="tab" [attr.aria-selected]="mode() === 'manual'" (click)="setMode('manual')"
-    class="h-16 rounded-2xl border-2 px-5 text-lg font-extrabold flex items-center justify-between gap-3 transition-all"
+    class="h-13 rounded-xl border px-4 text-sm font-bold flex items-center justify-between gap-3 transition-all"
     [class]="mode() === 'manual'
-      ? 'border-slate-900 bg-slate-900 text-white shadow-md'
-      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs'">
-    <div class="flex items-center gap-3">
-      <span class="text-2xl">✍️</span>
-      <span>Captura Manual de Factura / Nota</span>
-    </div>
-    <span class="text-xs font-bold opacity-75">Sin foto</span>
+      ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
+    <span>Captura Manual de Factura / Nota</span>
+    <span class="text-xs text-slate-400 font-normal">Sin foto</span>
   </button>
 </div>
 
 <!-- ===================== ÉXITO AL GUARDAR ===================== -->
 @if (savedSummary(); as s) {
-  <section class="rounded-3xl border-2 border-emerald-500 bg-emerald-50/90 p-8 text-center flex flex-col items-center gap-3 shadow-sm">
-    <div class="w-20 h-20 rounded-3xl bg-emerald-600 text-white flex items-center justify-center text-5xl shadow-md">
-      ✓
-    </div>
-    <h2 class="text-3xl font-black text-emerald-950 mt-1">¡Mercancía guardada en tu inventario!</h2>
-    <p class="text-lg text-slate-700">
-      Nota <b>{{ s.folio }}</b> · {{ s.lines }} productos actualizados · Total <b>{{ s.total | currency:'MXN':'symbol-narrow' }}</b>
+  <section class="rounded-2xl border border-emerald-300 bg-emerald-50/80 p-6 text-center flex flex-col items-center gap-3 shadow-2xs">
+    <h2 class="text-xl font-bold text-emerald-950">Mercancía registrada con éxito</h2>
+    <p class="text-sm text-slate-700">
+      Nota <b>{{ s.folio }}</b> · {{ s.lines }} productos actualizados · Total: <b class="font-mono">{{ s.total | currency:'MXN':'symbol-narrow' }}</b>
     </p>
     @if (s.adjusted > 0) {
-      <div class="px-4 py-2 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-900 font-extrabold text-base">
-        🛡️ Protegiste tu margen de ganancia en {{ s.adjusted }} producto(s) al actualizar su precio de venta.
+      <div class="px-3.5 py-1.5 rounded-lg bg-emerald-100 border border-emerald-200 text-emerald-900 font-bold text-xs">
+        Se actualizó el precio de venta en {{ s.adjusted }} producto(s) para proteger el margen de ganancia.
       </div>
     }
-    <div class="grid sm:grid-cols-2 gap-4 mt-4 w-full max-w-xl">
-      <a routerLink="/" class="btn h-16 rounded-2xl border-2 border-emerald-800 bg-emerald-600 text-white text-lg font-extrabold flex items-center justify-center gap-2 hover:bg-emerald-700 shadow-sm">
-        <span>🏠</span>
-        <span>Volver al Inicio</span>
+    <div class="grid sm:grid-cols-2 gap-3 mt-3 w-full max-w-md">
+      <a routerLink="/" class="h-11 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center justify-center transition-colors">
+        Volver al Inicio
       </a>
-      <a routerLink="/catalogo" class="btn h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-900 text-lg font-extrabold flex items-center justify-center gap-2 hover:bg-slate-50">
-        <span>📦</span>
-        <span>Ver Precios en Catálogo</span>
+      <a routerLink="/catalogo" class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center justify-center transition-colors">
+        Ver Catálogo de Precios
       </a>
     </div>
   </section>
@@ -252,197 +233,188 @@
   <!-- ===================== MODO OCR: CABECERA DE LA NOTA ===================== -->
   @if (mode() === 'ocr') {
     @if (inv.ocrNote(); as note) {
-      <section class="rounded-2xl border border-slate-200 bg-white p-5 mb-5 shadow-xs grid md:grid-cols-4 gap-4 items-center">
-        <div class="md:col-span-3 grid sm:grid-cols-3 gap-4">
-          <div class="rounded-xl bg-slate-50 border border-slate-200/80 px-3.5 py-2.5">
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Proveedor</p>
-            <p class="text-base font-extrabold text-slate-900 mt-0.5">🚚 {{ note.supplier }}</p>
+      <section class="rounded-xl border border-slate-200 bg-white p-4 mb-4 shadow-2xs grid md:grid-cols-4 gap-3 items-center">
+        <div class="md:col-span-3 grid sm:grid-cols-3 gap-3">
+          <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Proveedor</span>
+            <p class="text-sm font-bold text-slate-900 mt-0.5 truncate">{{ note.supplier }}</p>
           </div>
-          <div class="rounded-xl bg-slate-50 border border-slate-200/80 px-3.5 py-2.5">
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Folio y Fecha</p>
-            <p class="text-base font-extrabold text-slate-900 mt-0.5">#{{ note.folio }} · {{ note.date }}</p>
+          <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Folio y Fecha</span>
+            <p class="text-sm font-bold text-slate-900 mt-0.5 font-mono">#{{ note.folio }} · {{ note.date }}</p>
           </div>
-          <div class="rounded-xl bg-slate-50 border border-slate-200/80 px-3.5 py-2.5">
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Origen de Captura</p>
-            <p class="text-base font-extrabold text-slate-900 mt-0.5">📱 {{ note.receivedFrom }}</p>
+          <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Origen</span>
+            <p class="text-sm font-bold text-slate-900 mt-0.5">{{ note.receivedFrom }}</p>
           </div>
         </div>
-        <div class="text-right bg-slate-900 text-white rounded-xl px-4 py-3">
-          <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Total de la Nota</p>
-          <p class="text-2xl font-black text-emerald-400 tabular-nums">{{ total() | currency:'MXN':'symbol-narrow' }}</p>
+        <div class="text-right bg-slate-900 text-white rounded-lg px-3 py-2.5">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Nota</span>
+          <p class="text-xl font-black text-emerald-400 font-mono">{{ total() | currency:'MXN':'symbol-narrow' }}</p>
         </div>
       </section>
     } @else {
-      <section class="rounded-3xl border border-slate-200 bg-white p-8 text-center flex flex-col items-center gap-4 shadow-xs">
-        <div class="text-6xl">📭</div>
-        <p class="text-2xl font-black text-slate-900">No hay notas pendientes del celular</p>
-        <p class="text-base text-slate-600 max-w-xl">
-          Pídele a quien recibe que toque <b>"📸 Fotografiar Nota de Proveedor"</b> en el celular o carga una nota de prueba:
+      <section class="rounded-2xl border border-slate-200 bg-white p-8 text-center flex flex-col items-center gap-3 shadow-2xs">
+        <p class="text-lg font-bold text-slate-900">No hay notas pendientes del celular</p>
+        <p class="text-xs text-slate-500 max-w-md">
+          Usa la opción de fotografiar nota desde el celular o carga una nota de prueba para continuar:
         </p>
         <button type="button" (click)="reloadNote()"
-          class="h-16 px-8 rounded-2xl border-2 border-blue-800 bg-blue-600 text-white text-lg font-extrabold hover:bg-blue-700 shadow-sm">
-          🔄 Cargar Nota de Prueba (#DB-20931)
+          class="h-11 px-6 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors">
+          Cargar Nota de Prueba (#DB-20931)
         </button>
       </section>
     }
   }
 
-  <!-- ===================== MODO MANUAL: FORMULARIO BENTO ===================== -->
+  <!-- ===================== MODO MANUAL ===================== -->
   @if (mode() === 'manual') {
-    <section class="rounded-2xl border border-slate-200 bg-white p-5 mb-5 shadow-xs">
-      <h2 class="text-lg font-black text-slate-900 mb-4">✍️ Agrega cada producto recibido en mostrador</h2>
-      <div class="grid lg:grid-cols-12 gap-4 items-end">
-        <label class="lg:col-span-5 flex flex-col gap-1.5">
-          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">1. ¿Qué producto llegó?</span>
+    <section class="rounded-xl border border-slate-200 bg-white p-4 mb-4 shadow-2xs">
+      <h2 class="text-sm font-bold text-slate-900 mb-3">Agregar producto recibido en mostrador</h2>
+      <div class="grid lg:grid-cols-12 gap-3 items-end">
+        <label class="lg:col-span-5 flex flex-col gap-1">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Producto</span>
           <select [ngModel]="manualSku" (ngModelChange)="onManualSkuChange($event)"
-            class="h-14 rounded-xl border border-slate-300 bg-slate-50 px-3.5 text-base font-bold text-slate-900 focus:bg-white focus:border-blue-600 outline-none">
-            <option value="" disabled>— Toca para elegir producto —</option>
+            class="h-11 rounded-lg border border-slate-300 bg-slate-50 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-slate-500 outline-none">
+            <option value="" disabled>— Seleccionar producto —</option>
             @for (p of inv.products(); track p.sku) {
-              <option [value]="p.sku">{{ p.emoji }} {{ p.name }} ({{ p.barcode }})</option>
+              <option [value]="p.sku">{{ p.name }} ({{ p.barcode }})</option>
             }
           </select>
         </label>
 
-        <div class="lg:col-span-3 flex flex-col gap-1.5">
-          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">
-            2. Cantidad ({{ selectedProduct()?.purchaseUnit ?? 'Unidades' }})
+        <div class="lg:col-span-3 flex flex-col gap-1">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Cantidad ({{ selectedProduct()?.purchaseUnit ?? 'Unidades' }})
           </span>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <button type="button" (click)="changeManualQty(-1)" aria-label="Quitar uno"
-              class="w-14 h-14 rounded-xl border border-slate-300 bg-slate-100 text-2xl font-black hover:bg-slate-200">−</button>
-            <span class="flex-1 text-center text-2xl font-black tabular-nums">{{ manualQty }}</span>
+              class="w-11 h-11 rounded-lg border border-slate-200 bg-slate-50 text-base font-bold text-slate-700 hover:bg-slate-100 flex items-center justify-center">−</button>
+            <span class="flex-1 text-center text-lg font-bold font-mono text-slate-900">{{ manualQty }}</span>
             <button type="button" (click)="changeManualQty(1)" aria-label="Agregar uno"
-              class="w-14 h-14 rounded-xl border border-slate-300 bg-slate-100 text-2xl font-black hover:bg-slate-200">+</button>
+              class="w-11 h-11 rounded-lg border border-slate-200 bg-slate-50 text-base font-bold text-slate-700 hover:bg-slate-100 flex items-center justify-center">+</button>
           </div>
         </div>
 
-        <label class="lg:col-span-2 flex flex-col gap-1.5">
-          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">
-            3. Costo / {{ (selectedProduct()?.purchaseUnit ?? 'unidad').toLowerCase() }}
+        <label class="lg:col-span-2 flex flex-col gap-1">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Costo / {{ (selectedProduct()?.purchaseUnit ?? 'unidad').toLowerCase() }}
           </span>
           <input type="number" min="0" step="0.5" [(ngModel)]="manualCost" placeholder="$0.00"
-            class="h-14 rounded-xl border border-slate-300 bg-slate-50 px-3.5 text-lg font-black tabular-nums focus:bg-white focus:border-blue-600 outline-none" />
+            class="h-11 rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm font-bold font-mono text-slate-900 focus:bg-white focus:border-slate-500 outline-none" />
         </label>
 
         <button type="button" (click)="addManualLine()" [disabled]="!manualSku || !manualCost"
-          class="lg:col-span-2 h-14 rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white text-base font-extrabold hover:bg-emerald-700 disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400">
-          ➕ Agregar
+          class="lg:col-span-2 h-11 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold disabled:bg-slate-200 disabled:text-slate-400 transition-colors">
+          + Agregar
         </button>
       </div>
 
       @if (selectedProduct(); as p) {
-        <div class="mt-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-2 text-xs text-slate-600 flex flex-wrap gap-4">
-          <span>Código EAN-13: <b class="font-mono text-slate-900">{{ p.barcode }}</b></span>
-          <span>Costo histórico: <b class="text-slate-900">{{ p.historicCost | currency:'MXN':'symbol-narrow' }}</b></span>
-          <span>Precio venta actual: <b class="text-emerald-700">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</b></span>
-          <span>Margen objetivo: <b class="text-slate-900">{{ p.targetMargin }}%</b></span>
+        <div class="mt-2.5 rounded-lg bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs text-slate-600 flex flex-wrap gap-3">
+          <span>Código: <b class="font-mono text-slate-900">{{ p.barcode }}</b></span>
+          <span>Costo histórico: <b class="text-slate-900 font-mono">{{ p.historicCost | currency:'MXN':'symbol-narrow' }}</b></span>
+          <span>Precio venta actual: <b class="text-emerald-700 font-mono">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</b></span>
+          <span>Margen meta: <b class="text-slate-900 font-mono">{{ p.targetMargin }}%</b></span>
         </div>
       }
     </section>
 
     @if (lines().length === 0) {
-      <section class="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-10 text-center">
-        <p class="text-xl font-black text-slate-700">📝 Aquí aparecerán los productos que agregues</p>
-        <p class="text-sm text-slate-500 mt-1">También puedes escanear un código EAN-13 desde el celular y se agregará al instante.</p>
+      <section class="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 text-xs">
+        <p class="font-bold text-slate-700 text-sm">No hay productos agregados</p>
+        <p class="mt-0.5">Selecciona un producto arriba o escanea un código para ingresarlo.</p>
       </section>
     }
   }
 
-  <!-- ===================== TABLA DE AUDITORÍA DE COSTOS Y BLINDAJE ===================== -->
+  <!-- ===================== TABLA DE AUDITORÍA DE COSTOS ===================== -->
   @if (lines().length > 0) {
-    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto mb-6">
-      <table class="w-full text-left border-collapse">
-        <thead class="bg-slate-900 text-white text-xs uppercase tracking-wider">
+    <section class="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-x-auto mb-5">
+      <table class="w-full text-left border-collapse text-xs">
+        <thead class="bg-slate-900 text-white uppercase tracking-wider text-[11px]">
           <tr>
-            <th class="p-4">Producto Recibido</th>
-            <th class="p-4">Cantidad / Importe</th>
-            <th class="p-4 text-right">Costo Antes</th>
-            <th class="p-4 text-right">Costo Nuevo</th>
-            <th class="p-4 text-right">Precio Venta</th>
-            <th class="p-4">Diagnóstico de Margen y Blindaje</th>
-            @if (mode() === 'manual') { <th class="p-4"></th> }
+            <th class="p-3">Producto Recibido</th>
+            <th class="p-3">Cantidad / Importe</th>
+            <th class="p-3 text-right">Costo Anterior</th>
+            <th class="p-3 text-right">Costo Nuevo</th>
+            <th class="p-3 text-right">Precio Venta</th>
+            <th class="p-3">Diagnóstico de Margen</th>
+            @if (mode() === 'manual') { <th class="p-3"></th> }
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-200">
+        <tbody class="divide-y divide-slate-100">
           @for (l of lines(); track l.sku) {
-            <tr class="align-top transition-colors"
-              [class]="l.broken ? 'bg-red-50/80 hover:bg-red-50' : (l.resolved ? 'bg-emerald-50/60 hover:bg-emerald-50' : 'hover:bg-slate-50/80')">
-              <td class="p-4" [class.border-l-4]="l.broken || l.resolved" [class.border-l-red-600]="l.broken" [class.border-l-emerald-600]="l.resolved">
-                <div class="flex items-start gap-3">
-                  <span class="text-3xl leading-none mt-0.5">{{ l.emoji }}</span>
-                  <div>
-                    <p class="text-base font-black text-slate-900">{{ l.name }}</p>
-                    <p class="text-xs font-mono text-slate-500 mt-0.5">SKU {{ l.sku }} @if (l.barcode) { · EAN {{ l.barcode }} }</p>
-                  </div>
-                </div>
+            <tr class="align-top hover:bg-slate-50 transition-colors"
+              [class]="l.broken ? 'bg-red-50/50' : (l.resolved ? 'bg-emerald-50/40' : '')">
+              <td class="p-3">
+                <p class="text-sm font-bold text-slate-900 leading-snug">{{ l.name }}</p>
+                <p class="text-[11px] font-mono text-slate-400 mt-0.5">SKU: {{ l.sku }} @if (l.barcode) { · EAN: {{ l.barcode }} }</p>
               </td>
 
-              <td class="p-4">
-                <p class="text-base font-extrabold text-slate-900">
+              <td class="p-3">
+                <p class="font-bold text-slate-900">
                   {{ l.qtyPurchase }} {{ l.purchaseUnit }}{{ l.qtyPurchase > 1 ? (l.purchaseUnit === 'Costal' ? 'es' : (l.purchaseUnit === 'Kg' ? '' : 's')) : '' }}
                 </p>
-                <p class="text-xs text-slate-500 mt-0.5">Importe: <b class="text-slate-700">{{ l.lineTotal | currency:'MXN':'symbol-narrow' }}</b></p>
+                <p class="text-[11px] text-slate-500 font-mono">Importe: {{ l.lineTotal | currency:'MXN':'symbol-narrow' }}</p>
               </td>
 
-              <td class="p-4 text-right text-base font-semibold text-slate-600 tabular-nums">
+              <td class="p-3 text-right font-medium text-slate-600 font-mono">
                 {{ l.historicCost | currency:'MXN':'symbol-narrow' }}
               </td>
 
-              <td class="p-4 text-right tabular-nums">
-                <span class="text-base font-black" [class]="l.costUp ? 'text-red-700' : 'text-slate-900'">
+              <td class="p-3 text-right font-mono">
+                <span class="font-bold" [class]="l.costUp ? 'text-red-700' : 'text-slate-900'">
                   {{ l.newCost | currency:'MXN':'symbol-narrow' }}
                 </span>
                 @if (l.costUp) {
-                  <span class="block text-xs font-extrabold text-red-600 mt-0.5">
-                    🔺 +{{ l.newCost - l.historicCost | currency:'MXN':'symbol-narrow' }}
+                  <span class="block text-[10px] font-bold text-red-600">
+                    +{{ l.newCost - l.historicCost | currency:'MXN':'symbol-narrow' }}
                   </span>
                 }
               </td>
 
-              <td class="p-4 text-right">
-                <span class="text-xl font-black text-slate-900 tabular-nums">{{ l.salePrice | currency:'MXN':'symbol-narrow' }}</span>
-                <span class="block text-xs text-slate-400">por {{ l.saleUnit }}</span>
+              <td class="p-3 text-right font-mono">
+                <span class="text-sm font-bold text-slate-900">{{ l.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+                <span class="block text-[10px] text-slate-400">/{{ l.saleUnit }}</span>
               </td>
 
-              <td class="p-4 min-w-[310px]">
+              <td class="p-3 min-w-[280px]">
                 @if (l.broken) {
-                  <div class="rounded-2xl border-2 border-red-300 bg-white p-3.5 flex flex-col gap-2 shadow-2xs">
+                  <div class="rounded-lg border border-red-200 bg-white p-3 flex flex-col gap-1.5 shadow-2xs">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="px-2.5 py-1 rounded-lg bg-red-600 text-white text-xs font-extrabold">
-                        ⚠️ ¡Subió el costo! Margen cayó al {{ l.margin | number:'1.0-0' }}%
+                      <span class="px-2 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-bold uppercase">
+                        Margen caído: {{ l.margin | number:'1.0-0' }}%
                       </span>
-                      <span class="text-xs font-bold text-slate-500">Meta: {{ l.targetMargin }}%</span>
+                      <span class="text-[10px] text-slate-400">Meta: {{ l.targetMargin }}%</span>
                     </div>
-                    <p class="text-xs text-red-900">
-                      Con el precio actual solo ganas <b>{{ l.salePrice - l.newCost | currency:'MXN':'symbol-narrow' }}</b> por {{ l.saleUnit === 'Kg' ? 'kilo' : 'pieza' }}.
+                    <p class="text-[11px] text-slate-600">
+                      Ganancia reducida a <b>{{ l.salePrice - l.newCost | currency:'MXN':'symbol-narrow' }}</b> por {{ l.saleUnit === 'Kg' ? 'kg' : 'unidad' }}.
                     </p>
                     <button type="button" (click)="applySuggested(l)"
-                      class="h-14 rounded-xl border-2 border-amber-700 bg-amber-400 hover:bg-amber-300 text-slate-950 text-base font-black px-4 shadow-xs flex items-center justify-center gap-2">
-                      <span>💲</span>
-                      <span>Ajustar Precio Sugerido a {{ l.suggested | currency:'MXN':'symbol-narrow' }}</span>
+                      class="h-9 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 flex items-center justify-center transition-colors">
+                      Ajustar Precio a {{ l.suggested | currency:'MXN':'symbol-narrow' }}
                     </button>
-                    <span class="text-[11px] font-semibold text-slate-500 text-center">
-                      Redondeado comercialmente · Nuevo margen: <b class="text-emerald-700">{{ l.suggestedMargin | number:'1.0-0' }}%</b>
+                    <span class="text-[10px] text-slate-500 text-center">
+                      Nuevo margen proyectado: <b class="text-emerald-700">{{ l.suggestedMargin | number:'1.0-0' }}%</b>
                     </span>
                   </div>
                 } @else if (l.resolved) {
-                  <div class="rounded-xl bg-emerald-600 text-white px-3.5 py-2.5 font-extrabold text-sm flex items-center gap-2 shadow-2xs">
-                    <span>✔️</span>
-                    <span>Precio blindado · Ganas {{ l.margin | number:'1.0-0' }}%</span>
-                  </div>
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-xs font-semibold">
+                    Precio protegido · Margen: {{ l.margin | number:'1.0-0' }}%
+                  </span>
                 } @else {
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-extrabold text-sm">
-                    <span>✔️</span>
-                    <span>Margen sano · {{ l.margin | number:'1.0-0' }}%</span>
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
+                    Margen adecuado · {{ l.margin | number:'1.0-0' }}%
                   </span>
                 }
               </td>
 
               @if (mode() === 'manual') {
-                <td class="p-4">
+                <td class="p-3">
                   <button type="button" (click)="removeManualLine(l.sku)"
-                    class="h-12 px-3.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300">
-                    ✖️ Quitar
+                    class="text-xs font-semibold text-slate-400 hover:text-red-600">
+                    Quitar
                   </button>
                 </td>
               }
@@ -453,31 +425,28 @@
     </section>
 
     <!-- ===================== BARRA INFERIOR DE GUARDADO BLINDADO ===================== -->
-    <section class="rounded-2xl border-2 p-5 flex flex-col lg:flex-row items-center justify-between gap-5 shadow-sm"
-      [class]="canSave() ? 'border-emerald-500 bg-emerald-50/90' : 'border-red-400 bg-red-50/90'">
-      <div class="flex items-start gap-3.5">
-        <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
-          [class]="canSave() ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'">
-          {{ canSave() ? '✓' : '🔒' }}
-        </div>
-        <div>
-          @if (canSave()) {
-            <p class="text-xl font-black text-emerald-950">Todo listo para registrar la entrada en el Kardex</p>
-            <p class="text-sm text-slate-700">
-              {{ lines().length }} productos verificados · Total <b>{{ total() | currency:'MXN':'symbol-narrow' }}</b> · Todos los márgenes están protegidos.
-            </p>
-          } @else {
-            <p class="text-xl font-black text-red-900">Entrada bloqueada por inflación de proveedor</p>
-            <p class="text-sm text-red-950">
-              Tienes <b>{{ pendingCount() }} producto(s) con margen roto</b>. Toca el botón amarillo <b>"Ajustar Precio Sugerido"</b> en cada fila roja para continuar.
-            </p>
-          }
-        </div>
+    <section class="rounded-xl border p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs"
+      [class]="canSave() ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70'">
+      <div>
+        @if (canSave()) {
+          <p class="text-sm font-bold text-emerald-950">Listo para registrar entrada</p>
+          <p class="text-xs text-slate-600">
+            {{ lines().length }} productos verificados · Total: <b class="font-mono">{{ total() | currency:'MXN':'symbol-narrow' }}</b> · Todos los márgenes están protegidos.
+          </p>
+        } @else {
+          <p class="text-sm font-bold text-amber-950">Entrada pausada por alza de costos</p>
+          <p class="text-xs text-slate-600">
+            Tienes <b>{{ pendingCount() }} producto(s) con margen insuficiente</b>. Ajusta los precios sugeridos para guardar.
+          </p>
+        }
       </div>
 
       <button type="button" (click)="save()" [disabled]="!canSave()"
-        class="h-16 w-full lg:w-auto px-8 rounded-2xl border-2 text-lg font-black shadow-md transition-all border-emerald-800 bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-400 disabled:shadow-none shrink-0">
-        @if (canSave()) { 💾 Guardar Entrada en Inventario } @else { 🔒 Ajusta los Precios en Rojo Primero }
+        class="h-12 w-full sm:w-auto px-6 rounded-xl font-bold text-xs shadow-2xs transition-colors shrink-0"
+        [class]="canSave()
+          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+          : 'bg-slate-200 text-slate-400 cursor-not-allowed'">
+        {{ canSave() ? 'Guardar Entrada en Inventario' : 'Ajustar Precios para Continuar' }}
       </button>
     </section>
   }

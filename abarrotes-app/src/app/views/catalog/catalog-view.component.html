@@ -1,253 +1,254 @@
 <!-- ===================== ENCABEZADO Y BOTÓN DE HOJA PDF GRANEL ===================== -->
-<section class="mb-6 flex flex-wrap items-center justify-between gap-4 print:hidden">
+<section class="mb-5 flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 print:hidden">
   <div>
-    <div class="flex items-center gap-2">
-      <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-extrabold uppercase tracking-wider border border-blue-200">
-        Estrategia ABC · ROP · FEFO · Costo Promedio vs Reposición
-      </span>
-    </div>
-    <h1 class="text-3xl font-black text-slate-900 mt-1">📦 Catálogo Maestro y Punto de Reorden</h1>
-    <p class="text-base text-slate-600">Prioriza tus productos críticos (Clase A), vigila el Punto de Reorden y protege tu margen contra inflación.</p>
+    <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+      Estrategia ABC · ROP · FEFO · Costo Promedio vs Reposición
+    </span>
+    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Catálogo Maestro y Punto de Reorden</h1>
+    <p class="text-sm text-slate-600 mt-0.5">Control de artículos de alta rotación (Clase A), reposición y márgenes contra inflación.</p>
   </div>
 
   <button
     type="button"
     (click)="openBulkSheetModal()"
-    class="h-16 px-6 rounded-2xl border-2 border-amber-700 bg-amber-500 hover:bg-amber-600 text-slate-950 text-lg font-extrabold shadow-sm hover:shadow-md flex items-center gap-3 transition-all">
-    <span class="text-2xl">🖨️</span>
-    <span>Generar Hoja PDF de Códigos de Mostrador (Granel)</span>
+    class="h-11 px-5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold shadow-2xs flex items-center gap-2 transition-all">
+    <span>Generar Hoja PDF de Mostrador (Granel)</span>
   </button>
 </section>
 
-<!-- ===================== FILTROS RÁPIDOS POR CLASIFICACIÓN ABC (PARETO) ===================== -->
-<section class="mb-5 print:hidden" aria-label="Filtrar por Clasificación ABC">
-  <p class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">
-    1. Filtrar por importancia en tus ventas (Clasificación ABC / Ley de Pareto):
-  </p>
-  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+<!-- ===================== FILTROS POR CLASIFICACIÓN ABC (PARETO) ===================== -->
+<section class="mb-4 print:hidden" aria-label="Filtrar por Clasificación ABC">
+  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
     <button
       type="button"
       (click)="abcFilter.set('ALL')"
-      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      class="h-13 rounded-xl border px-3.5 text-left flex items-center justify-between transition-all"
       [class]="abcFilter() === 'ALL'
-        ? 'border-slate-900 bg-slate-900 text-white shadow-md'
-        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50 shadow-xs'">
-      <span class="font-extrabold text-base">📋 Todos los Productos</span>
-      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-slate-200 text-slate-900">{{ abcCounts().all }}</span>
+        ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
+      <span class="font-bold text-xs">Todos los Productos</span>
+      <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold"
+        [class]="abcFilter() === 'ALL' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'">
+        {{ abcCounts().all }}
+      </span>
     </button>
 
     <button
       type="button"
       (click)="abcFilter.set('A')"
-      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      class="h-13 rounded-xl border px-3.5 text-left flex items-center justify-between transition-all"
       [class]="abcFilter() === 'A'
-        ? 'border-emerald-800 bg-emerald-600 text-white shadow-md'
-        : 'border-emerald-200 bg-white text-slate-800 hover:bg-emerald-50 shadow-xs'">
+        ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
       <div>
-        <span class="block font-extrabold text-base">🔥 Clase A (80% Ventas - Críticos)</span>
-        <span class="block text-xs opacity-85">Nunca deben agotarse</span>
+        <span class="block font-bold text-xs">Clase A (Críticos · 80% Utilidad)</span>
+        <span class="block text-[11px] text-slate-400">Máxima prioridad</span>
       </div>
-      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-900">{{ abcCounts().A }}</span>
+      <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold"
+        [class]="abcFilter() === 'A' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'">
+        {{ abcCounts().A }}
+      </span>
     </button>
 
     <button
       type="button"
       (click)="abcFilter.set('B')"
-      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      class="h-13 rounded-xl border px-3.5 text-left flex items-center justify-between transition-all"
       [class]="abcFilter() === 'B'
-        ? 'border-blue-800 bg-blue-600 text-white shadow-md'
-        : 'border-blue-200 bg-white text-slate-800 hover:bg-blue-50 shadow-xs'">
+        ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
       <div>
-        <span class="block font-extrabold text-base">⚡ Clase B (Rotación Media)</span>
-        <span class="block text-xs opacity-85">Complementarios de pasillo</span>
+        <span class="block font-bold text-xs">Clase B (Rotación Media)</span>
+        <span class="block text-[11px] text-slate-400">Complementarios</span>
       </div>
-      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-blue-100 text-blue-900">{{ abcCounts().B }}</span>
+      <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold"
+        [class]="abcFilter() === 'B' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'">
+        {{ abcCounts().B }}
+      </span>
     </button>
 
     <button
       type="button"
       (click)="abcFilter.set('C')"
-      class="h-16 rounded-2xl border-2 px-4 text-left flex items-center justify-between transition-all"
+      class="h-13 rounded-xl border px-3.5 text-left flex items-center justify-between transition-all"
       [class]="abcFilter() === 'C'
-        ? 'border-amber-800 bg-amber-600 text-white shadow-md'
-        : 'border-amber-200 bg-white text-slate-800 hover:bg-amber-50 shadow-xs'">
+        ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
       <div>
-        <span class="block font-extrabold text-base">💤 Clase C (Dinero Dormido / Liquidar)</span>
-        <span class="block text-xs opacity-85">Baja rotación · No sobre-comprar</span>
+        <span class="block font-bold text-xs">Clase C (Baja Rotación)</span>
+        <span class="block text-[11px] text-slate-400">Capital dormido</span>
       </div>
-      <span class="px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900">{{ abcCounts().C }}</span>
+      <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold"
+        [class]="abcFilter() === 'C' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'">
+        {{ abcCounts().C }}
+      </span>
     </button>
   </div>
 </section>
 
 <!-- ===================== BUSCADOR Y CATEGORÍAS ===================== -->
-<section class="mb-5 bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col gap-3 print:hidden">
-  <div class="flex flex-col md:flex-row gap-3">
-    <label class="flex-1 flex items-center gap-3 h-14 rounded-xl border border-slate-300 bg-slate-50 px-4 focus-within:border-blue-600">
-      <span class="text-2xl" aria-hidden="true">🔎</span>
-      <span class="sr-only">Buscar producto</span>
+<section class="mb-4 bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-col gap-2.5 print:hidden">
+  <div class="flex flex-col md:flex-row gap-2">
+    <div class="flex-1 flex items-center gap-2 px-3 h-10 rounded-lg border border-slate-200 bg-slate-50 focus-within:border-slate-400 focus-within:bg-white transition-all">
+      <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
       <input
         type="text"
         [value]="search()"
         (input)="onSearch($event)"
-        placeholder="Busca por nombre (ej. Nutrioli, Queso, Lala), SKU o código EAN-13..."
-        class="flex-1 text-lg font-semibold outline-none bg-transparent"
+        placeholder="Buscar por nombre, SKU o código EAN-13..."
+        class="flex-1 text-xs font-medium outline-none bg-transparent placeholder:text-slate-400"
       />
-    </label>
-    @if (search()) {
-      <button type="button" (click)="clearSearch()"
-        class="h-14 px-6 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-base font-bold">
-        ✖️ Borrar búsqueda
-      </button>
-    }
+      @if (search()) {
+        <button type="button" (click)="clearSearch()" class="text-xs text-slate-400 hover:text-slate-700 font-semibold">
+          Limpiar
+        </button>
+      }
+    </div>
   </div>
 
   <!-- Categorías -->
-  <div class="flex flex-wrap gap-2" aria-label="Filtrar por categoría">
+  <div class="flex flex-wrap gap-1.5" aria-label="Filtrar por categoría">
     @for (c of categories(); track c) {
       <button
         type="button"
         (click)="category.set(c)"
         [attr.aria-pressed]="category() === c"
-        class="h-12 px-4 rounded-xl border text-sm font-extrabold transition-all"
+        class="h-7 px-2.5 rounded-md text-xs font-semibold transition-all"
         [class]="category() === c
-          ? 'border-blue-700 bg-blue-600 text-white shadow-xs'
-          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'">
+          ? 'bg-slate-800 text-white'
+          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
         {{ c }}
       </button>
     }
   </div>
 </section>
 
-<!-- ===================== TABLA MODERNA CON ABC, ROP, VALUACIÓN Y FEFO ===================== -->
-<section class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto print:hidden">
-  <table class="w-full text-left border-collapse">
-    <thead class="bg-slate-900 text-white text-sm uppercase tracking-wider">
+<!-- ===================== TABLA CON ABC, ROP, VALUACIÓN Y FEFO ===================== -->
+<section class="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-x-auto print:hidden">
+  <table class="w-full text-left border-collapse text-xs">
+    <thead class="bg-slate-900 text-white uppercase tracking-wider text-[11px]">
       <tr>
-        <th class="p-4">Producto / Clase ABC</th>
-        <th class="p-4">Stock vs Punto de Reorden (ROP)</th>
-        <th class="p-4 text-right">Costo Promedio vs Último Costo</th>
-        <th class="p-4 text-right">Precio Venta</th>
-        <th class="p-4">Margen Real</th>
-        <th class="p-4">Semáforo FEFO / Cambio Físico</th>
+        <th class="p-3">Producto / Clase</th>
+        <th class="p-3">Existencia vs ROP</th>
+        <th class="p-3 text-right">Costo Promedio vs Último Costo</th>
+        <th class="p-3 text-right">Precio Venta</th>
+        <th class="p-3">Margen Real</th>
+        <th class="p-3">Caducidad FEFO</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-slate-200">
+    <tbody class="divide-y divide-slate-100">
       @for (p of rows(); track p.sku) {
-        <tr class="hover:bg-slate-50/80 transition-colors align-top">
+        <tr class="hover:bg-slate-50 transition-colors align-top">
           <!-- 1. Producto + Clase ABC -->
-          <td class="p-4">
-            <div class="flex items-start gap-3">
-              <span class="text-3xl leading-none mt-0.5">{{ p.emoji }}</span>
-              <div>
-                <div class="flex flex-wrap items-center gap-1.5 mb-1">
-                  <span class="px-2 py-0.5 rounded-md text-xs font-extrabold"
-                    [class]="p.abcClass === 'A'
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : (p.abcClass === 'B' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-700 border border-slate-300')">
-                    {{ p.abcClass === 'A' ? '🔥 Clase A' : (p.abcClass === 'B' ? '⚡ Clase B' : '💤 Clase C') }}
-                  </span>
-                  @if (p.isBulk) {
-                    <span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold">
-                      ⚖️ Granel
-                    </span>
-                  }
-                </div>
-                <p class="text-lg font-extrabold text-slate-900 leading-snug">{{ p.name }}</p>
-                <p class="text-xs font-mono text-slate-500 mt-0.5">{{ p.category }} · EAN {{ p.barcode }} · {{ p.supplier }}</p>
-              </div>
+          <td class="p-3">
+            <div class="flex items-center gap-1.5 mb-0.5">
+              <span class="px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-tight"
+                [class]="p.abcClass === 'A'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : (p.abcClass === 'B' ? 'bg-slate-100 text-slate-800' : 'bg-slate-100 text-slate-500')">
+                Clase {{ p.abcClass }}
+              </span>
+              @if (p.isBulk) {
+                <span class="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">
+                  Granel
+                </span>
+              }
             </div>
+            <p class="text-sm font-bold text-slate-900 leading-snug">{{ p.name }}</p>
+            <p class="text-[11px] font-mono text-slate-400 mt-0.5">{{ p.category }} · EAN: {{ p.barcode }} · {{ p.supplier }}</p>
           </td>
 
           <!-- 2. Stock vs Punto de Reorden (ROP) -->
-          <td class="p-4">
-            <div class="rounded-xl border p-3"
-              [class]="p.belowRop ? 'border-red-300 bg-red-50/70' : 'border-slate-200 bg-slate-50'">
-              <p class="text-base font-extrabold text-slate-900">
-                Stock: <span [class]="p.belowRop ? 'text-red-700' : 'text-emerald-700'">{{ p.stock | number:'1.0-1' }}</span>
-                <span class="text-slate-400 mx-1">|</span>
-                Pedir al bajar de: <span class="text-slate-900">{{ p.rop | number:'1.0-1' }}</span> {{ p.saleUnit }}
+          <td class="p-3">
+            <div class="rounded-lg border p-2 text-xs"
+              [class]="p.belowRop ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200 bg-slate-50'">
+              <p class="font-bold text-slate-900 font-mono">
+                Stock: <span [class]="p.belowRop ? 'text-amber-800' : 'text-slate-900'">{{ p.stock | number:'1.0-1' }}</span>
+                <span class="text-slate-400 mx-1">/</span>
+                ROP: <span class="text-slate-600">{{ p.rop | number:'1.0-1' }}</span> {{ p.saleUnit }}
               </p>
-              <p class="text-xs text-slate-500 mt-0.5">
-                Venta diaria: {{ p.dailySalesRate }}/{{ p.saleUnit }} · Tarda {{ p.supplierLeadTimeDays }}d + Seg: {{ p.safetyStock }}
+              <p class="text-[10px] text-slate-500 mt-0.5">
+                Venta: {{ p.dailySalesRate }}/día · Reparto: {{ p.supplierLeadTimeDays }}d · Seguridad: {{ p.safetyStock }}
               </p>
               @if (p.belowRop) {
-                <span class="mt-1.5 inline-block px-2.5 py-0.5 rounded-lg bg-red-600 text-white text-xs font-extrabold">
-                  🚨 Reabastecer Hoy (Debajo de ROP)
+                <span class="mt-1 inline-block px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-bold uppercase">
+                  Reabastecer (Bajo ROP)
                 </span>
               } @else {
-                <span class="mt-1.5 inline-block px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold">
-                  ✔️ Abasto Seguro
+                <span class="mt-1 inline-block text-[10px] text-emerald-700 font-semibold">
+                  Abasto Normal
                 </span>
               }
             </div>
           </td>
 
-          <!-- 3. Valuación: Costo Promedio Ponderado vs Último Costo de Reposición -->
-          <td class="p-4 text-right">
-            <div class="text-xs text-slate-500">
-              Promedio Ponderado: <b class="text-slate-700">{{ p.weightedAvgCost | currency:'MXN':'symbol-narrow' }}</b>
+          <!-- 3. Valuación -->
+          <td class="p-3 text-right">
+            <div class="text-[11px] text-slate-500 font-mono">
+              Promedio: <b class="text-slate-700">{{ p.weightedAvgCost | currency:'MXN':'symbol-narrow' }}</b>
             </div>
-            <div class="text-base font-extrabold mt-0.5" [class]="p.costDiff > 0 ? 'text-red-700' : 'text-slate-900'">
+            <div class="text-xs font-bold font-mono mt-0.5" [class]="p.costDiff > 0 ? 'text-red-700' : 'text-slate-900'">
               Último Costo: {{ p.lastPurchaseCost | currency:'MXN':'symbol-narrow' }}
             </div>
             @if (p.costDiff > 0) {
-              <span class="inline-block mt-1 px-2 py-0.5 rounded bg-red-100 text-red-800 text-xs font-extrabold">
-                🔺 Inflación +{{ p.costDiff | currency:'MXN':'symbol-narrow' }}
+              <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-red-100 text-red-800 text-[10px] font-bold font-mono">
+                +{{ p.costDiff | currency:'MXN':'symbol-narrow' }}
               </span>
             } @else {
-              <span class="inline-block mt-1 text-xs text-slate-400">Costo estable</span>
+              <span class="inline-block mt-0.5 text-[10px] text-slate-400">Estable</span>
             }
           </td>
 
           <!-- 4. Precio Venta -->
-          <td class="p-4 text-right">
-            <span class="text-2xl font-black text-slate-900">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
-            <span class="block text-xs text-slate-500">por {{ p.saleUnit }}</span>
+          <td class="p-3 text-right">
+            <span class="text-base font-black text-slate-900 font-mono">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+            <span class="block text-[10px] text-slate-400">/{{ p.saleUnit }}</span>
           </td>
 
-          <!-- 5. Margen sobre Último Costo de Reposición -->
-          <td class="p-4">
-            <span class="inline-block px-3 py-1.5 rounded-xl font-extrabold text-sm border-2"
+          <!-- 5. Margen -->
+          <td class="p-3">
+            <span class="inline-block px-2.5 py-1 rounded-md font-bold text-xs"
               [class]="p.margin >= p.targetMargin
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-600'
-                : 'bg-red-50 text-red-800 border-red-600'">
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-red-50 text-red-800 border border-red-200'">
               {{ p.margin | number:'1.0-0' }}%
-              <span class="font-semibold text-xs block">Meta: {{ p.targetMargin }}%</span>
+              <span class="text-[10px] font-normal block text-slate-500">Meta: {{ p.targetMargin }}%</span>
             </span>
           </td>
 
-          <!-- 6. Semáforo FEFO y Cambio Físico -->
-          <td class="p-4">
+          <!-- 6. Semáforo FEFO -->
+          <td class="p-3">
             @if (p.daysLeft <= 4) {
-              <div class="rounded-xl border-2 border-amber-500 bg-amber-50 p-2.5">
-                <span class="inline-block px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-extrabold">
-                  ⚠️ FEFO: {{ fmtDate(p.fefoExpiryDate) }} ({{ p.daysLeft <= 1 ? 'Mañana' : 'En ' + p.daysLeft + ' días' }})
+              <div class="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
+                <span class="inline-block px-1.5 py-0.2 rounded bg-amber-600 text-white text-[10px] font-bold uppercase">
+                  FEFO: {{ fmtDate(p.fefoExpiryDate) }} ({{ p.daysLeft <= 1 ? 'Mañana' : 'En ' + p.daysLeft + ' días' }})
                 </span>
                 @if (p.acceptsPhysicalExchange) {
-                  <p class="text-xs font-extrabold text-amber-900 mt-1">
-                    🔄 Acepta Cambio Físico · {{ p.nextVisitInfo }}
+                  <p class="text-[11px] font-bold text-amber-900 mt-1">
+                    Cambio Físico · {{ p.nextVisitInfo }}
                   </p>
                 } @else {
-                  <p class="text-xs font-bold text-red-700 mt-1">
-                    ❗ Sin devolución: poner en oferta hoy
+                  <p class="text-[11px] font-semibold text-red-700 mt-1">
+                    Sin devolución: ofertar hoy
                   </p>
                 }
               </div>
             } @else {
-              <span class="text-sm font-bold text-slate-800">{{ fmtDate(p.fefoExpiryDate) }}</span>
+              <span class="text-xs font-semibold text-slate-700 font-mono">{{ fmtDate(p.fefoExpiryDate) }}</span>
               @if (p.acceptsPhysicalExchange) {
-                <span class="block text-xs text-emerald-700 font-semibold">🔄 Con Cambio Físico</span>
+                <span class="block text-[11px] text-emerald-700 font-semibold">Con Cambio Físico</span>
               } @else {
-                <span class="block text-xs text-slate-400">Lote vigente</span>
+                <span class="block text-[10px] text-slate-400">Lote vigente</span>
               }
             }
           </td>
         </tr>
       } @empty {
         <tr>
-          <td colspan="6" class="p-8 text-center text-xl text-slate-600">
-            🤷 No encontramos productos con ese filtro. Toca "Todos los Productos" o borra la búsqueda.
+          <td colspan="6" class="p-8 text-center text-xs text-slate-500">
+            No se encontraron productos con ese filtro.
           </td>
         </tr>
       }
@@ -256,64 +257,63 @@
 </section>
 
 <!-- =====================================================================
-     MODAL IMPRIMIBLE: HOJA CARTA DE CÓDIGOS DE MOSTRADOR (GRANEL EAN-13)
+     MODAL IMPRIMIBLE: HOJA DE CÓDIGOS DE MOSTRADOR (GRANEL EAN-13)
      ===================================================================== -->
 @if (bulkSheetModalOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:static print:bg-white print:p-0" role="dialog" aria-modal="true">
-    <div class="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:rounded-none">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:rounded-none">
       <!-- Barra superior (se oculta al imprimir) -->
-      <div class="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 print:hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 print:hidden">
         <div>
-          <span class="text-xs uppercase tracking-wider text-amber-300 font-extrabold">Estándar GS1 Prefijo 200 · Uso Interno en Mostrador</span>
-          <h2 class="text-2xl font-black">🖨️ Hoja de Códigos de Barras para Productos a Granel</h2>
+          <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estándar GS1 Prefijo 200 · Uso en Mostrador</span>
+          <h2 class="text-base font-bold">Hoja de Códigos para Productos a Granel</h2>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
           <button type="button" (click)="printBulkSheet()"
-            class="h-14 px-5 rounded-xl border-2 border-emerald-400 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-base flex items-center gap-2">
-            🖨️ Imprimir / Guardar en PDF
+            class="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors">
+            Imprimir / Guardar en PDF
           </button>
           <button type="button" (click)="closeBulkSheetModal()"
-            class="h-14 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-base">
-            ✖️ Cerrar
+            class="h-9 px-3 rounded-lg border border-slate-700 bg-slate-800 text-white font-bold text-xs hover:bg-slate-700 transition-colors">
+            Cerrar
           </button>
         </div>
       </div>
 
-      <!-- Contenido de la Hoja Carta -->
-      <div class="p-8">
-        <div class="border-b-2 border-slate-900 pb-4 mb-6 flex items-center justify-between">
+      <!-- Contenido de la Hoja -->
+      <div class="p-6">
+        <div class="border-b border-slate-900 pb-3 mb-5 flex items-center justify-between">
           <div>
-            <h3 class="text-2xl font-black text-slate-900">{{ inv.storeName }} · Tablero de Códigos Rápidos de Mostrador</h3>
-            <p class="text-sm text-slate-600">Coloca esta hoja enmicada junto a la báscula y el lector para cobrar productos sin empaque de fábrica.</p>
+            <h3 class="text-lg font-black text-slate-900">{{ inv.storeName }} · Tablero de Códigos Rápidos</h3>
+            <p class="text-xs text-slate-600">Hoja de apoyo para mostrador para cobrar productos sin código de fábrica.</p>
           </div>
-          <div class="text-right text-xs font-bold text-slate-500">
+          <div class="text-right text-[11px] font-semibold text-slate-500 font-mono">
             Actualizado: {{ inv.today }}<br />
-            Formato: EAN-13 Interno (Prefijo 200)
+            Prefijo EAN: 200
           </div>
         </div>
 
-        <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-5">
+        <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
           @for (item of bulkProducts(); track item.sku) {
-            <div class="rounded-2xl border-2 border-slate-800 p-4 flex flex-col items-center text-center bg-white">
-              <div class="w-full flex items-center justify-between text-xs font-extrabold text-slate-600 mb-1">
+            <div class="rounded-xl border border-slate-300 p-3 flex flex-col items-center text-center bg-white">
+              <div class="w-full flex items-center justify-between text-[10px] font-bold text-slate-500 mb-1">
                 <span>SKU: {{ item.sku }}</span>
-                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900">GRANEL</span>
+                <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 uppercase">Granel</span>
               </div>
 
-              <span class="text-5xl my-1">{{ item.emoji }}</span>
-              <h4 class="text-lg font-black text-slate-900 leading-snug">{{ item.name }}</h4>
-              <p class="text-xl font-black text-emerald-700 mt-1">
+              <h4 class="text-sm font-bold text-slate-900 leading-snug">{{ item.name }}</h4>
+              <p class="text-base font-black text-slate-900 mt-0.5 font-mono">
                 {{ item.salePrice | currency:'MXN':'symbol-narrow' }} / {{ item.saleUnit }}
               </p>
 
               <!-- Código de Barras SVG Nítido -->
-              <div class="mt-3 p-2 bg-white border border-slate-300 rounded-xl w-full flex flex-col items-center">
-                <svg viewBox="0 0 110 42" class="w-48 h-16" shape-rendering="crispEdges" role="img" [attr.aria-label]="'Código de barras ' + item.barcode">
+              <div class="mt-2.5 p-2 bg-white border border-slate-200 rounded-lg w-full flex flex-col items-center">
+                <svg viewBox="0 0 110 42" class="w-44 h-14" shape-rendering="crispEdges" role="img" [attr.aria-label]="'Código de barras ' + item.barcode">
                   @for (bar of buildBarcodeBars(item.barcode); track $index) {
                     <rect [attr.x]="bar.x" y="2" [attr.width]="bar.w" [attr.height]="bar.tall ? 36 : 30" fill="#0f172a" />
                   }
                 </svg>
-                <span class="font-mono text-sm font-black tracking-[0.22em] text-slate-900 mt-0.5">
+                <span class="font-mono text-xs font-bold tracking-[0.2em] text-slate-900 mt-0.5">
                   {{ item.barcode }}
                 </span>
               </div>

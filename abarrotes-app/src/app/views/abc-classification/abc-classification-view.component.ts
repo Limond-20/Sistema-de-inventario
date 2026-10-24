@@ -65,15 +65,15 @@ export class AbcClassificationViewComponent {
   protected flagLabel(f: AbcFlag): string {
     switch (f) {
       case 'DINERO_DORMIDO':
-        return '😴 Dinero dormido';
+        return 'Dinero dormido';
       case 'GANCHO':
-        return '🧲 Producto gancho';
+        return 'Producto gancho';
       case 'NUEVO':
-        return '🆕 Nuevo';
+        return 'Nuevo';
       case 'CANDADO':
-        return '🔒 Fijado por ti';
+        return 'Fijado por usuario';
       case 'ESTABILIZADO':
-        return '⚖️ En la orilla';
+        return 'En el límite';
       default:
         return '';
     }
@@ -82,9 +82,9 @@ export class AbcClassificationViewComponent {
   // ---------------- MODO GUIADO ----------------
 
   protected readonly frequencyOptions: FrequencyOption[] = [
-    { value: 'VARIAS_AL_DIA', icon: '🔥', label: 'Varias veces al día', hint: 'Casi cada cliente lo lleva' },
-    { value: 'POR_SEMANA', icon: '📅', label: 'Unas veces por semana', hint: 'Sale, pero no diario' },
-    { value: 'CASI_NO', icon: '💤', label: 'Casi no se vende', hint: 'Lleva tiempo en el anaquel' },
+    { value: 'VARIAS_AL_DIA', icon: '', label: 'Varias veces al día', hint: 'Casi cada cliente lo lleva' },
+    { value: 'POR_SEMANA', icon: '', label: 'Unas veces por semana', hint: 'Sale, pero no diario' },
+    { value: 'CASI_NO', icon: '', label: 'Casi no se vende', hint: 'Lleva tiempo en el anaquel' },
   ];
 
   protected readonly step = signal(0);

@@ -6,21 +6,18 @@
 
     <!-- BOTÓN 1: PUNTO DE VENTA (COLOR VERDE ESMERALDA / PRINCIPAL) -->
     <a routerLink="/pos"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-emerald-700 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white p-5 flex flex-col justify-between shadow-lg shadow-emerald-950/20 transition-all group">
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-emerald-600 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
       <!-- Badge superior -->
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-emerald-900/90 text-emerald-200 text-xs font-black tracking-wider uppercase border border-emerald-400/40">
           TECLA F1 · CAJA REGISTRADORA
         </span>
-        <span class="w-4 h-4 rounded-full bg-emerald-300 animate-ping opacity-75"></span>
+        <span class="w-3 h-3 rounded-full bg-emerald-300"></span>
       </div>
 
-      <div class="flex items-center gap-4">
-        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">🛒</span>
-        <div>
-          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">PUNTO DE VENTA (POS)</h2>
-          <p class="text-xs sm:text-sm text-emerald-100 font-semibold mt-1">Cobro rápido, báscula de granel ($ o Kg) y lector láser</p>
-        </div>
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">PUNTO DE VENTA (POS)</h2>
+        <p class="text-xs sm:text-sm text-emerald-100 font-semibold mt-1">Cobro rápido, báscula de granel ($ o Kg) y lector láser</p>
       </div>
 
       <div class="flex items-center justify-between text-xs font-bold text-emerald-200 border-t border-emerald-500/50 pt-2">
@@ -31,16 +28,15 @@
 
     <!-- BOTÓN 2: RECEPCIÓN DE MERCANCÍA (AZUL PIZARRA) -->
     <a routerLink="/recepcion"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white p-5 flex flex-col justify-between shadow-lg shadow-slate-950/20 transition-all group">
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
       <!-- Badge de margen caído si existe -->
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-slate-950 text-slate-300 text-xs font-black tracking-wider uppercase border border-slate-700">
           FACTURAS / ENTRADAS
         </span>
         @if (inv.hasPendingOcrMarginIssue()) {
-          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black flex items-center gap-1.5 shadow-md animate-pulse">
-            <span>⚠️</span>
-            <span>{{ inv.brokenMarginLinesCount() }} con Margen Caído</span>
+          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black shadow-md">
+            {{ inv.brokenMarginLinesCount() }} con Margen Caído
           </span>
         } @else if (inv.ocrNote()) {
           <span class="px-2.5 py-0.5 rounded-full bg-blue-500 text-white text-xs font-extrabold">
@@ -49,12 +45,9 @@
         }
       </div>
 
-      <div class="flex items-center gap-4">
-        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📥</span>
-        <div>
-          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">RECEPCIÓN DE MERCANCÍA</h2>
-          <p class="text-xs sm:text-sm text-slate-300 font-semibold mt-1">Escáner OCR de tickets del celular y blindaje contra inflación</p>
-        </div>
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">RECEPCIÓN DE MERCANCÍA</h2>
+        <p class="text-xs sm:text-sm text-slate-300 font-semibold mt-1">Escáner OCR de tickets del celular y blindaje contra inflación</p>
       </div>
 
       <div class="flex items-center justify-between text-xs font-bold text-slate-400 border-t border-slate-700/60 pt-2">
@@ -65,25 +58,21 @@
 
     <!-- BOTÓN 3: AUDITORÍA EXPRÉS DE PASILLOS (ÁMBAR) -->
     <a routerLink="/auditoria"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-amber-600 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 p-5 flex flex-col justify-between shadow-lg shadow-amber-950/20 transition-all group">
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-amber-600 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 p-5 flex flex-col justify-between shadow-md transition-all group">
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-amber-950 text-amber-200 text-xs font-black tracking-wider uppercase border border-amber-700/40">
           CONTEO FÍSICO CIEGO
         </span>
         @if (inv.pendingAuditCount() > 0) {
-          <span class="px-3 py-1 rounded-full bg-slate-950 text-amber-300 text-xs font-black flex items-center gap-1 shadow-md">
-            <span>📋</span>
-            <span>{{ inv.pendingAuditCount() }} Diferencias por Dictaminar</span>
+          <span class="px-3 py-1 rounded-full bg-slate-950 text-amber-300 text-xs font-black shadow-md">
+            {{ inv.pendingAuditCount() }} Diferencias por Dictaminar
           </span>
         }
       </div>
 
-      <div class="flex items-center gap-4">
-        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📋</span>
-        <div>
-          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">AUDITORÍA DE PASILLO</h2>
-          <p class="text-xs sm:text-sm text-amber-950 font-bold mt-1">Conciliación ciega de anaqueles vs sistema desde el celular</p>
-        </div>
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">AUDITORÍA DE PASILLO</h2>
+        <p class="text-xs sm:text-sm text-amber-950 font-bold mt-1">Conciliación ciega de anaqueles vs sistema desde el celular</p>
       </div>
 
       <div class="flex items-center justify-between text-xs font-extrabold text-amber-950 border-t border-amber-600/60 pt-2">
@@ -94,15 +83,14 @@
 
     <!-- BOTÓN 4: LIBRETA DE FIADOS / CRÉDITO (PÚRPURA) -->
     <button type="button" (click)="goToFiados()"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-purple-700 bg-gradient-to-br from-purple-700 to-purple-900 hover:from-purple-600 hover:to-purple-800 text-white p-5 flex flex-col justify-between shadow-lg shadow-purple-950/20 transition-all text-left group">
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-purple-700 bg-gradient-to-br from-purple-700 to-purple-900 hover:from-purple-600 hover:to-purple-800 text-white p-5 flex flex-col justify-between shadow-md transition-all text-left group">
       <div class="flex items-center justify-between w-full">
         <span class="px-3 py-1 rounded-full bg-purple-950 text-purple-200 text-xs font-black tracking-wider uppercase border border-purple-500/40">
           CUENTAS POR COBRAR
         </span>
         @if (inv.overdueCustomersCount() > 0) {
-          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black flex items-center gap-1 shadow-md animate-pulse">
-            <span>🚫</span>
-            <span>{{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)</span>
+          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black shadow-md">
+            {{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)
           </span>
         } @else {
           <span class="px-2.5 py-0.5 rounded-full bg-purple-800 text-purple-200 text-xs font-extrabold">
@@ -111,12 +99,9 @@
         }
       </div>
 
-      <div class="flex items-center gap-4">
-        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📓</span>
-        <div>
-          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">LIBRETA DE FIADOS</h2>
-          <p class="text-xs sm:text-sm text-purple-200 font-semibold mt-1">Control de deuda de vecinos, límites de crédito y abonos</p>
-        </div>
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">LIBRETA DE FIADOS</h2>
+        <p class="text-xs sm:text-sm text-purple-200 font-semibold mt-1">Control de deuda de vecinos, límites de crédito y abonos</p>
       </div>
 
       <div class="flex items-center justify-between text-xs font-bold text-purple-300 border-t border-purple-600/50 pt-2 w-full">
@@ -127,7 +112,7 @@
 
     <!-- BOTÓN 5: CATÁLOGO, PRECIOS Y GRANEL (GRIS AZULADO) -->
     <a routerLink="/catalogo"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-slate-500 bg-gradient-to-br from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white p-5 flex flex-col justify-between shadow-lg shadow-slate-950/20 transition-all group">
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-slate-500 bg-gradient-to-br from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-slate-800 text-slate-200 text-xs font-black tracking-wider uppercase border border-slate-600">
           MAESTRO DE ARTÍCULOS
@@ -137,12 +122,9 @@
         </span>
       </div>
 
-      <div class="flex items-center gap-4">
-        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">📦</span>
-        <div>
-          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">CATÁLOGO Y PRECIOS</h2>
-          <p class="text-xs sm:text-sm text-slate-200 font-semibold mt-1">Clasificación ABC, Punto de Reorden y Hoja PDF de mostrador</p>
-        </div>
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">CATÁLOGO Y PRECIOS</h2>
+        <p class="text-xs sm:text-sm text-slate-200 font-semibold mt-1">Clasificación ABC, Punto de Reorden y Hoja PDF de mostrador</p>
       </div>
 
       <div class="flex items-center justify-between text-xs font-bold text-slate-300 border-t border-slate-500/50 pt-2">
@@ -151,31 +133,27 @@
       </div>
     </a>
 
-    <!-- BOTÓN 6: REGISTRO DE MERMAS (ROJO TENUE) -->
+    <!-- BOTÓN 6: MERMAS Y CONSUMOS INTERNOS (ROJO TENUE) -->
     <a routerLink="/mermas"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-3xl border-4 border-rose-800 bg-gradient-to-br from-rose-900 to-rose-950 hover:from-rose-800 hover:to-rose-900 text-white p-5 flex flex-col justify-between shadow-lg shadow-rose-950/20 transition-all group">
+      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-rose-800 bg-gradient-to-br from-rose-900 to-rose-950 hover:from-rose-800 hover:to-rose-900 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
       <div class="flex items-center justify-between">
         <span class="px-3 py-1 rounded-full bg-rose-950 text-rose-200 text-xs font-black tracking-wider uppercase border border-rose-700/50">
-          CONTROL DE PÉRDIDAS
+          MERMAS Y CONSUMOS
         </span>
-        @if (inv.pendingShrinkCount() > 0) {
-          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black flex items-center gap-1 shadow-md">
-            <span>📷</span>
-            <span>{{ inv.pendingShrinkCount() }} Bajas por Auditar</span>
+        @if (inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
+          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black shadow-md">
+            {{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos
           </span>
         }
       </div>
 
-      <div class="flex items-center gap-4">
-        <span class="text-6xl sm:text-7xl leading-none shrink-0 group-hover:scale-105 transition-transform" aria-hidden="true">🗑️</span>
-        <div>
-          <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">REGISTRO DE MERMAS</h2>
-          <p class="text-xs sm:text-sm text-rose-200 font-semibold mt-1">Bajas de producto roto o caducado con foto obligatoria</p>
-        </div>
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">MERMAS Y CONSUMOS</h2>
+        <p class="text-xs sm:text-sm text-rose-200 font-semibold mt-1">Bajas por caducidad/rotura con foto y consumos de personal al costo</p>
       </div>
 
       <div class="flex items-center justify-between text-xs font-bold text-rose-300 border-t border-rose-800/60 pt-2">
-        <span>Evidencia fotográfica desde celular</span>
+        <span>Costo de consumos: {{ inv.cashShift().internalConsumptionTotalCost | currency:'MXN':'symbol-narrow' }}</span>
         <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
       </div>
     </a>
@@ -183,31 +161,43 @@
   </div>
 
   <!-- ===================== BARRA DE ESTADO DELGADA INFERIOR ===================== -->
-  <footer class="mt-3 h-11 bg-slate-900 border border-slate-800 rounded-2xl px-4 flex items-center justify-between text-xs shrink-0 shadow-sm text-slate-300">
-    <div class="flex items-center gap-2">
-      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-      <span class="font-bold text-white">Terminal Activa</span>
-      <span class="text-slate-500">|</span>
-      <span>Base de datos SQLite local sincronizada</span>
+  <footer class="mt-3 min-h-[44px] py-1.5 bg-slate-900 border border-slate-800 rounded-xl px-4 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 shadow-sm text-slate-300">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-bold">
+      <div class="flex items-center gap-1.5 text-emerald-400">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span class="text-slate-400 font-normal">Cajón:</span>
+        <span class="font-bold font-mono text-emerald-300 text-sm">{{ inv.getRealDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
+      </div>
+      <span class="text-slate-700">|</span>
+      <div class="flex items-center gap-1 text-slate-300">
+        <span class="text-slate-400 font-normal">Crédito Colocado:</span>
+        <span class="font-bold font-mono text-white text-sm">{{ inv.cashShift().creditSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
+      </div>
+      <span class="text-slate-700">|</span>
+      <div class="flex items-center gap-1 text-slate-300">
+        <span class="text-slate-400 font-normal">Consumo Interno:</span>
+        <span class="font-bold font-mono text-white text-sm">{{ inv.cashShift().internalConsumptionTotalCost | currency:'MXN':'symbol-narrow' }}</span>
+      </div>
+      <span class="text-slate-700">|</span>
+      <div class="flex items-center gap-1 text-slate-400">
+        <span class="text-slate-400 font-normal">Fondo Inicial:</span>
+        <span class="font-mono font-bold text-slate-300">{{ inv.cashShift().openingCash | currency:'MXN':'symbol-narrow' }}</span>
+      </div>
     </div>
 
     <!-- Indicador y Botón de Propuesta Mensual ABC -->
     @if (pendingAbcCount() > 0) {
-      <div class="flex items-center gap-3">
-        <span class="text-amber-400 font-bold hidden sm:inline">
-          ⚡ Hay {{ pendingAbcCount() }} producto(s) con propuesta de cambio ABC (por Utilidad Neta)
-        </span>
+      <div class="flex items-center gap-2.5">
         <button
           type="button"
           (click)="openAbcModal()"
-          class="btn h-8 px-3 rounded-lg border-2 border-amber-500 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-xs transition-all">
-          <span>⚡</span>
-          <span>Revisar actualización ABC del mes</span>
+          class="btn h-7 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all">
+          <span>Revisar actualización ABC del mes ({{ pendingAbcCount() }})</span>
         </button>
       </div>
     } @else {
       <div class="text-slate-500 text-xs font-semibold">
-        Clasificación ABC por Utilidad Neta: al día
+        Clasificación ABC: Al día
       </div>
     }
   </footer>
@@ -221,21 +211,23 @@
       <!-- Cabecera -->
       <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2.5">
-          <span class="text-2xl">⚡</span>
+          <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-xs font-black text-white shrink-0">
+            ABC
+          </div>
           <div>
-            <h2 class="text-lg font-black leading-tight">Propuesta de Reclasificación ABC Mensual</h2>
+            <h2 class="text-base font-bold leading-tight">Propuesta de Reclasificación ABC Mensual</h2>
             <p class="text-xs text-slate-400">Basada en la Utilidad Neta real: VU = (Precio − Costo) × Unidades Mensuales</p>
           </div>
         </div>
-        <button type="button" (click)="closeAbcModal()" class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold hover:bg-slate-700 flex items-center justify-center">
-          ✖️
+        <button type="button" (click)="closeAbcModal()" class="text-xs font-bold text-slate-400 hover:text-white">
+          Cerrar
         </button>
       </div>
 
       <!-- Explicación amigable -->
-      <div class="bg-amber-50 border-b border-amber-200 px-6 py-3 text-xs text-amber-950 flex items-center justify-between shrink-0">
+      <div class="bg-amber-50 border-b border-amber-200 px-6 py-2.5 text-xs text-amber-950 flex items-center justify-between shrink-0">
         <p>
-          💡 <b>El sistema nunca cambia los productos solo.</b> Tú decides si aceptas la nueva clasificación o la pospones.
+          El sistema nunca cambia los productos solo. Tú decides si aceptas la nueva clasificación o la pospones.
         </p>
         <span class="font-extrabold text-amber-900">{{ selectedDiscrepancies().length }} discrepancia(s)</span>
       </div>
@@ -256,14 +248,11 @@
             @for (item of selectedDiscrepancies(); track item.product.sku) {
               <tr class="hover:bg-slate-50 transition-colors">
                 <td class="p-3">
-                  <div class="flex items-center gap-2">
-                    <span class="text-2xl">{{ item.product.emoji }}</span>
-                    <div>
-                      <p class="font-black text-slate-900 leading-snug">{{ item.product.name }}</p>
-                      <p class="text-xs text-slate-500 font-mono">
-                        {{ item.monthlySalesUnits }} unids/mes · Costo: {{ (item.product.purchaseCost ?? item.product.lastPurchaseCost) | currency:'MXN':'symbol-narrow' }}
-                      </p>
-                    </div>
+                  <div>
+                    <p class="font-black text-slate-900 leading-snug">{{ item.product.name }}</p>
+                    <p class="text-xs text-slate-500 font-mono">
+                      {{ item.monthlySalesUnits }} unids/mes · Costo: {{ (item.product.purchaseCost ?? item.product.lastPurchaseCost) | currency:'MXN':'symbol-narrow' }}
+                    </p>
                   </div>
                 </td>
 
@@ -275,7 +264,7 @@
                 </td>
 
                 <td class="p-3 text-center">
-                  <span class="px-2.5 py-1 rounded-lg text-xs font-black border-2 animate-pulse"
+                  <span class="px-2.5 py-1 rounded-lg text-xs font-black border-2"
                     [class]="item.proposedClass === 'A' ? 'bg-emerald-600 text-white border-emerald-800' : (item.proposedClass === 'B' ? 'bg-blue-600 text-white border-blue-800' : 'bg-amber-500 text-slate-950 border-amber-700')">
                     ➔ Clase {{ item.proposedClass }}
                   </span>
@@ -300,23 +289,22 @@
         <button
           type="button"
           (click)="postponeAbcChanges()"
-          class="h-12 px-5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-700 hover:bg-slate-100">
-          ⏳ Posponer para Fin de Mes
+          class="h-11 px-5 rounded-xl border border-slate-300 bg-white font-bold text-xs text-slate-700 hover:bg-slate-100">
+          Posponer para Fin de Mes
         </button>
 
         <div class="flex gap-2.5">
           <button
             type="button"
             (click)="closeAbcModal()"
-            class="h-12 px-4 rounded-xl border border-slate-300 bg-slate-100 font-bold text-sm text-slate-700 hover:bg-slate-200">
+            class="h-11 px-4 rounded-xl border border-slate-300 bg-slate-100 font-bold text-xs text-slate-700 hover:bg-slate-200">
             Cerrar
           </button>
           <button
             type="button"
             (click)="confirmAbcChanges()"
-            class="h-12 px-6 rounded-xl border-2 border-emerald-800 bg-emerald-600 text-white font-black text-sm hover:bg-emerald-700 shadow-sm flex items-center gap-2">
-            <span>✅</span>
-            <span>Aplicar Cambios Aceptados</span>
+            class="h-11 px-6 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 shadow-2xs">
+            Aplicar Cambios Aceptados
           </button>
         </div>
       </div>

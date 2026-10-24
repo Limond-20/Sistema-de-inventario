@@ -1,61 +1,64 @@
 <!-- ===================== ENCABEZADO ===================== -->
-<section class="mb-6 flex flex-wrap items-end justify-between gap-4">
+<section class="mb-5 flex flex-wrap items-end justify-between gap-4 pb-3 border-b border-slate-200">
   <div>
-    <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-extrabold uppercase tracking-wider border border-blue-200">
-      Clasificación ABC · Se adapta a TU tienda
+    <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+      Estrategia ABC de Pareto · Adaptable a tu tienda
     </span>
-    <h1 class="text-3xl font-black text-slate-900 mt-1">🏷️ ¿Qué productos son los más importantes?</h1>
-    <p class="text-base text-slate-600 max-w-3xl">
-      Cada tienda vende distinto. El sistema revisa <strong>tus</strong> ventas y te sugiere la clase de cada producto.
-      Tú siempre tienes la última palabra.
+    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Clasificación ABC de Productos</h1>
+    <p class="text-sm text-slate-600 mt-0.5 max-w-3xl">
+      El sistema revisa tus ventas reales y sugiere la clase de rotación y margen para cada producto.
     </p>
   </div>
   <a routerLink="/catalogo"
-    class="btn h-14 px-5 rounded-2xl border-2 border-slate-300 bg-white hover:bg-slate-100 text-slate-900 font-extrabold flex items-center gap-2">
-    <span>📦</span><span>Volver al Catálogo</span>
+    class="h-11 px-5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition-colors">
+    <span>Volver al Catálogo</span>
   </a>
 </section>
 
 <!-- ===================== QUÉ SIGNIFICA CADA CLASE ===================== -->
-<section class="grid md:grid-cols-3 gap-3 mb-6" aria-label="Qué significa cada clase">
+<section class="grid md:grid-cols-3 gap-3 mb-5" aria-label="Qué significa cada clase">
   @for (c of classes; track c) {
-    <article class="rounded-2xl border-2 p-4 bg-white" [class]="c === 'A' ? 'border-emerald-300' : c === 'B' ? 'border-blue-300' : 'border-slate-300'">
-      <p class="text-lg font-black">{{ policies[c].label }}</p>
-      <p class="text-sm text-slate-700 font-semibold">{{ policies[c].plainMeaning }}</p>
-      <ul class="mt-2 text-xs text-slate-600 space-y-0.5">
-        <li>📋 Conteo ciego cada {{ policies[c].countEveryDays }} días</li>
-        <li>🎯 No quedarse sin producto el {{ policies[c].serviceLevel | percent }} de las veces</li>
-        <li>{{ policies[c].reorderAlert ? '🔔 Sale en la alerta de “por agotarse”' : '🔕 Sin alerta de reorden: compra solo cuando se acabe' }}</li>
+    <article class="rounded-xl border p-4 bg-white shadow-2xs" [class]="c === 'A' ? 'border-emerald-300' : c === 'B' ? 'border-slate-300' : 'border-slate-200'">
+      <p class="text-base font-bold text-slate-900">{{ policies[c].label }}</p>
+      <p class="text-xs text-slate-600 mt-1 font-medium">{{ policies[c].plainMeaning }}</p>
+      <ul class="mt-2.5 text-xs text-slate-500 space-y-1">
+        <li>· Conteo físico cada {{ policies[c].countEveryDays }} días</li>
+        <li>· Nivel de servicio del {{ policies[c].serviceLevel | percent }}</li>
+        <li>· {{ policies[c].reorderAlert ? 'Genera alerta de reorden ROP' : 'Sin alerta automática: compra solo bajo demanda' }}</li>
       </ul>
     </article>
   }
 </section>
 
 <!-- ===================== SELECTOR DE MODO ===================== -->
-<section class="mb-6 grid sm:grid-cols-2 gap-3" aria-label="Forma de clasificar">
+<section class="mb-5 grid sm:grid-cols-2 gap-3" aria-label="Forma de clasificar">
   <button type="button" (click)="mode.set('auto')"
-    class="h-20 rounded-2xl border-2 px-5 text-left flex items-center gap-4"
-    [class]="mode() === 'auto' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50'">
-    <span class="text-3xl">🤖</span>
-    <span>
-      <span class="block text-lg font-black">Automático con mis ventas</span>
-      <span class="block text-sm opacity-80">Para tiendas que ya llevan {{ inv.abcConfig().minDaysForAuto }}+ días usando el sistema</span>
+    class="h-14 rounded-xl border px-4 text-left flex items-center justify-between transition-all"
+    [class]="mode() === 'auto' ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50'">
+    <div>
+      <span class="block text-sm font-bold">Automático con Historial de Ventas</span>
+      <span class="block text-xs opacity-75">Calculado con tickets y margen neto real</span>
+    </div>
+    <span class="text-xs font-mono font-bold px-2 py-0.5 rounded" [class]="mode() === 'auto' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'">
+      Recomendado
     </span>
   </button>
   <button type="button" (click)="mode.set('guiado')"
-    class="h-20 rounded-2xl border-2 px-5 text-left flex items-center gap-4"
-    [class]="mode() === 'guiado' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50'">
-    <span class="text-3xl">🙋</span>
-    <span>
-      <span class="block text-lg font-black">Guiado con 2 preguntas</span>
-      <span class="block text-sm opacity-80">Para tienda nueva o productos sin ventas registradas</span>
+    class="h-14 rounded-xl border px-4 text-left flex items-center justify-between transition-all"
+    [class]="mode() === 'guiado' ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50'">
+    <div>
+      <span class="block text-sm font-bold">Asistente Guiado por Preguntas</span>
+      <span class="block text-xs opacity-75">Para artículos recién agregados o tiendas nuevas</span>
+    </div>
+    <span class="text-xs font-mono font-bold px-2 py-0.5 rounded" [class]="mode() === 'guiado' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'">
+      Manual
     </span>
   </button>
 </section>
 
 @if (toast()) {
-  <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-emerald-700 text-white px-6 py-4 text-lg font-extrabold shadow-lg" role="status">
-    ✅ {{ toast() }}
+  <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-xl bg-slate-900 text-white px-5 py-3 text-sm font-bold shadow-lg" role="status">
+    {{ toast() }}
   </div>
 }
 
@@ -63,86 +66,86 @@
 <!-- MODO AUTOMÁTICO                                                       -->
 <!-- ===================================================================== -->
 @if (mode() === 'auto') {
-  <section class="mb-5 grid sm:grid-cols-3 gap-3" aria-label="Resumen de la sugerencia">
+  <section class="mb-4 grid sm:grid-cols-3 gap-3" aria-label="Resumen de la sugerencia">
     @for (s of summary(); track s.cls) {
-      <div class="rounded-2xl border-2 bg-white p-4" [class]="classChip(s.cls)">
-        <p class="text-sm font-extrabold">{{ policies[s.cls]?.label || s.cls }}</p>
-        <p class="text-3xl font-black">{{ s.count }} <span class="text-base font-bold">productos</span></p>
-        <p class="text-sm font-semibold">Son el {{ s.pctProducts | percent }} de tu catálogo y dejan el {{ s.pctBusiness | percent }} de tu negocio</p>
+      <div class="rounded-xl border bg-white p-4 shadow-2xs" [class]="classChip(s.cls)">
+        <p class="text-xs font-bold uppercase tracking-wider">{{ policies[s.cls]?.label || s.cls }}</p>
+        <p class="text-2xl font-black mt-0.5 font-mono">{{ s.count }} <span class="text-xs font-normal">productos</span></p>
+        <p class="text-xs mt-1 opacity-80">{{ s.pctProducts | percent }} del catálogo · {{ s.pctBusiness | percent }} de la ganancia</p>
       </div>
     }
   </section>
 
-  <section class="mb-4 rounded-2xl border-2 bg-white p-4 flex flex-wrap items-center justify-between gap-3"
-    [class]="changes().length ? 'border-amber-400' : 'border-emerald-300'">
+  <section class="mb-4 rounded-xl border bg-white p-4 flex flex-wrap items-center justify-between gap-3 shadow-2xs"
+    [class]="changes().length ? 'border-amber-300 bg-amber-50/40' : 'border-emerald-300 bg-emerald-50/40'">
     <div>
       @if (changes().length) {
-        <p class="text-lg font-black text-amber-800">⚠️ {{ changes().length }} producto(s) deberían cambiar de clase</p>
+        <p class="text-sm font-bold text-amber-900">{{ changes().length }} producto(s) con sugerencia de cambio de clase</p>
       } @else {
-        <p class="text-lg font-black text-emerald-800">✅ Tus clases están al día con tus ventas</p>
+        <p class="text-sm font-bold text-emerald-900">Todas las clases de productos están al día</p>
       }
-      <p class="text-sm text-slate-600">
-        Se calculó con la ganancia y los tickets de los últimos {{ inv.abcConfig().windowDays }} días.
-        @if (inv.lastAbcRun()) { Último cambio aplicado: {{ inv.lastAbcRun() }}. }
+      <p class="text-xs text-slate-500 mt-0.5">
+        Cálculo basado en la utilidad neta de los últimos {{ inv.abcConfig().windowDays }} días.
+        @if (inv.lastAbcRun()) { Última aplicación: {{ inv.lastAbcRun() }}. }
       </p>
     </div>
     <button type="button" (click)="applyAll()" [disabled]="!changes().length"
-      class="h-14 px-6 rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-500 text-white text-lg font-extrabold">
-      ✅ Aceptar todos los cambios
+      class="h-10 px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold transition-colors">
+      Aceptar todos los cambios
     </button>
   </section>
 
-  <section class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden" aria-label="Productos ordenados por importancia">
-    <ol class="divide-y divide-slate-200">
+  <section class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden" aria-label="Productos ordenados por importancia">
+    <ol class="divide-y divide-slate-100">
       @for (r of results(); track r.sku) {
-        <li class="p-4 grid lg:grid-cols-[2.5rem_1fr_15rem_15rem] gap-3 items-center" [class.bg-amber-50]="r.changed">
-          <span class="text-2xl font-black text-slate-400">#{{ r.rank }}</span>
+        <li class="p-3.5 grid lg:grid-cols-[2.5rem_1fr_13rem_14rem] gap-3 items-center hover:bg-slate-50 transition-colors" [class.bg-amber-50/40]="r.changed">
+          <span class="text-base font-bold font-mono text-slate-400">#{{ r.rank }}</span>
 
           <div class="min-w-0">
-            <p class="text-lg font-black text-slate-900">{{ product(r.sku).emoji }} {{ product(r.sku).name }}</p>
-            <div class="mt-1 h-3 rounded-full bg-slate-100 overflow-hidden" [attr.aria-label]="'Aporta ' + (r.share | percent:'1.0-1') + ' del negocio'">
+            <p class="text-sm font-bold text-slate-900">{{ product(r.sku).name }}</p>
+            <div class="mt-1 h-2 rounded-full bg-slate-100 overflow-hidden" [attr.aria-label]="'Aporta ' + (r.share | percent:'1.0-1') + ' del negocio'">
               <div class="h-full rounded-full" [class]="classBar(r.finalClass)" [style.width.%]="r.share * 100 * 4"></div>
             </div>
-            <p class="text-xs text-slate-500 mt-1">
+            <p class="text-[11px] text-slate-500 mt-1 font-mono">
               Aporta {{ r.share | percent:'1.0-1' }} · Ganancia {{ r.grossProfit | currency:'MXN':'symbol-narrow':'1.0-0' }} · {{ r.ticketCount }} tickets
             </p>
-            <p class="text-sm text-slate-700 mt-1">{{ r.reason }}</p>
+            <p class="text-xs text-slate-600 mt-0.5">{{ r.reason }}</p>
             @if (r.flags.length) {
-              <div class="mt-1 flex flex-wrap gap-1.5">
+              <div class="mt-1.5 flex flex-wrap gap-1">
                 @for (f of r.flags; track f) {
-                  <span class="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-300 text-xs font-bold">{{ flagLabel(f) }}</span>
+                  <span class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-700">{{ flagLabel(f) }}</span>
                 }
               </div>
             }
           </div>
 
-          <div class="flex items-center gap-2 text-sm font-black">
-            <span class="px-3 py-2 rounded-xl border-2" [class]="classChip(r.currentClass)">Hoy: {{ r.currentClass }}</span>
-            <span>➡️</span>
-            <span class="px-3 py-2 rounded-xl border-2" [class]="classChip(r.finalClass)">Sugerida: {{ r.finalClass }}</span>
+          <div class="flex items-center gap-2 text-xs font-bold">
+            <span class="px-2.5 py-1 rounded-md border" [class]="classChip(r.currentClass)">Actual: {{ r.currentClass }}</span>
+            <span class="text-slate-400">➔</span>
+            <span class="px-2.5 py-1 rounded-md border" [class]="classChip(r.finalClass)">Sugerida: {{ r.finalClass }}</span>
           </div>
 
-          <div class="flex flex-col gap-2">
+          <div class="flex flex-col gap-1.5">
             @if (r.changed) {
               <button type="button" (click)="applyOne(r)"
-                class="h-12 rounded-xl border-2 border-emerald-700 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold">
-                ✅ Aceptar {{ r.finalClass }}
+                class="h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors">
+                Aceptar {{ r.finalClass }}
               </button>
             }
-            <label class="text-xs font-bold text-slate-600">
-              🔒 Fijar yo la clase
-              <select class="mt-1 h-12 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-base font-bold"
+            <label class="text-[11px] font-bold text-slate-500">
+              Fijar manualmente:
+              <select class="mt-0.5 h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800"
                 [value]="pinnedOf(r.sku)" (change)="pin(r.sku, $any($event.target).value)">
-                <option value="">Que decida el sistema</option>
-                <option value="A">Siempre A</option>
-                <option value="B">Siempre B</option>
-                <option value="C">Siempre C</option>
+                <option value="">Automático por sistema</option>
+                <option value="A">Fijar Clase A</option>
+                <option value="B">Fijar Clase B</option>
+                <option value="C">Fijar Clase C</option>
               </select>
             </label>
             <button type="button" (click)="inv.toggleTrafficDriver(r.sku)"
-              class="h-11 rounded-xl border-2 text-sm font-extrabold"
-              [class]="product(r.sku).isTrafficDriver ? 'border-violet-600 bg-violet-50 text-violet-900' : 'border-slate-300 bg-white text-slate-700'">
-              🧲 {{ product(r.sku).isTrafficDriver ? 'Es gancho (nunca baja de B)' : '¿Si falta, pierdes al cliente?' }}
+              class="h-7 rounded-md border text-[11px] font-bold transition-colors"
+              [class]="product(r.sku).isTrafficDriver ? 'border-slate-700 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'">
+              {{ product(r.sku).isTrafficDriver ? 'Producto gancho activo' : 'Marcar como producto gancho' }}
             </button>
           </div>
         </li>
@@ -157,99 +160,98 @@
 @if (mode() === 'guiado') {
   @if (!guidedDone()) {
     @if (currentGuided(); as p) {
-      <section class="max-w-3xl mx-auto">
-        <div class="mb-3 flex items-center justify-between text-sm font-bold text-slate-600">
+      <section class="max-w-2xl mx-auto">
+        <div class="mb-3 flex items-center justify-between text-xs font-bold text-slate-500">
           <span>Producto {{ step() + 1 }} de {{ guidedProducts().length }}</span>
-          <span>Ya viene una respuesta marcada; solo cámbiala si no es así en tu tienda.</span>
+          <span>Respuesta sugerida precargada</span>
         </div>
-        <div class="h-3 rounded-full bg-slate-200 overflow-hidden mb-5">
-          <div class="h-full bg-blue-600" [style.width.%]="((step() + 1) / guidedProducts().length) * 100"></div>
+        <div class="h-2 rounded-full bg-slate-200 overflow-hidden mb-4">
+          <div class="h-full bg-slate-800 transition-all" [style.width.%]="((step() + 1) / guidedProducts().length) * 100"></div>
         </div>
 
-        <article class="bg-white rounded-3xl border-2 border-slate-200 p-6 shadow-sm">
-          <p class="text-6xl text-center">{{ p.emoji }}</p>
-          <h2 class="text-2xl font-black text-center mt-2">{{ p.name }}</h2>
-          <p class="text-center text-slate-500 font-semibold">{{ p.category }} · Lo vendes a {{ p.salePrice | currency:'MXN':'symbol-narrow' }}</p>
+        <article class="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs">
+          <h2 class="text-xl font-bold text-center text-slate-900">{{ p.name }}</h2>
+          <p class="text-center text-xs text-slate-500 font-semibold mt-0.5">
+            {{ p.category }} · Precio de venta: <span class="font-mono text-slate-800">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+          </p>
 
-          <h3 class="text-lg font-black mt-6 mb-2">1. ¿Cada cuánto lo vendes?</h3>
-          <div class="grid sm:grid-cols-3 gap-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 mt-5 mb-2">1. Frecuencia de venta habitual</h3>
+          <div class="grid sm:grid-cols-3 gap-2">
             @for (o of frequencyOptions; track o.value) {
               <button type="button" (click)="setFrequency(o.value)"
-                class="min-h-24 rounded-2xl border-4 p-3 text-center"
-                [class]="currentAnswer()?.frequency === o.value ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
+                class="rounded-lg border p-3 text-center transition-all"
+                [class]="currentAnswer()?.frequency === o.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'"
                 [attr.aria-pressed]="currentAnswer()?.frequency === o.value">
-                <span class="block text-3xl">{{ o.icon }}</span>
-                <span class="block text-base font-black">{{ o.label }}</span>
-                <span class="block text-xs text-slate-500">{{ o.hint }}</span>
+                <span class="block text-xs font-bold">{{ o.label }}</span>
+                <span class="block text-[10px] opacity-75 mt-0.5">{{ o.hint }}</span>
               </button>
             }
           </div>
 
-          <h3 class="text-lg font-black mt-6 mb-2">2. Si se te acaba, ¿el cliente se va a otra tienda?</h3>
-          <div class="grid grid-cols-2 gap-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 mt-4 mb-2">2. Si se agota, ¿el cliente se va a otra tienda?</h3>
+          <div class="grid grid-cols-2 gap-2">
             <button type="button" (click)="setLosesCustomer(true)"
-              class="h-16 rounded-2xl border-4 text-lg font-black"
-              [class]="currentAnswer()?.losesCustomer ? 'border-violet-600 bg-violet-50' : 'border-slate-200 bg-white'"
+              class="h-11 rounded-lg border text-xs font-bold transition-all"
+              [class]="currentAnswer()?.losesCustomer ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'"
               [attr.aria-pressed]="currentAnswer()?.losesCustomer === true">
-              👍 Sí, se va
+              Sí, se va (Producto Gancho)
             </button>
             <button type="button" (click)="setLosesCustomer(false)"
-              class="h-16 rounded-2xl border-4 text-lg font-black"
-              [class]="currentAnswer()?.losesCustomer === false ? 'border-slate-700 bg-slate-100' : 'border-slate-200 bg-white'"
+              class="h-11 rounded-lg border text-xs font-bold transition-all"
+              [class]="currentAnswer()?.losesCustomer === false ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'"
               [attr.aria-pressed]="currentAnswer()?.losesCustomer === false">
-              👎 No, se espera
+              No, espera o sustituye
             </button>
           </div>
 
-          <div class="mt-6 grid grid-cols-2 gap-3">
+          <div class="mt-5 grid grid-cols-2 gap-2">
             <button type="button" (click)="back()" [disabled]="step() === 0"
-              class="h-16 rounded-2xl border-2 border-slate-300 bg-white text-lg font-extrabold disabled:opacity-40">
-              ⬅️ Anterior
+              class="h-11 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40">
+              Anterior
             </button>
             <button type="button" (click)="next()"
-              class="h-16 rounded-2xl border-2 border-blue-800 bg-blue-600 hover:bg-blue-700 text-white text-lg font-extrabold">
-              {{ step() === guidedProducts().length - 1 ? '✅ Ver resultado' : 'Siguiente ➡️' }}
+              class="h-11 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors">
+              {{ step() === guidedProducts().length - 1 ? 'Ver Resultado' : 'Siguiente' }}
             </button>
           </div>
         </article>
       </section>
     }
   } @else {
-    <section class="max-w-4xl mx-auto">
-      <h2 class="text-2xl font-black mb-1">🎉 Así quedaría tu tienda</h2>
-      <p class="text-slate-600 mb-4">
-        Es una clasificación <strong>provisional</strong>. Cuando lleves {{ inv.abcConfig().minDaysForAuto }} días vendiendo,
-        el sistema la corrige solo con tus ventas reales.
+    <section class="max-w-3xl mx-auto">
+      <h2 class="text-xl font-bold mb-1 text-slate-900">Resumen de Clasificación Inicial</h2>
+      <p class="text-xs text-slate-600 mb-4">
+        Clasificación provisional guardada. Conforme se registren ventas, el sistema ajustará las clases automáticamente.
       </p>
 
-      <div class="grid sm:grid-cols-3 gap-3 mb-4">
+      <div class="grid sm:grid-cols-3 gap-2.5 mb-4">
         @for (s of guidedSummary(); track s.cls) {
-          <div class="rounded-2xl border-2 p-4" [class]="classChip(s.cls)">
-            <p class="text-sm font-extrabold">{{ policies[s.cls]?.label || s.cls }}</p>
-            <p class="text-3xl font-black">{{ s.count }}</p>
+          <div class="rounded-xl border p-3.5 bg-white shadow-2xs" [class]="classChip(s.cls)">
+            <p class="text-xs font-bold uppercase">{{ policies[s.cls]?.label || s.cls }}</p>
+            <p class="text-xl font-black mt-0.5 font-mono">{{ s.count }} productos</p>
           </div>
         }
       </div>
 
-      <ul class="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-200 mb-5">
+      <ul class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-4 shadow-2xs">
         @for (r of guidedResults(); track r.sku) {
-          <li class="p-3 flex items-center justify-between gap-3">
-            <span class="font-bold">{{ product(r.sku).emoji }} {{ product(r.sku).name }}
-              @if (r.flags.includes('GANCHO')) { <span class="ml-1 text-xs px-2 py-0.5 rounded-full bg-violet-100 border border-violet-300">🧲 Gancho</span> }
+          <li class="p-3 flex items-center justify-between gap-3 text-xs">
+            <span class="font-bold text-slate-900">{{ product(r.sku).name }}
+              @if (r.flags.includes('GANCHO')) { <span class="ml-1 text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">Gancho</span> }
             </span>
-            <span class="px-3 py-1 rounded-xl border-2 font-black" [class]="classChip(r.finalClass)">{{ r.finalClass }}</span>
+            <span class="px-2.5 py-0.5 rounded border font-bold" [class]="classChip(r.finalClass)">Clase {{ r.finalClass }}</span>
           </li>
         }
       </ul>
 
-      <div class="grid sm:grid-cols-2 gap-3">
+      <div class="grid sm:grid-cols-2 gap-2">
         <button type="button" (click)="back()"
-          class="h-16 rounded-2xl border-2 border-slate-300 bg-white text-lg font-extrabold">
-          ✏️ Corregir respuestas
+          class="h-11 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
+          Corregir Respuestas
         </button>
         <button type="button" (click)="saveGuided()"
-          class="h-16 rounded-2xl border-2 border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-lg font-extrabold">
-          💾 Guardar como mi clasificación inicial
+          class="h-11 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors">
+          Guardar Clasificación Inicial
         </button>
       </div>
     </section>

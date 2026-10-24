@@ -75,12 +75,36 @@ export type CreditCustomerStatus = 'AL_CORRIENTE' | 'LIMITE_ALCANZADO' | 'VENCID
 export interface CreditCustomer {
   id: string;
   name: string;
+  alias?: string;
   phone: string;
   creditLimit: number;
   currentBalance: number;
   dueDate: string;
   status: CreditCustomerStatus;
-  notes: string;
+  notes?: string;
+}
+
+export interface InternalConsumptionRecord {
+  id: string;
+  timestamp: Date;
+  responsible: string;
+  items: {
+    productId: string;
+    name: string;
+    quantity: number;
+    unitCost: number;
+    subtotalCost: number;
+  }[];
+  totalCost: number;
+}
+
+export interface CashShiftSummary {
+  openingCash: number;
+  cashSalesTotal: number;
+  creditPaymentsReceived: number;
+  creditSalesTotal: number;
+  internalConsumptionTotalCost: number;
+  shrinkTotalCost: number;
 }
 
 export interface CashRegisterSummary {
@@ -107,10 +131,26 @@ export interface PosSaleItem {
   subtotal: number;
 }
 
+export type CartItem = PosSaleItem;
+
+export interface SaleResult {
+  ok: boolean;
+  message: string;
+  total: number;
+  change: number;
+}
+
+export interface CreditResult {
+  ok: boolean;
+  message: string;
+  total: number;
+  availableCredit?: number;
+}
+
 export interface KardexEntry {
   id: string;
   timestamp: string;
-  type: 'VENTA_EFECTIVO' | 'VENTA_FIADO' | 'ABONO_FIADO' | 'ENTRADA_COMPRA' | 'AJUSTE_AUDITORIA' | 'BAJA_MERMA';
+  type: 'VENTA_EFECTIVO' | 'VENTA_FIADO' | 'ABONO_FIADO' | 'ENTRADA_COMPRA' | 'AJUSTE_AUDITORIA' | 'BAJA_MERMA' | 'CONSUMO_INTERNO';
   description: string;
   amount: number;
 }
@@ -802,7 +842,8 @@ const PRODUCTS: Product[] = PRODUCT_SEEDS.map((seed) => ({
 const CREDIT_CUSTOMERS: CreditCustomer[] = [
   {
     id: 'CLI-01',
-    name: 'Doña María López - Casa Azul',
+    name: 'Doña Carmen - Vecina Casa Blanca',
+    alias: 'Casa Blanca',
     phone: '477-234-8812',
     creditLimit: 500.0,
     currentBalance: 185.0,
@@ -812,17 +853,19 @@ const CREDIT_CUSTOMERS: CreditCustomer[] = [
   },
   {
     id: 'CLI-02',
-    name: 'Don Roberto Hernández - Taller',
+    name: 'Taller Mecánico El Istmo',
+    alias: 'Don Rogelio',
     phone: '477-391-0455',
-    creditLimit: 500.0,
-    currentBalance: 485.0,
+    creditLimit: 600.0,
+    currentBalance: 590.0,
     dueDate: '2026-10-25',
     status: 'LIMITE_ALCANZADO',
-    notes: 'Quedan solo $15.00 de crédito disponible.',
+    notes: 'Quedan solo $10.00 de crédito disponible.',
   },
   {
     id: 'CLI-03',
-    name: 'Familia Gómez - Depto 4',
+    name: 'Familia López',
+    alias: 'Depto 4',
     phone: '477-512-9034',
     creditLimit: 500.0,
     currentBalance: 520.0,
@@ -832,7 +875,8 @@ const CREDIT_CUSTOMERS: CreditCustomer[] = [
   },
   {
     id: 'CLI-04',
-    name: 'Pedro Sánchez - Carpintería',
+    name: 'Don Roberto - Carpintería',
+    alias: 'Don Beto',
     phone: '477-680-1129',
     creditLimit: 400.0,
     currentBalance: 95.0,
@@ -916,12 +960,27 @@ export class MockInventoryService {
 
   readonly products = signal<Product[]>(structuredClone(PRODUCTS));
   readonly creditCustomers = signal<CreditCustomer[]>(structuredClone(CREDIT_CUSTOMERS));
-  readonly cashRegister = signal<CashRegisterSummary>({
-    openingFloat: 1000.0,
-    cashSalesTotal: 2840.0,
-    creditSalesTotal: 415.0,
-    creditPaymentsReceived: 150.0,
+
+  /** Turno y arqueo de caja con desglose estricto (efectivo vs fiado vs consumo interno). */
+  readonly cashShift = signal<CashShiftSummary>({
+    openingCash: 500.0,
+    cashSalesTotal: 0.0,
+    creditPaymentsReceived: 0.0,
+    creditSalesTotal: 0.0,
+    internalConsumptionTotalCost: 0.0,
+    shrinkTotalCost: 0.0,
   });
+
+  readonly cashRegister = signal<CashRegisterSummary>({
+    openingFloat: 500.0,
+    cashSalesTotal: 0.0,
+    creditSalesTotal: 0.0,
+    creditPaymentsReceived: 0.0,
+  });
+
+  /** Registro histórico de consumos internos para alimentación o uso de la tienda. */
+  readonly internalConsumptionRecords = signal<InternalConsumptionRecord[]>([]);
+
   readonly kardex = signal<KardexEntry[]>([
     {
       id: 'K-103',
@@ -1153,79 +1212,41 @@ export class MockInventoryService {
   // ---------- Corte de Caja y Punto de Venta (POS) ----------
 
   /**
-   * Devuelve el efectivo real que debe existir en el cajón por operaciones del día:
-   * cashSalesTotal + creditPaymentsReceived
+   * Devuelve el efectivo real que debe existir físicamente en el cajón:
+   * openingCash ($500.00) + cashSalesTotal + creditPaymentsReceived
    */
+  getRealDrawerCash(): number {
+    const s = this.cashShift();
+    return +(s.openingCash + s.cashSalesTotal + s.creditPaymentsReceived).toFixed(2);
+  }
+
+  /** Alias para compatibilidad con vistas y componentes existentes. */
   getExpectedDrawerCash(): number {
-    const c = this.cashRegister();
-    return +(c.cashSalesTotal + c.creditPaymentsReceived).toFixed(2);
+    return this.getRealDrawerCash();
   }
 
   /**
-   * Procesa una venta en el Punto de Venta (POS):
-   * - Descuenta en tiempo real el stock de los productos vendidos.
-   * - Registra el movimiento en el Kardex.
-   * - Actualiza los totales de caja (Efectivo vs Fiado) y el saldo del cliente si es FIADO.
+   * Procesa una venta en efectivo:
+   * - Valida que el efectivo recibido cubra el total.
+   * - Calcula el cambio exacto.
+   * - Descuenta existencias en tiempo real.
+   * - Suma a cashSalesTotal en el arqueo del cajón.
+   * - Registra en Kardex como 'VENTA_EFECTIVO'.
    */
-  processSale(
-    items: PosSaleItem[],
-    paymentType: 'EFECTIVO' | 'FIADO',
-    customerId?: string,
-  ): { ok: boolean; message: string; total: number } {
+  processCashSale(items: CartItem[], cashReceived: number): SaleResult {
     if (!items.length) {
-      return { ok: false, message: 'El carrito está vacío.', total: 0 };
+      return { ok: false, message: 'El carrito está vacío.', total: 0, change: 0 };
     }
-
-    const saleTotal = +items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2);
-
-    if (paymentType === 'FIADO') {
-      const customer = this.creditCustomers().find((c) => c.id === customerId);
-      if (!customer) {
-        return { ok: false, message: 'Selecciona un cliente vecino para anotar el fiado.', total: saleTotal };
-      }
-      if (customer.status === 'VENCIDO') {
-        return {
-          ok: false,
-          message: `Crédito bloqueado: ${customer.name} tiene saldo vencido ($${customer.currentBalance.toFixed(2)}). Registra un abono primero.`,
-          total: saleTotal,
-        };
-      }
-      if (customer.currentBalance + saleTotal > customer.creditLimit) {
-        const available = Math.max(0, customer.creditLimit - customer.currentBalance);
-        return {
-          ok: false,
-          message: `Excede el límite de crédito: ${customer.name} solo tiene $${available.toFixed(2)} disponibles de su límite de $${customer.creditLimit.toFixed(2)}.`,
-          total: saleTotal,
-        };
-      }
-
-      // Actualizar saldo y estatus del cliente
-      this.creditCustomers.update((list) =>
-        list.map((c) => {
-          if (c.id !== customerId) return c;
-          const updatedBalance = +(c.currentBalance + saleTotal).toFixed(2);
-          const ratio = updatedBalance / c.creditLimit;
-          const nextStatus: CreditCustomerStatus =
-            c.status === 'VENCIDO' ? 'VENCIDO' : ratio >= 0.9 ? 'LIMITE_ALCANZADO' : 'AL_CORRIENTE';
-          return {
-            ...c,
-            currentBalance: updatedBalance,
-            status: nextStatus,
-          };
-        }),
-      );
-
-      this.cashRegister.update((reg) => ({
-        ...reg,
-        creditSalesTotal: +(reg.creditSalesTotal + saleTotal).toFixed(2),
-      }));
-    } else {
-      // EFECTIVO
-      this.cashRegister.update((reg) => ({
-        ...reg,
-        cashSalesTotal: +(reg.cashSalesTotal + saleTotal).toFixed(2),
-      }));
+    const total = +items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2);
+    if (cashReceived < total) {
+      return {
+        ok: false,
+        message: `El efectivo recibido ($${cashReceived.toFixed(2)}) es menor al total a pagar ($${total.toFixed(2)}).`,
+        total,
+        change: 0,
+      };
     }
+    const change = +(cashReceived - total).toFixed(2);
 
     // Descontar existencias en tiempo real
     this.products.update((list) =>
@@ -1237,44 +1258,234 @@ export class MockInventoryService {
       }),
     );
 
-    // Registrar en el Kardex
-    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
-    const summaryNames = items
-      .slice(0, 2)
-      .map((i) => i.name)
-      .join(', ');
-    const customerName = customerId
-      ? this.creditCustomers().find((c) => c.id === customerId)?.name ?? ''
-      : '';
+    // Actualizar totales de caja (Efectivo físico entra al cajón)
+    this.cashShift.update((s) => ({
+      ...s,
+      cashSalesTotal: +(s.cashSalesTotal + total).toFixed(2),
+    }));
+    this.cashRegister.update((r) => ({
+      ...r,
+      cashSalesTotal: +(r.cashSalesTotal + total).toFixed(2),
+    }));
 
+    // Registrar en Kardex
+    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+    const summaryNames = items.slice(0, 2).map((i) => i.name).join(', ');
     this.kardex.update((entries) => [
       {
         id: 'K-' + String(Date.now()).slice(-4),
         timestamp: now,
-        type: paymentType === 'EFECTIVO' ? 'VENTA_EFECTIVO' : 'VENTA_FIADO',
-        description:
-          paymentType === 'EFECTIVO'
-            ? `Venta en efectivo (${items.length} art.: ${summaryNames})`
-            : `Fiado anotado a ${customerName} (${items.length} art.)`,
-        amount: saleTotal,
+        type: 'VENTA_EFECTIVO',
+        description: `Venta en efectivo (${items.length} art.: ${summaryNames})`,
+        amount: total,
       },
       ...entries,
     ]);
 
     return {
       ok: true,
-      message:
-        paymentType === 'EFECTIVO'
-          ? `Venta cobrada en efectivo por $${saleTotal.toFixed(2)}.`
-          : `Venta por $${saleTotal.toFixed(2)} anotada en la cuenta de ${customerName}.`,
-      total: saleTotal,
+      message: `Venta cobrada con éxito. Cambio: $${change.toFixed(2)}`,
+      total,
+      change,
     };
   }
 
   /**
+   * Procesa una venta cargada a la Libreta Digital de Fiado (Crédito Vecinal):
+   * - Bloquea la venta si el cliente tiene estatus 'VENCIDO'.
+   * - Bloquea si la venta excede el límite de crédito disponible.
+   * - Suma a creditSalesTotal (NO SUMA EFECTIVO AL CAJÓN: +$0.00).
+   * - Descuenta existencias de inventario físico.
+   * - Registra en Kardex como 'VENTA_FIADO'.
+   */
+  processCreditSale(items: CartItem[], customerId: string): CreditResult {
+    if (!items.length) {
+      return { ok: false, message: 'El carrito está vacío.', total: 0 };
+    }
+    const total = +items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2);
+    const customer = this.creditCustomers().find((c) => c.id === customerId);
+    if (!customer) {
+      return { ok: false, message: 'Selecciona un cliente para cargar el fiado.', total };
+    }
+    if (customer.status === 'VENCIDO') {
+      return {
+        ok: false,
+        message: `Crédito bloqueado: el cliente tiene pagos vencidos ($${customer.currentBalance.toFixed(2)}).`,
+        total,
+        availableCredit: Math.max(0, +(customer.creditLimit - customer.currentBalance).toFixed(2)),
+      };
+    }
+    if (customer.currentBalance + total > customer.creditLimit) {
+      const available = Math.max(0, +(customer.creditLimit - customer.currentBalance).toFixed(2));
+      return {
+        ok: false,
+        message: `Límite de crédito excedido. Disponible: $${available.toFixed(2)} de su límite de $${customer.creditLimit.toFixed(2)}.`,
+        total,
+        availableCredit: available,
+      };
+    }
+
+    // Actualizar saldo y estatus del cliente
+    this.creditCustomers.update((list) =>
+      list.map((c) => {
+        if (c.id !== customerId) return c;
+        const newBal = +(c.currentBalance + total).toFixed(2);
+        const ratio = newBal / c.creditLimit;
+        const nextStatus: CreditCustomerStatus =
+          c.status === 'VENCIDO' ? 'VENCIDO' : ratio >= 0.9 ? 'LIMITE_ALCANZADO' : 'AL_CORRIENTE';
+        return { ...c, currentBalance: newBal, status: nextStatus };
+      }),
+    );
+
+    // Sumar a crédito (NO ENTRA DINERO EN EFECTIVO AL CAJÓN)
+    this.cashShift.update((s) => ({
+      ...s,
+      creditSalesTotal: +(s.creditSalesTotal + total).toFixed(2),
+    }));
+    this.cashRegister.update((r) => ({
+      ...r,
+      creditSalesTotal: +(r.creditSalesTotal + total).toFixed(2),
+    }));
+
+    // Descontar inventario físico
+    this.products.update((list) =>
+      list.map((p) => {
+        const soldItem = items.find((i) => i.sku === p.sku);
+        if (!soldItem) return p;
+        const nextStock = Math.max(0, +(p.stock - soldItem.qty).toFixed(3));
+        return { ...p, stock: nextStock };
+      }),
+    );
+
+    // Registrar en Kardex
+    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+    this.kardex.update((entries) => [
+      {
+        id: 'K-' + String(Date.now()).slice(-4),
+        timestamp: now,
+        type: 'VENTA_FIADO',
+        description: `Fiado cargado a la libreta de ${customer.name} (${items.length} art.)`,
+        amount: total,
+      },
+      ...entries,
+    ]);
+
+    const remainingAvailable = +(customer.creditLimit - (customer.currentBalance + total)).toFixed(2);
+
+    return {
+      ok: true,
+      message: `Venta cargada a la cuenta de ${customer.name}. Saldo total: $${(customer.currentBalance + total).toFixed(2)}.`,
+      total,
+      availableCredit: remainingAvailable,
+    };
+  }
+
+  /**
+   * Procesa el Consumo Interno (alimentos o suministros tomados para la tienda o comida del personal):
+   * - Valida artículos y responsable obligatorio.
+   * - Se valúa estrictamente al COSTO DE COMPRA (weightedAvgCost / purchaseCost / historicCost), NO al precio de venta.
+   * - Descuenta existencias físicas de inventario.
+   * - No entra dinero al cajón de efectivo ($0.00).
+   * - Registra en internalConsumptionRecords y Kardex como 'CONSUMO_INTERNO'.
+   */
+  processInternalConsumption(
+    items: CartItem[],
+    responsible: string,
+  ): { ok: boolean; message: string; totalCost: number } {
+    if (!items.length) {
+      return { ok: false, message: 'El carrito está vacío.', totalCost: 0 };
+    }
+    const cleanResponsible = responsible?.trim() || 'Dueño (Don Lupe)';
+
+    const catalog = this.products();
+    const detailedItems = items.map((item) => {
+      const prod = catalog.find((p) => p.sku === item.sku);
+      const unitCost =
+        prod?.purchaseCost ??
+        prod?.lastPurchaseCost ??
+        prod?.weightedAvgCost ??
+        prod?.historicCost ??
+        +(item.unitPrice * 0.75).toFixed(2);
+      const subtotalCost = +(unitCost * item.qty).toFixed(2);
+      return {
+        productId: item.sku,
+        name: item.name,
+        quantity: item.qty,
+        unitCost: +unitCost.toFixed(2),
+        subtotalCost,
+      };
+    });
+
+    const totalCost = +detailedItems.reduce((sum, i) => sum + i.subtotalCost, 0).toFixed(2);
+
+    // Descontar inventario físico
+    this.products.update((list) =>
+      list.map((p) => {
+        const consumed = items.find((i) => i.sku === p.sku);
+        if (!consumed) return p;
+        const nextStock = Math.max(0, +(p.stock - consumed.qty).toFixed(3));
+        return { ...p, stock: nextStock };
+      }),
+    );
+
+    // Registrar en colección de consumos internos
+    const record: InternalConsumptionRecord = {
+      id: 'CI-' + String(Date.now()).slice(-4),
+      timestamp: new Date(),
+      responsible: cleanResponsible,
+      items: detailedItems,
+      totalCost,
+    };
+    this.internalConsumptionRecords.update((records) => [record, ...records]);
+
+    // Sumar al total contable de consumos internos (Cajón de efectivo: +$0.00)
+    this.cashShift.update((s) => ({
+      ...s,
+      internalConsumptionTotalCost: +(s.internalConsumptionTotalCost + totalCost).toFixed(2),
+    }));
+
+    // Registrar en Kardex
+    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+    this.kardex.update((entries) => [
+      {
+        id: 'K-' + String(Date.now()).slice(-4),
+        timestamp: now,
+        type: 'CONSUMO_INTERNO',
+        description: `Consumo Interno autorizado por ${cleanResponsible} (${items.length} art., Valuado al Costo: $${totalCost.toFixed(2)})`,
+        amount: totalCost,
+      },
+      ...entries,
+    ]);
+
+    return {
+      ok: true,
+      message: `Consumo interno registrado a cargo de ${cleanResponsible} por un costo contable de $${totalCost.toFixed(2)}. Existencias descontadas sin entrada al cajón.`,
+      totalCost,
+    };
+  }
+
+  /**
+   * Método de compatibilidad para llamadas generales de venta.
+   */
+  processSale(
+    items: PosSaleItem[],
+    paymentType: 'EFECTIVO' | 'FIADO',
+    customerId?: string,
+  ): { ok: boolean; message: string; total: number } {
+    if (paymentType === 'FIADO') {
+      const res = this.processCreditSale(items, customerId || '');
+      return { ok: res.ok, message: res.message, total: res.total };
+    } else {
+      const total = +items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2);
+      const res = this.processCashSale(items, total);
+      return { ok: res.ok, message: res.message, total: res.total };
+    }
+  }
+
+  /**
    * Registra un abono en efectivo de un cliente de fiado:
-   * - Disminuye su deuda (currentBalance) y desbloquea su estatus si liquida o baja del límite.
-   * - Suma el dinero recibido a creditPaymentsReceived (Efectivo en cajón).
+   * - Disminuye su deuda (currentBalance) y actualiza su estatus.
+   * - Suma el dinero recibido a creditPaymentsReceived (¡SÍ ENTRA EFECTIVO FÍSICO AL CAJÓN!).
    */
   registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string } {
     if (isNaN(amount) || amount <= 0) {
@@ -1302,6 +1513,11 @@ export class MockInventoryService {
         };
       }),
     );
+
+    this.cashShift.update((s) => ({
+      ...s,
+      creditPaymentsReceived: +(s.creditPaymentsReceived + applied).toFixed(2),
+    }));
 
     this.cashRegister.update((reg) => ({
       ...reg,
