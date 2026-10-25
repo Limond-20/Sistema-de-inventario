@@ -19,20 +19,16 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
-        <a routerLink="/fefo"
-          class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition-colors">
-          <span>Cambios Físicos FEFO</span>
-          @if (inv.getUrgentFefoCount() > 0) {
-            <span class="px-1.5 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-bold font-mono">
-              {{ inv.getUrgentFefoCount() }}
-            </span>
-          }
-        </a>
-        <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3.5 py-2 shadow-2xs text-xs font-semibold text-slate-600">
-          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+           
+      <div class="flex items-center gap-5">
+        <div class="flex items-center gap-2 text-sm text-slate-600">
+          <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
           <span>Sincronización móvil activa</span>
         </div>
+        <a routerLink="/fefo"
+          class="flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 shadow-2xs transition-colors hover:bg-slate-50">
+          Cambios Físicos FEFO@if (inv.getUrgentFefoCount() > 0) { ({{ inv.getUrgentFefoCount() }}) }
+        </a>
       </div>
     </section>
 
