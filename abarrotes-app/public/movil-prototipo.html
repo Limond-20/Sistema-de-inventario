@@ -7,10 +7,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Terminal Móvil · Abarrotes Doña Lupe</title>
+  <!-- Estilos locales y fallback de Tailwind -->
+  <link rel="stylesheet" href="vendor/movil.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Librerías de escáner EAN-13 / QR y OCR Tesseract en español -->
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Librerías locales (sin internet) -->
+  <script src="vendor/html5-qrcode.min.js"></script>
+  <script src="vendor/tesseract/tesseract.min.js"></script>
+  <script src="offline-assets.js"></script>
+  <!-- Enlace real PC <-> celular (reemplaza BroadcastChannel por WebSocket con fallback) -->
+  <script src="lan-sync-bridge.js"></script>
 
   <style>
     html, body {
@@ -104,8 +109,8 @@
       <!-- Lado Derecho: Badge MODO LOCAL (LAN) y Conmutador de Sonido / Háptico -->
       <div class="flex items-center gap-2">
         <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span class="text-[10px] tracking-wide text-emerald-300 font-extrabold">MODO LOCAL (LAN)</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" id="lan-status-dot"></span>
+          <span class="text-[10px] tracking-wide text-emerald-300 font-extrabold" id="lan-status-text">MODO LOCAL (LAN)</span>
         </div>
         <button type="button" onclick="toggleBeepVibro()" id="beep-vibro-toggle-btn"
           class="h-7 px-2 rounded-md bg-slate-800 border border-slate-700 text-xs font-bold text-slate-300 flex items-center gap-1 touch-btn"
@@ -556,15 +561,15 @@
           <!-- Disparador de Foto Obligatoria -->
           <div class="flex flex-col gap-1.5">
             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">4. Evidencia Fotográfica (Obligatoria):</span>
-            <div class="grid grid-cols-2 gap-2">
-              <label for="merma-photo-file"
-                class="h-12 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center shadow-2xs">
+            <div class="grid grid-cols-2 gap-2" id="merma-photo-grid">
+              <label for="merma-photo-file" id="merma-photo-label"
+                class="col-span-2 h-12 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center shadow-2xs">
                 <span>📷 Tomar Foto</span>
               </label>
               <input type="file" id="merma-photo-file" accept="image/*" capture="environment" class="hidden" onchange="onMermaPhotoSelected(event)" />
 
-              <button type="button" onclick="simulateMermaPhoto()"
-                class="h-12 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs touch-btn shadow-2xs">
+              <button type="button" onclick="simulateMermaPhoto()" id="btn-merma-simular"
+                class="hidden h-12 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs touch-btn shadow-2xs">
                 Simular Foto
               </button>
             </div>
@@ -1185,6 +1190,26 @@
     let selectedMermaSku = 'LAC-LAL-1L';
     let selectedMermaQty = 1;
     let mermaPhotoAttached = false;
+    let currentMermaFile = null;
+
+    function isSimulateAllowed() {
+      const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
+      const isUnavailable = window.LanSync && window.LanSync.status === 'unavailable';
+      return isDemo || isUnavailable;
+    }
+
+    function updateSimulatePhotoUI() {
+      const btn = document.getElementById('btn-merma-simular');
+      const label = document.getElementById('merma-photo-label');
+      if (!btn || !label) return;
+      if (isSimulateAllowed()) {
+        btn.classList.remove('hidden');
+        label.classList.remove('col-span-2');
+      } else {
+        btn.classList.add('hidden');
+        label.classList.add('col-span-2');
+      }
+    }
 
     function setMermaReason(reason) {
       selectedMermaReason = reason;
@@ -1218,28 +1243,70 @@
     function onMermaPhotoSelected(event) {
       const file = event.target.files && event.target.files[0];
       if (file) {
+        currentMermaFile = file;
         mermaPhotoAttached = true;
         document.getElementById('merma-photo-preview-wrap').classList.remove('hidden');
       }
     }
 
     function simulateMermaPhoto() {
-      mermaPhotoAttached = true;
-      document.getElementById('merma-photo-preview-wrap').classList.remove('hidden');
+      if (!isSimulateAllowed()) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = 300; canvas.height = 300;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fee2e2';
+      ctx.fillRect(0, 0, 300, 300);
+      ctx.fillStyle = '#be123c';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText('EVIDENCIA SIMULADA', 24, 150);
+      canvas.toBlob((blob) => {
+        currentMermaFile = blob;
+        mermaPhotoAttached = true;
+        document.getElementById('merma-photo-preview-wrap').classList.remove('hidden');
+      }, 'image/jpeg', 0.8);
     }
 
     function clearMermaPhoto() {
+      currentMermaFile = null;
       mermaPhotoAttached = false;
       document.getElementById('merma-photo-preview-wrap').classList.add('hidden');
       const fileInput = document.getElementById('merma-photo-file');
       if (fileInput) fileInput.value = '';
     }
 
-    function submitMermaToPC() {
-      if (!mermaPhotoAttached) {
+    async function submitMermaToPC() {
+      if (!mermaPhotoAttached || !currentMermaFile) {
         alert('La fotografía de evidencia es obligatoria para poder registrar la merma.');
         return;
       }
+
+      const submitBtn = document.getElementById('btn-merma-submit');
+      const prevHtml = submitBtn ? submitBtn.innerHTML : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>⏳ Subiendo evidencia a la PC...</span>';
+      }
+
+      let evidenceId = undefined;
+      try {
+        if (window.LanSync && typeof window.LanSync.uploadEvidence === 'function') {
+          const res = await window.LanSync.uploadEvidence(currentMermaFile);
+          if (!res || !res.id) {
+            throw new Error('Sin ID de evidencia');
+          }
+          evidenceId = res.id;
+        } else {
+          throw new Error('LanSync no disponible');
+        }
+      } catch (err) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = prevHtml;
+        }
+        alert('No se pudo guardar la foto; revisa el enlace con la PC');
+        return;
+      }
+
       triggerVibrate(80);
       const prod = findProduct(selectedMermaSku) || { name: 'Producto', saleUnit: 'Pieza', historicCost: 20 };
       const record = {
@@ -1254,6 +1321,7 @@
         unitCost: prod.historicCost,
         registeredBy: 'Terminal Móvil',
         hasPhoto: true,
+        evidenceId: evidenceId,
         reviewed: false
       };
 
@@ -1268,15 +1336,42 @@
         clearMermaPhoto();
         selectedMermaQty = 1;
         document.getElementById('merma-qty-val').textContent = '1';
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = prevHtml;
+        }
         goTo('screen-menu');
       }, 300);
     }
 
-    // Inicializar estado por defecto
+    // Inicializar estado por defecto y conexión LAN real
     window.addEventListener('DOMContentLoaded', () => {
       setMermaReason('Envase Roto en Piso');
       renderAuditCurrentItem();
       goTo('screen-menu');
+      updateSimulatePhotoUI();
+
+      if (window.LanSync) {
+        window.LanSync.on('status', function(snap) {
+          updateSimulatePhotoUI();
+          const textEl = document.getElementById('lan-status-text');
+          const dotEl = document.getElementById('lan-status-dot');
+          if (!textEl || !dotEl) return;
+          if (snap.status === 'open') {
+            textEl.textContent = 'CONECTADO A PC (LAN)';
+            textEl.className = 'text-[10px] tracking-wide text-emerald-300 font-extrabold';
+            dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+          } else if (snap.status === 'connecting') {
+            textEl.textContent = 'CONECTANDO...';
+            textEl.className = 'text-[10px] tracking-wide text-amber-300 font-extrabold';
+            dotEl.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+          } else {
+            textEl.textContent = 'MODO LOCAL (LAN)';
+            textEl.className = 'text-[10px] tracking-wide text-slate-300 font-extrabold';
+            dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          }
+        });
+      }
     });
   </script>
 </body>

@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { NavbarComponent } from './components/navbar/navbar.component';
+import { MockInventoryService } from './services/mock-inventory.service';
 
 @Component({
   selector: 'app-root',
@@ -19,4 +20,6 @@ import { NavbarComponent } from './components/navbar/navbar.component';
     </div>
   `,
 })
-export class App {}
+export class App {
+  protected readonly inv = inject(MockInventoryService);
+}

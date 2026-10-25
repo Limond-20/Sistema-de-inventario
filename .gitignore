@@ -21,3 +21,10 @@ Thumbs.db
 .idea/
 *.tmp
 *.tmp.html
+
+# servidor local (certificados y código de vinculación: son secretos de cada tienda)
+local-server/certs/
+local-server/data/
+local-server/**/__pycache__/
+local-server/.pytest_cache/
+local-server/tools/node_modules/

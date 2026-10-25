@@ -1,0 +1,15 @@
+{
+  "name": "abarrotes-vendor-tools",
+  "private": true,
+  "description": "Descarga y fija las librerías que el celular necesita para funcionar SIN internet",
+  "scripts": {
+    "build": "node build-vendor.mjs"
+  },
+  "dependencies": {
+    "@tesseract.js-data/spa": "1.0.0",
+    "html5-qrcode": "2.3.8",
+    "tailwindcss": "3.4.17",
+    "tesseract.js": "5.1.1",
+    "tesseract.js-core": "5.1.1"
+  }
+}

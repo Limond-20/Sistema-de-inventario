@@ -1,4 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
+import { addShrinkRecordIdempotent } from '../domain/shrink';
 import {
   AbcResult,
   ClassificationDiscrepancy,
@@ -225,6 +226,7 @@ export interface ShrinkRecord {
   unitCost: number;
   registeredBy: string;
   hasPhoto: boolean;
+  evidenceId?: string;
   reviewed: boolean;
 }
 
@@ -1058,6 +1060,43 @@ export class MockInventoryService {
   readonly storeName = 'Abarrotes Doña Lupe';
   readonly today = 'Jueves 22 de octubre de 2026';
 
+  constructor() {
+    this.initLanSyncListener();
+  }
+
+  private initLanSyncListener(): void {
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const channel = new BroadcastChannel('abarrotes_lan_sync');
+        channel.onmessage = (event) => {
+          this.handleIncomingLanMessage(event.data);
+        };
+      } catch (err) {
+        console.warn('[MockInventoryService] Error en BroadcastChannel:', err);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (ev: StorageEvent) => {
+        if (ev.key === 'abarrotes_lan_last_event' && ev.newValue) {
+          try {
+            const data = JSON.parse(ev.newValue);
+            this.handleIncomingLanMessage(data);
+          } catch {
+            // ignore
+          }
+        }
+      });
+    }
+  }
+
+  private handleIncomingLanMessage(data: any): void {
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'MERMA_SUBMIT' && data.record) {
+      this.addShrinkRecord(data.record);
+    }
+  }
+
   readonly products = signal<Product[]>(structuredClone(PRODUCTS));
   readonly creditCustomers = signal<CreditCustomer[]>(structuredClone(CREDIT_CUSTOMERS));
 
@@ -1740,6 +1779,24 @@ export class MockInventoryService {
   }
 
   // ---------- Mermas ----------
+
+  addShrinkRecord(record: ShrinkRecord): void {
+    if (!record || !record.id) return;
+    const cleanRecord: ShrinkRecord = {
+      ...record,
+      emoji: record.emoji || this.products().find((p) => p.sku === record.sku)?.emoji || '📦',
+    };
+    const prev = this.shrinkRecords();
+    const next = addShrinkRecordIdempotent(prev, cleanRecord);
+    if (next.length === prev.length) {
+      return; // Ya existía en la lista (duplicado ignorado)
+    }
+    this.shrinkRecords.set(next);
+    this.cashShift.update((s) => ({
+      ...s,
+      shrinkTotalCost: +(s.shrinkTotalCost + (record.qty * record.unitCost)).toFixed(2),
+    }));
+  }
 
   markShrinkReviewed(id: string): void {
     this.shrinkRecords.update((list) => list.map((r) => (r.id === id ? { ...r, reviewed: true } : r)));

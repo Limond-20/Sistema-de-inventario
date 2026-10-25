@@ -1,11 +1,11 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../services/mock-inventory.service';
 
 @Component({
   selector: 'app-fefo-view',
-  imports: [CommonModule, CurrencyPipe, DatePipe, RouterLink],
+  imports: [CommonModule, RouterLink],
   template: `
     <div class="content-card flex flex-col gap-5 select-none">
       <!-- ===================== ENCABEZADO ===================== -->

@@ -6,8 +6,11 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Librerías locales (sin internet). Se regeneran con local-server/tools (npm run build). -->
+  <script src="vendor/html5-qrcode.min.js"></script>
+  <script src="vendor/tesseract/tesseract.min.js"></script>
+  <script src="offline-assets.js"></script>
+  <script src="lan-sync-bridge.js"></script>
 </head>
 <body>
   <app-root></app-root>
