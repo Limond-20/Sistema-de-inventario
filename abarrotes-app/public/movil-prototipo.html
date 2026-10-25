@@ -3,11 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#0e4a57" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Terminal Móvil · Abarrotes Doña Lupe</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Figtree', 'Segoe UI', 'system-ui', 'sans-serif'],
+            display: ['"Bricolage Grotesque"', 'Figtree', 'system-ui', 'sans-serif'],
+            mono: ['Figtree', 'Segoe UI', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            ok: '#34d399',
+            brand: { 100: '#d6e7ea', 200: '#a9c4ca', 600: '#136075', 700: '#0e4a57', 800: '#0a3943', 900: '#072b33' },
+            slate: { 50: '#f5f8f8', 100: '#eceff0', 200: '#dde3e4', 300: '#c5cfd1', 400: '#93a4a7', 500: '#667a7e', 600: '#4c6064', 700: '#344a4f', 800: '#1e343a', 900: '#12292f', 950: '#0b1d22' },
+            /* El verde brillante y el azul se vuelven el verde petróleo de la marca */
+            emerald: { 50: '#eef6f7', 100: '#d6e7ea', 200: '#b3d2d8', 300: '#a6cdd5', 400: '#7cb4bf', 500: '#2a6f80', 600: '#0e4a57', 700: '#0b3d48', 800: '#0a3943', 900: '#072b33', 950: '#041d23' },
+            blue: { 50: '#eef6f7', 100: '#d6e7ea', 200: '#b3d2d8', 300: '#a6cdd5', 400: '#7cb4bf', 500: '#2a6f80', 600: '#0e4a57', 700: '#0b3d48', 800: '#0a3943', 900: '#072b33', 950: '#041d23' },
+            /* Ámbar y rojo, más apagados */
+            amber: { 50: '#fbf6ea', 100: '#f6ebcf', 200: '#edd8a3', 300: '#e2c070', 400: '#d9ad4c', 500: '#c48f2e', 600: '#a87722', 700: '#8a5f1b', 800: '#6f4b16', 900: '#563a13', 950: '#3a2709' },
+            rose: { 50: '#fbf1f1', 100: '#f6e0e0', 200: '#ebc4c4', 300: '#dda0a0', 400: '#c97878', 500: '#b65a5a', 600: '#a33f3f', 700: '#8c3434', 800: '#702b2b', 900: '#571f1f', 950: '#3b1414' },
+          },
+        },
+      },
+    };
+  </script>
   <!-- Librerías de escáner EAN-13 / QR y OCR Tesseract en español -->
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -18,65 +45,80 @@
       overscroll-behavior: none;
       touch-action: manipulation;
       user-select: none;
-      background-color: #e2e8f0;
-      color: #0f172a;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: #eceff0;
+      color: #12292f;
+      font-family: 'Figtree', 'Segoe UI', system-ui, sans-serif;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
     }
+
+    /* Tipografía: Bricolage para títulos y cifras grandes, Figtree para lo demás */
+    h1, h2 { font-family: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif; letter-spacing: -0.01em; }
+    #audit-display-val, #merma-qty-val { font-family: 'Bricolage Grotesque', 'Figtree', sans-serif !important; }
+    .font-mono, .tabular-nums { font-family: 'Figtree', 'Segoe UI', system-ui, sans-serif !important; font-variant-numeric: tabular-nums; }
+
+    /* Etiquetas sin mayúsculas sostenidas y letra más legible */
+    .uppercase { text-transform: none !important; }
+    .tracking-wider, .tracking-wide, .tracking-tight { letter-spacing: 0 !important; }
+    .font-black, .font-extrabold { font-weight: 700 !important; }
+    .text-xs { font-size: 13px !important; line-height: 1.4 !important; }
+    .text-sm { font-size: 15px !important; }
+    .text-\[9px\], .text-\[10px\] { font-size: 12px !important; }
+    .text-\[11px\] { font-size: 13px !important; }
+
+    /* Tipografía de botones: más ligera y uniforme */
+    button, label[for] {
+      font-family: 'Figtree', 'Segoe UI', system-ui, sans-serif;
+      font-weight: 600 !important;
+      letter-spacing: 0 !important;
+    }
+    #audit-keypad button {
+      font-family: 'Bricolage Grotesque', 'Figtree', sans-serif;
+      font-weight: 600 !important;
+    }
+
+    /* Botón principal suave (en vez de un bloque oscuro) */
+    .btn-soft { background: #d6e7ea; color: #0a3943; border: 1px solid #b3d2d8; }
+    .btn-soft:active { background: #b3d2d8; }
+    .btn-soft.is-running { background: #ffffff; color: #344a4f; border-color: #c5cfd1; }
 
     /* Animación de feedback táctil */
-    .touch-btn:active {
-      transform: scale(0.97);
+    .touch-btn:active { transform: scale(0.98); }
+
+    /* Tarjetas del menú principal */
+    .module-card {
+      display: flex; flex-direction: column; gap: 12px; width: 100%;
+      text-align: left; background: #fff; border: 1px solid #dde3e4;
+      border-radius: 16px; padding: 16px;
+      box-shadow: 0 1px 2px rgba(18, 41, 47, 0.06);
+      transition: box-shadow 0.12s ease, border-color 0.12s ease;
     }
+    .module-card:active { border-color: #c5cfd1; box-shadow: 0 2px 8px rgba(18, 41, 47, 0.1); }
 
     /* Pestañas de pantalla */
-    .screen-tab {
-      display: none;
-    }
-    .screen-tab.active {
-      display: flex;
-    }
+    .screen-tab { display: none; }
+    .screen-tab.active { display: flex; }
 
-    /* Retícula de escáner láser */
-    .reticle-box {
-      position: relative;
-    }
+    /* Retícula de escáner láser (colores suaves) */
+    .reticle-box { position: relative; }
     .reticle-laser {
-      position: absolute;
-      left: 6%;
-      right: 6%;
-      height: 2px;
-      background: #10b981;
-      box-shadow: 0 0 12px 2px #34d399;
-      animation: laserSweep 1.8s ease-in-out infinite alternate;
-      z-index: 10;
+      position: absolute; left: 6%; right: 6%; height: 2px;
+      background: #8fd0da; box-shadow: 0 0 12px 2px #5fb6c4;
+      animation: laserSweep 1.8s ease-in-out infinite alternate; z-index: 10;
     }
     @keyframes laserSweep {
       0% { top: 12%; opacity: 0.3; }
       50% { opacity: 1; }
       100% { top: 88%; opacity: 0.3; }
     }
-
-    .reticle-corner {
-      position: absolute;
-      width: 20px;
-      height: 20px;
-      border-color: #10b981;
-      z-index: 11;
-    }
+    .reticle-corner { position: absolute; width: 20px; height: 20px; border-color: #8fd0da; z-index: 11; }
     .reticle-corner.tl { top: 8px; left: 8px; border-top-width: 3px; border-left-width: 3px; }
     .reticle-corner.tr { top: 8px; right: 8px; border-top-width: 3px; border-right-width: 3px; }
     .reticle-corner.bl { bottom: 8px; left: 8px; border-bottom-width: 3px; border-left-width: 3px; }
     .reticle-corner.br { bottom: 8px; right: 8px; border-bottom-width: 3px; border-right-width: 3px; }
 
-    /* Estilo de scroll para listas internas */
-    ::-webkit-scrollbar {
-      width: 4px;
-      height: 4px;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 9999px;
-    }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: #c5cfd1; border-radius: 9999px; }
   </style>
 </head>
 <body class="bg-slate-200 min-h-screen flex flex-col justify-between overflow-x-hidden font-sans">
@@ -89,28 +131,28 @@
     <!-- =========================================================================
          CABECERA IDÉNTICA A NAVBAR (h-12)
          ========================================================================= -->
-    <header class="h-12 bg-slate-900 border-b border-slate-800 text-white px-3 flex items-center justify-between select-none shrink-0 z-30 shadow-md sticky top-0">
-      <!-- Lado Izquierdo: Icono cuadrado PV, Nombre de Tienda y Subtítulo -->
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-xs font-black shadow-xs text-white">
-          PV
+    <header class="sticky top-0 z-30 flex h-14 shrink-0 select-none items-center justify-between bg-brand-700 px-4 text-white shadow-sm">
+      <div class="flex items-center gap-3">
+        <div class="grid h-9 w-9 place-items-center rounded-lg bg-amber-400 text-slate-900">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"/><path d="M9.8 12a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0 -4.4 0"/></svg>
         </div>
         <div>
-          <span class="block text-sm font-black tracking-tight leading-none text-white">DOÑA LUPE</span>
-          <span class="block text-[10px] font-bold text-slate-400 leading-none mt-0.5">Terminal Móvil</span>
+          <span class="block font-display text-base font-bold leading-tight">Doña Lupe</span>
+          <span class="block text-xs leading-tight text-brand-200">Terminal Móvil</span>
         </div>
       </div>
 
-      <!-- Lado Derecho: Badge MODO LOCAL (LAN) y Conmutador de Sonido / Háptico -->
-      <div class="flex items-center gap-2">
-        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span class="text-[10px] tracking-wide text-emerald-300 font-extrabold">MODO LOCAL (LAN)</span>
-        </div>
+      <div class="flex items-center gap-3">
+        <span class="flex items-center gap-2 text-xs font-semibold text-brand-100">
+          <span class="h-2 w-2 animate-pulse rounded-full bg-ok"></span>
+          Modo local (LAN)
+        </span>
         <button type="button" onclick="toggleBeepVibro()" id="beep-vibro-toggle-btn"
-          class="h-7 px-2 rounded-md bg-slate-800 border border-slate-700 text-xs font-bold text-slate-300 flex items-center gap-1 touch-btn"
+          class="touch-btn grid h-9 w-9 place-items-center rounded-lg border border-white/25 text-white"
           title="Alternar sonido y vibración">
-          <span id="beep-vibro-icon">🔊📳</span>
+          <span id="beep-vibro-icon" class="inline-flex">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
+          </span>
         </button>
       </div>
     </header>
@@ -118,97 +160,82 @@
     <!-- =========================================================================
          CONTENIDO PRINCIPAL DINÁMICO
          ========================================================================= -->
-    <main class="flex-1 p-3.5 flex flex-col pb-8">
+    <main class="flex-1 p-4 flex flex-col pb-10">
 
       <!-- =====================================================================
            PANTALLA PRINCIPAL: MENÚ HUB & SPOKE (MÓDULOS DEL DASHBOARD)
            ===================================================================== -->
       <section id="screen-menu" class="screen-tab active flex-col gap-3">
-        <!-- Título del Hub -->
         <div class="mb-1">
-          <h1 class="text-xl font-black text-slate-900 tracking-tight">Terminal de Mostrador y Pasillo</h1>
-          <p class="text-xs text-slate-600 font-semibold mt-0.5">Selecciona una operación vinculada a la PC de caja</p>
+          <h1 class="text-2xl font-bold text-slate-900">Terminal de Mostrador y Pasillo</h1>
+          <p class="mt-0.5 text-sm text-slate-600">Selecciona una operación vinculada a la PC de caja</p>
         </div>
 
-        <!-- Botón 1: Lector POS (Esmeralda) -->
-        <button type="button" onclick="goTo('screen-pos')"
-          class="btn relative rounded-2xl border-2 border-emerald-600 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
-          <div class="flex items-center justify-between">
-            <span class="px-2.5 py-0.5 rounded-full bg-emerald-900/90 text-emerald-200 text-[10px] font-black tracking-wider uppercase border border-emerald-400/40">
-              ESCÁNER EAN-13
+        <button type="button" onclick="goTo('screen-pos')" class="module-card touch-btn">
+          <div class="flex w-full items-start justify-between gap-3">
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
+              <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8"/><path d="M12 8v8"/><path d="M17 8v8"/></svg>
             </span>
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-300"></span>
+            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Escáner EAN-13</span></span>
           </div>
-          <div>
-            <h2 class="text-xl font-black tracking-tight leading-tight">Lector de Mostrador (POS)</h2>
-            <p class="text-xs text-emerald-100 font-semibold mt-0.5">Escáner láser por cámara continua o foto para agregar artículos al ticket activo de la PC</p>
+          <div class="w-full">
+            <h2 class="text-xl font-bold leading-tight text-slate-900">Lector de Mostrador (POS)</h2>
+            <p class="mt-1 text-sm text-slate-600">Escáner láser por cámara continua o foto para agregar artículos al ticket activo de la PC</p>
           </div>
-          <div class="flex items-center justify-between text-xs font-bold text-emerald-200 border-t border-emerald-500/50 pt-2">
+          <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
             <span>Sincronización LAN en vivo</span>
-            <span class="font-mono text-white text-xs font-black">ENTRAR ➔</span>
+            <span class="inline-flex items-center gap-1 font-semibold text-emerald-700">Entrar <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
           </div>
         </button>
 
-        <!-- Botón 2: Recepción y Notas OCR (Pizarra / Slate) -->
-        <button type="button" onclick="goTo('screen-ocr')"
-          class="btn relative rounded-2xl border-2 border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
-          <div class="flex items-center justify-between">
-            <span class="px-2.5 py-0.5 rounded-full bg-slate-950 text-slate-300 text-[10px] font-black tracking-wider uppercase border border-slate-700">
-              REMISIÓN / OCR
+        <button type="button" onclick="goTo('screen-ocr')" class="module-card touch-btn">
+          <div class="flex w-full items-start justify-between gap-3">
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-sky-100 text-sky-700">
+              <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
             </span>
-            <span class="px-2 py-0.5 rounded-full bg-blue-500 text-white text-[9px] font-black">
-              Tesseract Spa
-            </span>
+            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">Remisión / OCR</span></span>
           </div>
-          <div>
-            <h2 class="text-xl font-black tracking-tight leading-tight">Recepción y Notas (OCR)</h2>
-            <p class="text-xs text-slate-300 font-semibold mt-0.5">Captura facturas de proveedores para blindar márgenes y detectar alzas de costo</p>
+          <div class="w-full">
+            <h2 class="text-xl font-bold leading-tight text-slate-900">Recepción y Notas (OCR)</h2>
+            <p class="mt-1 text-sm text-slate-600">Captura facturas de proveedores para blindar márgenes y detectar alzas de costo</p>
           </div>
-          <div class="flex items-center justify-between text-xs font-bold text-slate-400 border-t border-slate-700/60 pt-2">
+          <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
             <span>Control de compras y costos</span>
-            <span class="font-mono text-white text-xs font-black">ENTRAR ➔</span>
+            <span class="inline-flex items-center gap-1 font-semibold text-sky-700">Entrar <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
           </div>
         </button>
 
-        <!-- Botón 3: Auditoría Ciega (Ámbar) -->
-        <button type="button" onclick="goTo('screen-conteo')"
-          class="btn relative rounded-2xl border-2 border-amber-600 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
-          <div class="flex items-center justify-between">
-            <span class="px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-200 text-[10px] font-black tracking-wider uppercase border border-amber-700/40">
-              CONTEO FÍSICO CIEGO
+        <button type="button" onclick="goTo('screen-conteo')" class="module-card touch-btn">
+          <div class="flex w-full items-start justify-between gap-3">
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
+              <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6v4H9z"/><path d="M15 4h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1"/><path d="M9 14l2 2 4-4"/></svg>
             </span>
-            <span class="px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 text-[9px] font-black">
-              15 Productos
-            </span>
+            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Conteo físico ciego</span><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">15 Productos</span></span>
           </div>
-          <div>
-            <h2 class="text-xl font-black tracking-tight leading-tight">Auditoría Ciega de Pasillo</h2>
-            <p class="text-xs text-amber-950 font-bold mt-0.5">Conteo físico sin sesgos ni stock visible. Teclado gigante en pantalla</p>
+          <div class="w-full">
+            <h2 class="text-xl font-bold leading-tight text-slate-900">Auditoría Ciega de Pasillo</h2>
+            <p class="mt-1 text-sm text-slate-600">Conteo físico sin sesgos ni stock visible. Teclado gigante en pantalla</p>
           </div>
-          <div class="flex items-center justify-between text-xs font-extrabold text-amber-950 border-t border-amber-600/60 pt-2">
+          <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
             <span>10 Clase A · 4 Clase B · 1 Clase C</span>
-            <span class="font-mono text-slate-950 text-xs font-black">ENTRAR ➔</span>
+            <span class="inline-flex items-center gap-1 font-semibold text-amber-700">Entrar <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
           </div>
         </button>
 
-        <!-- Botón 4: Mermas con Evidencia (Rojo / Rose) -->
-        <button type="button" onclick="goTo('screen-mermas')"
-          class="btn relative rounded-2xl border-2 border-rose-800 bg-gradient-to-br from-rose-900 to-rose-950 hover:from-rose-800 hover:to-rose-900 text-white p-4 shadow-md transition-all text-left flex flex-col justify-between touch-btn gap-2">
-          <div class="flex items-center justify-between">
-            <span class="px-2.5 py-0.5 rounded-full bg-rose-950 text-rose-200 text-[10px] font-black tracking-wider uppercase border border-rose-700/50">
-              EVIDENCIA DE MERMA
+        <button type="button" onclick="goTo('screen-mermas')" class="module-card touch-btn">
+          <div class="flex w-full items-start justify-between gap-3">
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-100 text-rose-700">
+              <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
             </span>
-            <span class="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black">
-              Foto Obligatoria
-            </span>
+            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">Evidencia de merma</span><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Foto Obligatoria</span></span>
           </div>
-          <div>
-            <h2 class="text-xl font-black tracking-tight leading-tight">Reporte de Mermas</h2>
-            <p class="text-xs text-rose-200 font-semibold mt-0.5">Registro rápido de bajas por rotura o caducidad con foto desde el anaquel</p>
+          <div class="w-full">
+            <h2 class="text-xl font-bold leading-tight text-slate-900">Reporte de Mermas</h2>
+            <p class="mt-1 text-sm text-slate-600">Registro rápido de bajas por rotura o caducidad con foto desde el anaquel</p>
           </div>
-          <div class="flex items-center justify-between text-xs font-bold text-rose-300 border-t border-rose-800/60 pt-2">
+          <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
             <span>Sincronización a PC para dictamen</span>
-            <span class="font-mono text-white text-xs font-black">ENTRAR ➔</span>
+            <span class="inline-flex items-center gap-1 font-semibold text-rose-700">Entrar <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
           </div>
         </button>
       </section>
@@ -218,16 +245,13 @@
            ===================================================================== -->
       <section id="screen-pos" class="screen-tab flex-col gap-3">
         <!-- Botón superior obligatorio para regresar al Menú -->
-        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
+        <button type="button" onclick="goTo('screen-menu')" class="touch-btn -ml-1 mb-1 inline-flex h-10 w-fit items-center gap-1 self-start rounded-lg pl-1 pr-3 text-sm font-semibold text-brand-700 hover:bg-slate-200/70"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Regresar al Menú</button>
 
         <div class="flex items-center justify-between pb-1 border-b border-slate-200">
           <div>
             <h1 class="text-lg font-black text-slate-900">Lector EAN-13 (Mostrador)</h1>
             <p class="text-[11px] text-slate-500 font-medium">Escanea códigos de barras para enviarlos al ticket activo en PC</p>
           </div>
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-            Láser Activo
-          </span>
         </div>
 
         <!-- Visor centrado de cámara con marco rounded-2xl border-2 border-emerald-600 -->
@@ -247,22 +271,22 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
             </svg>
             <p class="text-xs font-bold text-slate-300">Cámara en espera</p>
-            <p class="text-[11px] text-slate-500 mt-0.5">Toca el botón verde para iniciar el visor láser</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">Toca Iniciar Cámara para activar el visor láser</p>
           </div>
         </div>
 
         <!-- Controles de Escáner -->
         <div class="grid grid-cols-2 gap-2">
           <button type="button" id="btn-toggle-camera" onclick="togglePosCamera()"
-            class="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md touch-btn">
-            <span id="pos-cam-icon">▶</span>
+            class="btn-soft touch-btn flex h-11 items-center justify-center gap-2 rounded-xl text-sm">
+            <span id="pos-cam-icon" class="inline-flex"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5l12 7-12 7z"/></svg></span>
             <span id="pos-cam-btn-text">Iniciar Cámara</span>
           </button>
 
-          <!-- Botón táctil ancho para tomar foto / cámara nativa (HTTP) -->
           <label for="pos-native-photo-input"
-            class="h-12 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-900 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center leading-tight px-2 shadow-2xs">
-            <span>📷 Tomar Foto / Usar Cámara Nativa (HTTP)</span>
+            class="touch-btn flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">
+            <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+            <span>Subir Foto</span>
           </label>
           <input type="file" id="pos-native-photo-input" accept="image/*" capture="environment" class="hidden" onchange="onPosPhotoSelected(event)" />
         </div>
@@ -319,14 +343,14 @@
            ===================================================================== -->
       <section id="screen-conteo" class="screen-tab flex-col gap-3">
         <!-- Botón superior obligatorio para regresar al Menú -->
-        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
+        <button type="button" onclick="goTo('screen-menu')" class="touch-btn -ml-1 mb-1 inline-flex h-10 w-fit items-center gap-1 self-start rounded-lg pl-1 pr-3 text-sm font-semibold text-brand-700 hover:bg-slate-200/70"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Regresar al Menú</button>
 
         <div class="flex items-center justify-between pb-1 border-b border-slate-200">
           <div>
             <h1 class="text-lg font-black text-slate-900">Auditoría Ciega de Pasillo</h1>
             <p class="text-[11px] text-slate-500 font-medium">Conteo físico sin mostrar existencias del sistema</p>
           </div>
-          <span id="audit-class-chip" class="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 font-mono">
+          <span id="audit-class-chip" class="text-sm font-semibold text-amber-800">
             CLASE A
           </span>
         </div>
@@ -386,15 +410,14 @@
           </div>
 
           <!-- Botones de Navegación del Conteo -->
-          <div class="grid grid-cols-3 gap-2 mt-1">
+          <div class="mt-1 grid grid-cols-3 gap-3">
             <button type="button" onclick="auditSkipCurrentItem()"
-              class="h-13 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 touch-btn shadow-2xs">
-              <span>Omitir</span>
+              class="touch-btn h-14 rounded-xl border border-slate-300 bg-white text-base text-slate-700 hover:bg-slate-50">
+              Omitir
             </button>
-            <!-- Botón verde Guardar y Siguiente ➔ -->
             <button type="button" id="btn-audit-next" onclick="auditConfirmCurrentItem()"
-              class="col-span-2 h-13 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 touch-btn">
-              <span id="audit-next-text">Guardar y Siguiente ➔</span>
+              class="btn-soft touch-btn col-span-2 h-14 rounded-xl text-base">
+              <span id="audit-next-text">Guardar y Siguiente</span>
             </button>
           </div>
         </div>
@@ -415,7 +438,7 @@
           <!-- Botón final Enviar Conteo a la Computadora -->
           <button type="button" onclick="submitAuditToPC()"
             class="h-14 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-lg flex items-center justify-center gap-2 touch-btn">
-            <span>📤 Enviar Conteo a la Computadora</span>
+            <span>Enviar Conteo a la Computadora</span>
           </button>
         </div>
       </section>
@@ -425,16 +448,13 @@
            ===================================================================== -->
       <section id="screen-ocr" class="screen-tab flex-col gap-3">
         <!-- Botón superior obligatorio para regresar al Menú -->
-        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
+        <button type="button" onclick="goTo('screen-menu')" class="touch-btn -ml-1 mb-1 inline-flex h-10 w-fit items-center gap-1 self-start rounded-lg pl-1 pr-3 text-sm font-semibold text-brand-700 hover:bg-slate-200/70"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Regresar al Menú</button>
 
         <div class="flex items-center justify-between pb-1 border-b border-slate-200">
           <div>
             <h1 class="text-lg font-black text-slate-900">Captura OCR de Facturas</h1>
             <p class="text-[11px] text-slate-500 font-medium">Digitaliza notas de proveedores para detectar aumentos de costo</p>
           </div>
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300 font-mono">
-            Tesseract Spa
-          </span>
         </div>
 
         <!-- Botón destacado para disparar cámara de foto a la nota física -->
@@ -450,10 +470,7 @@
         <input type="file" id="ocr-file-input" accept="image/*" capture="environment" class="hidden" onchange="onOcrImageSelected(event)" />
 
         <!-- Botón de Prueba Rápida con Ticket de Ejemplo -->
-        <button type="button" onclick="loadSampleTicketOCR()"
-          class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-extrabold text-xs flex items-center justify-center gap-1.5 touch-btn shadow-2xs">
-          <span>⚡ Cargar Ticket de Ejemplo (Sin Foto)</span>
-        </button>
+        <button type="button" onclick="loadSampleTicketOCR()" class="touch-btn flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">Cargar Ticket de Ejemplo (Sin Foto)</button>
 
         <!-- Barra de progreso con Tesseract.js -->
         <div id="ocr-progress-box" class="hidden bg-white rounded-2xl border border-slate-200 p-4 flex flex-col gap-2 shadow-sm">
@@ -484,7 +501,7 @@
 
           <!-- Botón Azul Inferior: Mandar a Recepción de PC -->
           <button type="button" onclick="sendOcrNoteToPC()"
-            class="h-13 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md flex items-center justify-center gap-2 touch-btn mt-1">
+            class="h-12 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-sm flex items-center justify-center gap-2 touch-btn mt-1">
             <span>Mandar a Recepción de PC</span>
           </button>
         </div>
@@ -495,16 +512,14 @@
            ===================================================================== -->
       <section id="screen-mermas" class="screen-tab flex-col gap-3">
         <!-- Botón superior obligatorio para regresar al Menú -->
-        <button onclick="goTo('screen-menu')" class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 mb-3 shadow-2xs">⬅️ Regresar al Menú</button>
+        <button type="button" onclick="goTo('screen-menu')" class="touch-btn -ml-1 mb-1 inline-flex h-10 w-fit items-center gap-1 self-start rounded-lg pl-1 pr-3 text-sm font-semibold text-brand-700 hover:bg-slate-200/70"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Regresar al Menú</button>
 
         <div class="flex items-center justify-between pb-1 border-b border-slate-200">
           <div>
             <h1 class="text-lg font-black text-slate-900">Reporte de Mermas</h1>
             <p class="text-[11px] text-slate-500 font-medium">Bajas por rotura o caducidad con foto obligatoria</p>
           </div>
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 font-mono">
-            Evidencia
-          </span>
+          <span class="text-sm font-semibold text-slate-500">Evidencia</span>
         </div>
 
         <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3">
@@ -558,19 +573,19 @@
             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">4. Evidencia Fotográfica (Obligatoria):</span>
             <div class="grid grid-cols-2 gap-2">
               <label for="merma-photo-file"
-                class="h-12 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-900 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center shadow-2xs">
-                <span>📷 Tomar Foto</span>
+                class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center">
+                <span>Tomar Foto</span>
               </label>
               <input type="file" id="merma-photo-file" accept="image/*" capture="environment" class="hidden" onchange="onMermaPhotoSelected(event)" />
 
               <button type="button" onclick="simulateMermaPhoto()"
-                class="h-12 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs touch-btn shadow-2xs">
+                class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm touch-btn">
                 Simular Foto
               </button>
             </div>
 
             <div id="merma-photo-preview-wrap" class="hidden rounded-xl border border-emerald-300 p-2.5 bg-emerald-50 flex items-center justify-between">
-              <span class="text-xs font-bold text-emerald-800">✓ Foto de evidencia adjunta</span>
+              <span class="text-xs font-bold text-emerald-800">Foto de evidencia adjunta</span>
               <button type="button" onclick="clearMermaPhoto()" class="text-xs text-rose-600 font-bold underline">Quitar</button>
             </div>
           </div>
@@ -666,24 +681,32 @@
     let soundEnabled = true;
     let vibroEnabled = true;
 
+    function mobIcon(paths, size = 18) {
+      return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + paths.map(d => '<path d="' + d + '"/>').join('') + '</svg>';
+    }
+    const BEEP_ICONS = {
+      both: ['M11 5L6 9H2v6h4l5 4z', 'M15.5 8.5a5 5 0 0 1 0 7', 'M19 5a9 9 0 0 1 0 14'],
+      vibro: ['M8 2h8a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z', 'M11 18h2', 'M3 9v6', 'M21 9v6'],
+      mute: ['M11 5L6 9H2v6h4l5 4z', 'M22 9l-6 6', 'M16 9l6 6']
+    };
+
     function toggleBeepVibro() {
+      const icon = document.getElementById('beep-vibro-icon');
       if (soundEnabled && vibroEnabled) {
         soundEnabled = false;
         vibroEnabled = true;
-        const icon = document.getElementById('beep-vibro-icon');
-        if (icon) icon.textContent = '📳';
+        if (icon) icon.innerHTML = mobIcon(BEEP_ICONS.vibro);
         showScanToast('Modo Silencio', 'Solo vibración activa');
       } else if (!soundEnabled && vibroEnabled) {
         soundEnabled = false;
         vibroEnabled = false;
-        const icon = document.getElementById('beep-vibro-icon');
-        if (icon) icon.textContent = '🔇';
+        if (icon) icon.innerHTML = mobIcon(BEEP_ICONS.mute);
         showScanToast('Modo Mudo', 'Sonido y vibración desactivados');
       } else {
         soundEnabled = true;
         vibroEnabled = true;
-        const icon = document.getElementById('beep-vibro-icon');
-        if (icon) icon.textContent = '🔊📳';
+        if (icon) icon.innerHTML = mobIcon(BEEP_ICONS.both);
         showScanToast('Beep y Vibración', 'Alertas sensoriales activas');
       }
     }
@@ -764,11 +787,11 @@
         );
         posCameraRunning = true;
         document.getElementById('pos-cam-btn-text').textContent = 'Detener Cámara';
-        document.getElementById('btn-toggle-camera').classList.replace('bg-emerald-600', 'bg-slate-700');
+        document.getElementById('btn-toggle-camera').classList.add('is-running');
       } catch (err) {
         console.warn('No se pudo abrir cámara continua en HTTP:', err);
         document.getElementById('pos-cam-placeholder').classList.remove('hidden');
-        alert('En conexiones HTTP el navegador puede bloquear el video en vivo. Usa el botón "📷 Tomar Foto / Usar Cámara Nativa (HTTP)" para escanear.');
+        alert('En conexiones HTTP el navegador puede bloquear el video en vivo. Usa el botón "Subir Foto" para escanear.');
       }
     }
 
@@ -786,7 +809,7 @@
       const btnText = document.getElementById('pos-cam-btn-text');
       if (btnText) btnText.textContent = 'Iniciar Cámara';
       const btnToggle = document.getElementById('btn-toggle-camera');
-      if (btnToggle) btnToggle.classList.replace('bg-slate-700', 'bg-emerald-600');
+      if (btnToggle) btnToggle.classList.remove('is-running');
     }
 
     async function onPosPhotoSelected(event) {
@@ -886,7 +909,7 @@
       auditCurrentInputStr = auditCounts[auditCurrentIndex] !== null ? String(auditCounts[auditCurrentIndex]) : '';
       updateAuditDisplay();
 
-      const btnText = auditCurrentIndex === total - 1 ? 'Guardar y Ver Resumen ✓' : 'Guardar y Siguiente ➔';
+      const btnText = auditCurrentIndex === total - 1 ? 'Guardar y Ver Resumen' : 'Guardar y Siguiente';
       document.getElementById('audit-next-text').textContent = btnText;
     }
 
