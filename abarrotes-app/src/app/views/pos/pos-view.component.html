@@ -87,30 +87,21 @@
     </div>
 
     <!-- CARRUSEL SUPERIOR DE ACCESOS RÁPIDOS (Cuadros / Contenedores táctiles) -->
-    <div class="flex flex-col gap-1.5">
-      <div class="flex items-center justify-between px-1">
-        <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Acceso Rápido</span>
-        <span class="text-[11px] text-slate-400">Deslizar para ver más</span>
-      </div>
+        <div class="flex flex-col gap-2">
+      <span class="px-1 text-sm font-semibold text-slate-500">Acceso Rápido</span>
 
-      <div class="flex gap-2.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
+      <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
         @for (p of quickAccessProducts(); track p.sku) {
-          <button
-            type="button"
-            (click)="onProductCardClick(p)"
-            class="min-w-[145px] max-w-[155px] h-[78px] p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50 text-left flex flex-col justify-between shrink-0 shadow-2xs transition-all group">
-            <div class="flex items-center justify-between w-full">
-              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate max-w-[85px]">{{ p.category }}</span>
-              <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
-                {{ p.saleUnit }}
-              </span>
+          <button type="button" (click)="onProductCardClick(p)"
+            class="group flex min-h-[96px] flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-xs hover:border-slate-300 hover:shadow-md">
+            <div class="flex items-center justify-between gap-2">
+              <span class="truncate text-xs font-semibold text-slate-500">{{ p.category }}</span>
+              <span class="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">{{ p.saleUnit }}</span>
             </div>
-            <p class="text-xs font-bold text-slate-900 leading-tight line-clamp-2 group-hover:text-slate-950">
-              {{ p.name }}
-            </p>
-            <div class="flex items-center justify-between w-full pt-0.5">
-              <span class="text-sm font-black text-slate-900 font-mono">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
-              <span class="text-[10px] font-semibold text-slate-400">{{ p.isBulk ? 'Granel' : 'Pza' }}</span>
+            <p class="text-sm font-bold leading-snug text-slate-900">{{ p.name }}</p>
+            <div class="flex items-baseline justify-between">
+              <span class="text-base font-bold text-slate-900 tabular-nums">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+              <span class="text-xs font-medium text-slate-400">{{ p.isBulk ? 'Granel' : 'Pza' }}</span>
             </div>
           </button>
         }
@@ -304,13 +295,13 @@
     </div>
 
     <!-- Kardex en Vivo Sutil -->
-    <div class="bg-slate-50 border-t border-slate-200 px-4 py-2 text-xs">
-      <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Últimos movimientos</p>
-      <div class="space-y-1 text-slate-600">
+    <div class="border-t border-slate-200 bg-slate-50 px-5 py-4">
+      <p class="mb-2 text-sm font-semibold text-slate-600">Últimos movimientos</p>
+      <div class="space-y-2 text-slate-700">
         @for (k of inv.kardex().slice(0, 2); track k.id) {
-          <div class="flex items-center justify-between text-[11px]">
-            <span class="truncate pr-2"><b>{{ k.timestamp }}</b> · {{ k.description }}</span>
-            <span class="font-bold font-mono shrink-0" [class]="k.type === 'VENTA_FIADO' ? 'text-amber-800' : 'text-slate-900'">
+          <div class="flex items-start justify-between gap-3 text-sm leading-snug">
+            <span class="pr-2"><b>{{ k.timestamp }}</b> · {{ k.description }}</span>
+            <span class="shrink-0 font-bold tabular-nums" [class]="k.type === 'VENTA_FIADO' ? 'text-amber-800' : 'text-slate-900'">
               {{ k.amount | currency:'MXN':'symbol-narrow' }}
             </span>
           </div>
@@ -548,17 +539,17 @@
               <button
                 type="button"
                 (click)="selectCustomerForFiado(c.id)"
-                class="w-full rounded-xl border p-3 text-left transition-all flex flex-col gap-1.5"
+                class="w-full rounded-xl border p-4 text-left transition-all flex flex-col gap-3"
                 [class]="selectedCustomerId() === c.id
-                  ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900'
+                  ? 'border-brand-700 bg-brand-100/40 ring-1 ring-brand-700'
                   : 'border-slate-200 bg-white hover:bg-slate-50'">
-                <div class="flex items-start justify-between gap-2">
+                <div class="flex items-start justify-between gap-3">
                   <div>
-                    <p class="text-sm font-bold text-slate-900">{{ c.name }}</p>
-                    <p class="text-xs text-slate-500 font-mono">{{ c.phone }} · Vence: {{ c.dueDate }}</p>
+                    <p class="text-base font-bold text-slate-900">{{ c.name }}</p>
+                    <p class="text-sm text-slate-600">{{ c.phone }} · Vence: {{ c.dueDate }}</p>
                   </div>
 
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                  <span class="shrink-0 rounded-md px-2.5 py-1 text-xs font-semibold"
                     [class]="c.status === 'AL_CORRIENTE'
                       ? 'bg-slate-100 text-slate-800'
                       : (c.status === 'LIMITE_ALCANZADO' ? 'bg-amber-100 text-amber-900' : 'bg-red-100 text-red-800')">
@@ -566,18 +557,18 @@
                   </span>
                 </div>
 
-                <div class="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100 text-xs">
+                <div class="grid grid-cols-3 gap-3 border-t border-slate-200 pt-3">
                   <div>
-                    <span class="block text-[10px] text-slate-400 font-bold uppercase">Deuda</span>
-                    <span class="font-bold text-slate-900 font-mono">{{ c.currentBalance | currency:'MXN':'symbol-narrow' }}</span>
+                    <span class="block text-sm text-slate-600">Deuda</span>
+                    <span class="text-base font-bold text-slate-900 tabular-nums">{{ c.currentBalance | currency:'MXN':'symbol-narrow' }}</span>
                   </div>
                   <div>
-                    <span class="block text-[10px] text-slate-400 font-bold uppercase">Límite</span>
-                    <span class="font-medium text-slate-600 font-mono">{{ c.creditLimit | currency:'MXN':'symbol-narrow' }}</span>
+                    <span class="block text-sm text-slate-600">Límite</span>
+                    <span class="text-base font-semibold text-slate-700 tabular-nums">{{ c.creditLimit | currency:'MXN':'symbol-narrow' }}</span>
                   </div>
                   <div class="text-right">
-                    <span class="block text-[10px] text-slate-400 font-bold uppercase">Disponible</span>
-                    <span class="font-bold font-mono" [class]="available > 50 ? 'text-slate-900' : 'text-red-700'">
+                    <span class="block text-sm text-slate-600">Disponible</span>
+                    <span class="text-base font-bold tabular-nums" [class]="available > 50 ? 'text-slate-900' : 'text-red-700'">
                       {{ (available > 0 ? available : 0) | currency:'MXN':'symbol-narrow' }}
                     </span>
                   </div>

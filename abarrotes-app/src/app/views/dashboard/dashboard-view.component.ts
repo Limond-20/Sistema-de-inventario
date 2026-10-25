@@ -3,10 +3,11 @@ import { CommonModule, CurrencyPipe } from '@angular/common';
 import { Router, RouterLink, RouterModule } from '@angular/router';
 import { MockInventoryService } from '../../services/mock-inventory.service';
 import { ClassificationDiscrepancy } from '../../services/abc-classifier';
+import { IconComponent } from '../../components/icon/icon.component';
 
 @Component({
   selector: 'app-dashboard-view',
-  imports: [CommonModule, CurrencyPipe, RouterModule, RouterLink],
+  imports: [CommonModule, CurrencyPipe, RouterModule, RouterLink, IconComponent],
   templateUrl: './dashboard-view.component.html',
 })
 export class DashboardViewComponent {

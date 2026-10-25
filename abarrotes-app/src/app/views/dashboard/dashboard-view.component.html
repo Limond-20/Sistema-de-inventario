@@ -1,223 +1,181 @@
-<!-- ===================== CENTRO DE MÓDULOS OPERATIVO (TERMINAL NATIVA POS) ===================== -->
-<div class="h-full w-full flex flex-col justify-between p-4 sm:p-5 overflow-hidden select-none">
+<!-- ===================== INICIO: MÓDULOS OPERATIVOS ===================== -->
+<div class="flex h-[calc(100vh-4rem)] min-h-[36rem] flex-col gap-5 select-none">
 
-  <!-- ===================== CUADRÍCULA COMPLETA DE MÓDULOS (GRID 3x2) ===================== -->
-  <div class="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch content-center max-h-[calc(100vh-6rem)]">
+  <div class="grid min-h-0 flex-1 grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 xl:grid-rows-2">
 
-    <!-- BOTÓN 1: PUNTO DE VENTA (COLOR VERDE ESMERALDA / PRINCIPAL) -->
-    <a routerLink="/pos"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-emerald-600 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
-      <!-- Badge superior -->
-      <div class="flex items-center justify-between">
-        <span class="px-3 py-1 rounded-full bg-emerald-900/90 text-emerald-200 text-xs font-black tracking-wider uppercase border border-emerald-400/40">
-          TECLA F1 · CAJA REGISTRADORA
-        </span>
-        <span class="w-3 h-3 rounded-full bg-emerald-300"></span>
+    <!-- 1. PUNTO DE VENTA -->
+    <a routerLink="/pos" class="module-card btn">
+      <div class="flex items-start justify-between gap-3">
+        <span class="module-icon bg-emerald-100 text-emerald-700"><app-icon name="cart" [size]="26" /></span>
+        <span class="module-tag bg-emerald-50 text-emerald-800">Tecla F1 · Caja registradora</span>
       </div>
-
       <div>
-        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">PUNTO DE VENTA (POS)</h2>
-        <p class="text-xs sm:text-sm text-emerald-100 font-semibold mt-1">Cobro rápido, báscula de granel ($ o Kg) y lector láser</p>
+        <h2 class="text-2xl font-bold leading-tight text-slate-900">Punto de venta (POS)</h2>
+        <p class="mt-1.5 text-[15px] text-slate-600">Cobro rápido, báscula de granel ($ o Kg) y lector láser</p>
       </div>
-
-      <div class="flex items-center justify-between text-xs font-bold text-emerald-200 border-t border-emerald-500/50 pt-2">
+      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
         <span>Listo para cobrar en mostrador</span>
-        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
+        <span class="inline-flex items-center gap-1.5 font-semibold text-emerald-700">Entrar <app-icon name="arrow" [size]="16" /></span>
       </div>
     </a>
 
-    <!-- BOTÓN 2: RECEPCIÓN DE MERCANCÍA (AZUL PIZARRA) -->
-    <a routerLink="/recepcion"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
+    <!-- 2. RECEPCIÓN DE MERCANCÍA -->
+    <a routerLink="/recepcion" class="module-card btn">
       @if (marginAlertsCount() > 0) {
-        <span class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full text-xs font-bold px-2 py-0.5 shadow-md z-10">
+        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
           {{ marginAlertsCount() }}
         </span>
       }
-      <!-- Badge de margen caído si existe -->
-      <div class="flex items-center justify-between">
-        <span class="px-3 py-1 rounded-full bg-slate-950 text-slate-300 text-xs font-black tracking-wider uppercase border border-slate-700">
-          FACTURAS / ENTRADAS
-        </span>
-        @if (inv.hasPendingOcrMarginIssue()) {
-          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black shadow-md">
-            {{ inv.brokenMarginLinesCount() }} con Margen Caído
-          </span>
-        } @else if (inv.ocrNote()) {
-          <span class="px-2.5 py-0.5 rounded-full bg-blue-500 text-white text-xs font-extrabold">
-            1 Nota Pendiente
-          </span>
-        }
+      <div class="flex items-start justify-between gap-3">
+        <span class="module-icon bg-sky-100 text-sky-700"><app-icon name="inbox" [size]="26" /></span>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span class="module-tag bg-slate-100 text-slate-700">Facturas / Entradas</span>
+          @if (inv.hasPendingOcrMarginIssue()) {
+            <span class="module-tag bg-red-100 text-red-800">{{ inv.brokenMarginLinesCount() }} con Margen Caído</span>
+          } @else if (inv.ocrNote()) {
+            <span class="module-tag bg-sky-100 text-sky-800">1 Nota Pendiente</span>
+          }
+        </div>
       </div>
-
       <div>
-        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">RECEPCIÓN DE MERCANCÍA</h2>
-        <p class="text-xs sm:text-sm text-slate-300 font-semibold mt-1">Escáner OCR de tickets del celular y blindaje contra inflación</p>
+        <h2 class="text-2xl font-bold leading-tight text-slate-900">Recepción de mercancía</h2>
+        <p class="mt-1.5 text-[15px] text-slate-600">Escáner OCR de tickets del celular y blindaje contra inflación</p>
       </div>
-
-      <div class="flex items-center justify-between text-xs font-bold text-slate-400 border-t border-slate-700/60 pt-2">
+      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
         <span>Control de costos y compras</span>
-        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
+        <span class="inline-flex items-center gap-1.5 font-semibold text-sky-700">Entrar <app-icon name="arrow" [size]="16" /></span>
       </div>
     </a>
 
-    <!-- BOTÓN 3: AUDITORÍA EXPRÉS DE PASILLOS (ÁMBAR) -->
-    <a routerLink="/auditoria"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-amber-600 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 p-5 flex flex-col justify-between shadow-md transition-all group">
+    <!-- 3. AUDITORÍA DE PASILLO -->
+    <a routerLink="/auditoria" class="module-card btn">
       @if (pendingAuditMissionCount() > 0) {
-        <span class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full text-xs font-bold px-2 py-0.5 shadow-md z-10">
+        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
           {{ pendingAuditMissionCount() }}
         </span>
       }
-      <div class="flex items-center justify-between">
-        <span class="px-3 py-1 rounded-full bg-amber-950 text-amber-200 text-xs font-black tracking-wider uppercase border border-amber-700/40">
-          CONTEO FÍSICO CIEGO
-        </span>
-        @if (inv.pendingAuditCount() > 0) {
-          <span class="px-3 py-1 rounded-full bg-slate-950 text-amber-300 text-xs font-black shadow-md">
-            {{ inv.pendingAuditCount() }} Diferencias por Dictaminar
-          </span>
-        }
+      <div class="flex items-start justify-between gap-3">
+        <span class="module-icon bg-amber-100 text-amber-700"><app-icon name="clipboard" [size]="26" /></span>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span class="module-tag bg-amber-50 text-amber-800">Conteo físico ciego</span>
+          @if (inv.pendingAuditCount() > 0) {
+            <span class="module-tag bg-amber-200 text-amber-950">{{ inv.pendingAuditCount() }} Diferencias por Dictaminar</span>
+          }
+        </div>
       </div>
-
       <div>
-        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">AUDITORÍA DE PASILLO</h2>
-        <p class="text-xs sm:text-sm text-amber-950 font-bold mt-1">Conciliación ciega de anaqueles vs sistema desde el celular</p>
+        <h2 class="text-2xl font-bold leading-tight text-slate-900">Auditoría de pasillo</h2>
+        <p class="mt-1.5 text-[15px] text-slate-600">Conciliación ciega de anaqueles vs sistema desde el celular</p>
       </div>
-
-      <div class="flex items-center justify-between text-xs font-extrabold text-amber-950 border-t border-amber-600/60 pt-2">
+      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
         <span>Pasillo 3 · Aceites y Granos</span>
-        <span class="font-mono text-slate-950 text-sm font-black">ENTRAR ➔</span>
+        <span class="inline-flex items-center gap-1.5 font-semibold text-amber-700">Entrar <app-icon name="arrow" [size]="16" /></span>
       </div>
     </a>
 
-    <!-- BOTÓN 4: LIBRETA DE FIADOS / CRÉDITO (PÚRPURA) -->
-    <button type="button" (click)="goToFiados()"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-purple-700 bg-gradient-to-br from-purple-700 to-purple-900 hover:from-purple-600 hover:to-purple-800 text-white p-5 flex flex-col justify-between shadow-md transition-all text-left group">
-      <div class="flex items-center justify-between w-full">
-        <span class="px-3 py-1 rounded-full bg-purple-950 text-purple-200 text-xs font-black tracking-wider uppercase border border-purple-500/40">
-          CUENTAS POR COBRAR
-        </span>
-        @if (inv.overdueCustomersCount() > 0) {
-          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black shadow-md">
-            {{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)
-          </span>
-        } @else {
-          <span class="px-2.5 py-0.5 rounded-full bg-purple-800 text-purple-200 text-xs font-extrabold">
-            {{ inv.creditCustomers().length }} Clientes
-          </span>
-        }
+    <!-- 4. LIBRETA DE FIADOS -->
+    <button type="button" (click)="goToFiados()" class="module-card btn">
+      <div class="flex w-full items-start justify-between gap-3">
+        <span class="module-icon bg-purple-100 text-purple-700"><app-icon name="book" [size]="26" /></span>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span class="module-tag bg-purple-50 text-purple-800">Cuentas por cobrar</span>
+          @if (inv.overdueCustomersCount() > 0) {
+            <span class="module-tag bg-red-100 text-red-800">{{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)</span>
+          } @else {
+            <span class="module-tag bg-purple-100 text-purple-800">{{ inv.creditCustomers().length }} Clientes</span>
+          }
+        </div>
       </div>
-
-      <div>
-        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">LIBRETA DE FIADOS</h2>
-        <p class="text-xs sm:text-sm text-purple-200 font-semibold mt-1">Control de deuda de vecinos, límites de crédito y abonos</p>
+      <div class="w-full">
+        <h2 class="text-2xl font-bold leading-tight text-slate-900">Libreta de fiados</h2>
+        <p class="mt-1.5 text-[15px] text-slate-600">Control de deuda de vecinos, límites de crédito y abonos</p>
       </div>
-
-      <div class="flex items-center justify-between text-xs font-bold text-purple-300 border-t border-purple-600/50 pt-2 w-full">
+      <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
         <span>Deuda total: {{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }}</span>
-        <span class="font-mono text-white text-sm font-black">ABRIR LIBRETA ➔</span>
+        <span class="inline-flex items-center gap-1.5 font-semibold text-purple-700">Abrir libreta <app-icon name="arrow" [size]="16" /></span>
       </div>
     </button>
 
-    <!-- BOTÓN 5: CATÁLOGO, PRECIOS Y GRANEL (GRIS AZULADO) -->
-    <a routerLink="/catalogo"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-slate-500 bg-gradient-to-br from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
-      <div class="flex items-center justify-between">
-        <span class="px-3 py-1 rounded-full bg-slate-800 text-slate-200 text-xs font-black tracking-wider uppercase border border-slate-600">
-          MAESTRO DE ARTÍCULOS
-        </span>
-        <span class="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-xs font-mono font-bold">
-          EAN-13 · ROP
-        </span>
+    <!-- 5. CATÁLOGO Y PRECIOS -->
+    <a routerLink="/catalogo" class="module-card btn">
+      <div class="flex items-start justify-between gap-3">
+        <span class="module-icon bg-brand-100 text-brand-700"><app-icon name="box" [size]="26" /></span>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span class="module-tag bg-slate-100 text-slate-700">Maestro de artículos</span>
+          <span class="module-tag bg-slate-100 text-slate-600">EAN-13 · ROP</span>
+        </div>
       </div>
-
       <div>
-        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">CATÁLOGO Y PRECIOS</h2>
-        <p class="text-xs sm:text-sm text-slate-200 font-semibold mt-1">Clasificación ABC, Punto de Reorden y Hoja PDF de mostrador</p>
+        <h2 class="text-2xl font-bold leading-tight text-slate-900">Catálogo y precios</h2>
+        <p class="mt-1.5 text-[15px] text-slate-600">Clasificación ABC, Punto de Reorden y Hoja PDF de mostrador</p>
       </div>
-
-      <div class="flex items-center justify-between text-xs font-bold text-slate-300 border-t border-slate-500/50 pt-2">
+      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
         <span>{{ inv.products().length }} productos dados de alta</span>
-        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
+        <span class="inline-flex items-center gap-1.5 font-semibold text-brand-700">Entrar <app-icon name="arrow" [size]="16" /></span>
       </div>
     </a>
 
-    <!-- BOTÓN 6: MERMAS Y CONSUMOS INTERNOS (ROJO TENUE) -->
-    <a routerLink="/mermas"
-      class="btn relative h-40 sm:h-44 xl:h-48 rounded-2xl border-2 border-rose-800 bg-gradient-to-br from-rose-900 to-rose-950 hover:from-rose-800 hover:to-rose-900 text-white p-5 flex flex-col justify-between shadow-md transition-all group">
+    <!-- 6. MERMAS Y CONSUMOS -->
+    <a routerLink="/mermas" class="module-card btn">
       @if (urgentFefoCount() > 0) {
-        <span class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full text-xs font-bold px-2 py-0.5 shadow-md z-10">
+        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
           {{ urgentFefoCount() }}
         </span>
       }
-      <div class="flex items-center justify-between">
-        <span class="px-3 py-1 rounded-full bg-rose-950 text-rose-200 text-xs font-black tracking-wider uppercase border border-rose-700/50">
-          MERMAS Y CONSUMOS
-        </span>
-        @if (inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
-          <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-black shadow-md">
-            {{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos
-          </span>
-        }
+      <div class="flex items-start justify-between gap-3">
+        <span class="module-icon bg-rose-100 text-rose-700"><app-icon name="trash" [size]="26" /></span>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span class="module-tag bg-rose-50 text-rose-800">Mermas y consumos</span>
+          @if (inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
+            <span class="module-tag bg-red-100 text-red-800">{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos</span>
+          }
+        </div>
       </div>
-
       <div>
-        <h2 class="text-2xl sm:text-3xl font-black tracking-tight leading-tight">MERMAS Y CONSUMOS</h2>
-        <p class="text-xs sm:text-sm text-rose-200 font-semibold mt-1">Bajas por caducidad/rotura con foto y consumos de personal al costo</p>
+        <h2 class="text-2xl font-bold leading-tight text-slate-900">Mermas y consumos</h2>
+        <p class="mt-1.5 text-[15px] text-slate-600">Bajas por caducidad/rotura con foto y consumos de personal al costo</p>
       </div>
-
-      <div class="flex items-center justify-between text-xs font-bold text-rose-300 border-t border-rose-800/60 pt-2">
+      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
         <span>Costo de consumos: {{ inv.cashShift().internalConsumptionTotalCost | currency:'MXN':'symbol-narrow' }}</span>
-        <span class="font-mono text-white text-sm font-black">ENTRAR ➔</span>
+        <span class="inline-flex items-center gap-1.5 font-semibold text-rose-700">Entrar <app-icon name="arrow" [size]="16" /></span>
       </div>
     </a>
 
   </div>
 
-  <!-- ===================== BARRA DE ESTADO DELGADA INFERIOR ===================== -->
-  <footer class="mt-3 min-h-[44px] py-1.5 bg-slate-900 border border-slate-800 rounded-xl px-4 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 shadow-sm text-slate-300">
-    <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-bold">
-      <div class="flex items-center gap-1.5 text-emerald-400">
-        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-        <span class="text-slate-400 font-normal">Cajón:</span>
-        <span class="font-bold font-mono text-emerald-300 text-sm">{{ inv.getRealDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
+  <!-- ===================== RESUMEN DE CAJA ===================== -->
+  <footer class="flex shrink-0 flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm shadow-xs">
+    <dl class="flex flex-wrap items-baseline gap-x-9 gap-y-2">
+      <div class="flex items-baseline gap-2">
+        <dt class="text-slate-500">Cajón:</dt>
+        <dd class="text-base font-bold text-emerald-700 tabular-nums">{{ inv.getRealDrawerCash() | currency:'MXN':'symbol-narrow' }}</dd>
       </div>
-      <span class="text-slate-700">|</span>
-      <div class="flex items-center gap-1 text-slate-300">
-        <span class="text-slate-400 font-normal">Crédito Colocado:</span>
-        <span class="font-bold font-mono text-white text-sm">{{ inv.cashShift().creditSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
+      <div class="flex items-baseline gap-2">
+        <dt class="text-slate-500">Crédito Colocado:</dt>
+        <dd class="text-base font-bold text-slate-900 tabular-nums">{{ inv.cashShift().creditSalesTotal | currency:'MXN':'symbol-narrow' }}</dd>
       </div>
-      <span class="text-slate-700">|</span>
-      <div class="flex items-center gap-1 text-slate-300">
-        <span class="text-slate-400 font-normal">Consumo Interno:</span>
-        <span class="font-bold font-mono text-white text-sm">{{ inv.cashShift().internalConsumptionTotalCost | currency:'MXN':'symbol-narrow' }}</span>
+      <div class="flex items-baseline gap-2">
+        <dt class="text-slate-500">Consumo Interno:</dt>
+        <dd class="text-base font-bold text-slate-900 tabular-nums">{{ inv.cashShift().internalConsumptionTotalCost | currency:'MXN':'symbol-narrow' }}</dd>
       </div>
-      <span class="text-slate-700">|</span>
-      <div class="flex items-center gap-1 text-slate-400">
-        <span class="text-slate-400 font-normal">Fondo Inicial:</span>
-        <span class="font-mono font-bold text-slate-300">{{ inv.cashShift().openingCash | currency:'MXN':'symbol-narrow' }}</span>
+      <div class="flex items-baseline gap-2">
+        <dt class="text-slate-500">Fondo Inicial:</dt>
+        <dd class="text-base font-bold text-slate-700 tabular-nums">{{ inv.cashShift().openingCash | currency:'MXN':'symbol-narrow' }}</dd>
       </div>
-    </div>
+    </dl>
 
-    <!-- Indicador y Botón de Propuesta Mensual ABC -->
     @if (pendingAbcCount() > 0) {
-      <div class="flex items-center gap-2.5">
-        <button
-          type="button"
-          (click)="openAbcModal()"
-          class="btn h-7 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all">
-          <span>Revisar actualización ABC del mes ({{ pendingAbcCount() }})</span>
-        </button>
-      </div>
+      <button type="button" (click)="openAbcModal()"
+        class="h-11 rounded-xl bg-brand-700 px-5 text-sm font-semibold text-white hover:bg-brand-800">
+        Revisar actualización ABC del mes ({{ pendingAbcCount() }})
+      </button>
     } @else {
-      <div class="text-slate-500 text-xs font-semibold">
-        Clasificación ABC: Al día
-      </div>
+      <span class="text-slate-500">Clasificación ABC: Al día</span>
     }
   </footer>
 
 </div>
+
 
 <!-- ===================== MODAL DE CONFIRMACIÓN RECLASIFICACIÓN ABC ===================== -->
 @if (abcModalOpen()) {

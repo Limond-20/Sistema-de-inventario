@@ -6,13 +6,15 @@ import { NavbarComponent } from './components/navbar/navbar.component';
   selector: 'app-root',
   imports: [RouterOutlet, NavbarComponent],
   template: `
-    <div class="h-screen w-screen flex flex-col bg-slate-900 overflow-hidden select-none">
-      <!-- Barra de herramientas compacta de escritorio (h-12) -->
+    <div class="h-screen w-screen flex bg-slate-100 overflow-hidden select-none">
+      <!-- Barra lateral fija -->
       <app-navbar />
 
-      <!-- Área de trabajo de la terminal (sin scroll de ventana, fija en pantalla) -->
-      <main class="flex-1 bg-slate-100 overflow-y-auto relative flex flex-col">
-        <router-outlet />
+      <!-- Área de trabajo con márgenes; solo esta zona se desplaza si el contenido es largo -->
+      <main class="flex-1 min-w-0 overflow-y-auto">
+        <div class="px-10 py-8 max-w-[1440px] mx-auto">
+          <router-outlet />
+        </div>
       </main>
     </div>
   `,

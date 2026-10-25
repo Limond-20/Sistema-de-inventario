@@ -2,6 +2,7 @@ import { Component, NgZone, OnDestroy, OnInit, computed, inject } from '@angular
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuditLine, MockInventoryService } from '../../services/mock-inventory.service';
+import { IconComponent } from '../../components/icon/icon.component';
 
 interface AuditView extends AuditLine {
   diffQty: number;
@@ -10,7 +11,7 @@ interface AuditView extends AuditLine {
 
 @Component({
   selector: 'app-audit-dictamen-view',
-  imports: [CurrencyPipe, DecimalPipe, RouterLink],
+  imports: [CurrencyPipe, DecimalPipe, RouterLink, IconComponent],
   templateUrl: './audit-dictamen-view.component.html',
 })
 export class AuditDictamenViewComponent implements OnInit, OnDestroy {

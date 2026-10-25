@@ -52,101 +52,104 @@
 <!-- ===================== TARJETAS DE DICTAMEN POR PRODUCTO ===================== -->
 <section class="flex flex-col gap-3 mb-5">
   @for (r of rows(); track r.sku) {
-    <article class="rounded-xl border bg-white p-4 shadow-2xs transition-all grid lg:grid-cols-12 gap-4 items-center"
+    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs transition-all grid lg:grid-cols-12 gap-4 items-center"
       [class]="r.diffQty === 0
         ? 'border-slate-200'
         : (r.status === 'autorizado'
           ? 'border-emerald-300 bg-emerald-50/30'
           : (r.status === 'reconteo' ? 'border-amber-300 bg-amber-50/30' : 'border-amber-200'))">
 
-      <!-- 1. Datos del Producto -->
+            <!-- 1. Datos del Producto -->
       <div class="lg:col-span-3">
-        <p class="text-sm font-bold text-slate-900 leading-snug">{{ r.name }}</p>
-        <p class="text-xs text-slate-400 mt-0.5">Ubicación: {{ r.location }}</p>
-        <p class="text-xs text-slate-500 mt-0.5">
-          Costo unitario: <span class="font-mono font-semibold">{{ r.unitCost | currency:'MXN':'symbol-narrow' }}</span> / {{ unitLabel(r, 1) }}
+        <p class="text-base font-bold text-slate-900 leading-snug">{{ r.name }}</p>
+        <p class="mt-1 text-sm text-slate-600">Ubicación: {{ r.location }}</p>
+        <p class="mt-0.5 text-sm text-slate-600">
+          Costo unitario: <span class="font-semibold text-slate-800 tabular-nums">{{ r.unitCost | currency:'MXN':'symbol-narrow' }}</span> / {{ unitLabel(r, 1) }}
         </p>
       </div>
 
       <!-- 2. Comparación Sistema vs Conteo Físico vs Diferencia -->
-      <div class="lg:col-span-5 grid grid-cols-3 gap-2 text-center text-xs">
-        <div class="rounded-lg bg-slate-50 border border-slate-200 p-2.5">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">En Sistema</span>
-          <p class="text-lg font-black text-slate-900 mt-0.5 font-mono">{{ r.systemQty | number:'1.0-1' }}</p>
-          <span class="text-[11px] text-slate-500">{{ unitLabel(r, r.systemQty) }}</span>
+      <div class="lg:col-span-4 grid grid-cols-3 gap-2 text-center">
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
+          <span class="block text-sm font-semibold text-slate-600">En Sistema</span>
+          <p class="mt-0.5 text-xl font-bold text-slate-900 tabular-nums">{{ r.systemQty | number:'1.0-1' }}</p>
+          <span class="text-sm text-slate-600">{{ unitLabel(r, r.systemQty) }}</span>
         </div>
 
-        <div class="rounded-lg bg-slate-50 border border-slate-200 p-2.5">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">En Estante</span>
-          <p class="text-lg font-black text-slate-900 mt-0.5 font-mono">{{ r.countedQty | number:'1.0-1' }}</p>
-          <span class="text-[11px] text-slate-500">{{ unitLabel(r, r.countedQty) }}</span>
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-3">
+          <span class="block text-sm font-semibold text-slate-600">En Estante</span>
+          <p class="mt-0.5 text-xl font-bold text-slate-900 tabular-nums">{{ r.countedQty | number:'1.0-1' }}</p>
+          <span class="text-sm text-slate-600">{{ unitLabel(r, r.countedQty) }}</span>
         </div>
 
-        <div class="rounded-lg border p-2.5"
+        <div class="rounded-lg border p-3"
           [class]="r.diffQty === 0
             ? 'bg-slate-50 border-slate-200'
             : (r.diffQty < 0 ? 'bg-red-50/60 border-red-200' : 'bg-amber-50/60 border-amber-200')">
-          <span class="text-[10px] font-bold uppercase tracking-wider block"
-            [class]="r.diffQty === 0 ? 'text-slate-400' : (r.diffQty < 0 ? 'text-red-700' : 'text-amber-800')">
+          <span class="block text-sm font-semibold"
+            [class]="r.diffQty === 0 ? 'text-slate-600' : (r.diffQty < 0 ? 'text-red-700' : 'text-amber-800')">
             Diferencia
           </span>
-          <p class="text-lg font-black mt-0.5 font-mono"
+          <p class="mt-0.5 text-xl font-bold tabular-nums"
             [class.text-red-700]="r.diffQty < 0"
             [class.text-amber-800]="r.diffQty > 0"
             [class.text-slate-900]="r.diffQty === 0">
             {{ r.diffQty > 0 ? '+' : '' }}{{ r.diffQty | number:'1.0-1' }}
           </p>
-          <span class="text-[11px] font-semibold font-mono block"
+          <span class="block text-sm font-semibold tabular-nums"
             [class.text-red-700]="r.diffMoney < 0"
             [class.text-amber-800]="r.diffMoney > 0"
-            [class.text-slate-500]="r.diffMoney === 0">
+            [class.text-slate-600]="r.diffMoney === 0">
             {{ r.diffMoney === 0 ? 'Cuadra' : ((r.diffMoney > 0 ? '+' : '') + (r.diffMoney | currency:'MXN':'symbol-narrow')) }}
           </span>
         </div>
       </div>
 
       <!-- 3. Acciones de Dictamen -->
-      <div class="lg:col-span-4 flex flex-col gap-1.5 text-xs">
+      <div class="lg:col-span-5 flex flex-col gap-2">
         @if (r.diffQty === 0) {
-          <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-slate-600 font-medium text-xs">
+          <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-700">
             Existencia verificada. No requiere ajuste.
           </div>
-        } @else if (r.status === 'pendiente') {
-          <p class="text-[11px] font-bold px-0.5" [class]="r.diffQty < 0 ? 'text-red-700' : 'text-amber-800'">
+          
+         } @else if (r.status === 'pendiente') {
+          <p class="px-0.5 text-sm font-semibold" [class]="r.diffQty < 0 ? 'text-red-700' : 'text-amber-800'">
             @if (r.diffQty < 0) { Faltan {{ -r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
             @else { Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
           </p>
           <div class="grid grid-cols-2 gap-2">
             <button type="button" (click)="applySquare(r.sku, 'MERMA_OPERATIVA')"
-              class="h-10 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs transition-colors text-center leading-tight">
+              class="min-h-12 rounded-xl border border-brand-200 bg-brand-100 px-3 py-2 text-sm font-semibold text-brand-800 transition-colors hover:bg-brand-200">
               Merma Normal Granel/Corte
             </button>
             <button type="button" (click)="applySquare(r.sku, 'FALTANTE_INJUSTIFICADO')"
-              class="h-10 px-2 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-red-900 font-bold text-[11px] shadow-2xs transition-colors text-center leading-tight">
+              class="min-h-12 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition-colors hover:bg-rose-50">
               Faltante Injustificado
             </button>
           </div>
           <button type="button" (click)="recount(r.sku)"
-            class="text-[11px] text-slate-400 hover:text-slate-700 font-medium text-center">
+            class="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">
+            <app-icon name="refresh" [size]="16" />
             Pedir Reconteo
           </button>
+        
         } @else if (r.status === 'autorizado') {
-          <div class="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
-            <p class="text-xs text-emerald-950">
-              Ajuste aplicado: stock fijado en <b class="font-mono">{{ r.countedQty | number:'1.0-1' }} {{ unitLabel(r, r.countedQty) }}</b>.
+          <div class="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+            <p class="text-sm text-emerald-950">
+              Ajuste aplicado: stock fijado en <b class="tabular-nums">{{ r.countedQty | number:'1.0-1' }} {{ unitLabel(r, r.countedQty) }}</b>.
             </p>
             <button type="button" (click)="undo(r.sku)"
-              class="text-xs text-slate-500 hover:text-slate-800 font-semibold underline shrink-0">
+              class="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Deshacer
             </button>
           </div>
         } @else {
-          <div class="flex items-center justify-between gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-            <p class="text-xs text-amber-950">
+          <div class="flex items-center justify-between gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+            <p class="text-sm text-amber-950">
               Orden de segundo conteo enviada al celular.
             </p>
             <button type="button" (click)="undo(r.sku)"
-              class="text-xs text-slate-500 hover:text-slate-800 font-semibold underline shrink-0">
+              class="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Deshacer
             </button>
           </div>

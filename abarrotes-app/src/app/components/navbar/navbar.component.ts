@@ -1,9 +1,10 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { NavigationEnd, Router, RouterLink, RouterModule } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 import { MockInventoryService } from '../../services/mock-inventory.service';
+import { IconComponent, IconName } from '../icon/icon.component';
 
 /** Genera una matriz tipo QR (simulada) con los 3 cuadros de posición reales. */
 function buildFakeQr(size = 29, seed = 20931): boolean[][] {
@@ -32,7 +33,7 @@ function buildFakeQr(size = 29, seed = 20931): boolean[][] {
 
 @Component({
   selector: 'app-navbar',
-  imports: [CommonModule, CurrencyPipe, DatePipe, RouterModule, RouterLink],
+  imports: [CommonModule, CurrencyPipe, DatePipe, RouterModule, RouterLink, IconComponent],
   templateUrl: './navbar.component.html',
 })
 export class NavbarComponent implements OnInit, OnDestroy {
@@ -58,7 +59,39 @@ export class NavbarComponent implements OnInit, OnDestroy {
     ),
     { initialValue: this.router.url },
   );
-  protected readonly isHome = computed(() => this.url() === '/' || this.url() === '');
+  
+    /** Opciones de la barra lateral (mismas pantallas que ya existían) */
+  protected readonly navItems: {
+    key: string;
+    label: string;
+    icon: IconName;
+    link: string;
+    query: Record<string, string> | null;
+  }[] = [
+    { key: 'inicio', label: 'Inicio', icon: 'home', link: '/', query: null },
+    { key: 'pos', label: 'Punto de venta', icon: 'cart', link: '/pos', query: null },
+    { key: 'recepcion', label: 'Recepción de mercancía', icon: 'inbox', link: '/recepcion', query: null },
+    { key: 'auditoria', label: 'Auditoría de pasillo', icon: 'clipboard', link: '/auditoria', query: null },
+    { key: 'fiados', label: 'Libreta de fiados', icon: 'book', link: '/pos', query: { tab: 'fiados' } },
+    { key: 'catalogo', label: 'Catálogo y precios', icon: 'box', link: '/catalogo', query: null },
+    { key: 'mermas', label: 'Mermas y consumos', icon: 'trash', link: '/mermas', query: null },
+  ];
+
+  protected isActive(key: string): boolean {
+    const u = this.url() ?? '';
+    switch (key) {
+      case 'inicio':
+        return u === '/' || u === '';
+      case 'pos':
+        return u.startsWith('/pos') && !u.includes('tab=fiados');
+      case 'fiados':
+        return u.startsWith('/pos') && u.includes('tab=fiados');
+      case 'mermas':
+        return u.startsWith('/mermas') || u.startsWith('/fefo');
+      default:
+        return u.startsWith('/' + key);
+    }
+  }
 
   ngOnInit(): void {
     this.clockTimer = setInterval(() => {
@@ -79,10 +112,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
   closeQr(): void {
     this.qrOpen.set(false);
   }
-  simulateLink(): void {
-    this.inv.phoneLinked.set(true);
-    this.qrOpen.set(false);
-  }
+ 
 
   openCloseShift(): void {
     this.shiftClosedSuccess.set(false);

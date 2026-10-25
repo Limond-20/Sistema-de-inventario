@@ -41,9 +41,11 @@
           Sincronización activa
         </span>
       </div>
+      <!-- 
       <p class="text-xs text-slate-400 mt-0.5">
         Canal <code class="font-mono bg-slate-800 px-1 py-0.5 rounded text-slate-300">BroadcastChannel('abarrotes_lan_sync')</code>
       </p>
+    -->
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
@@ -194,7 +196,9 @@
         : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'">
       <span>Nota Recibida por OCR (Celular / Foto)</span>
       @if (inv.ocrNote()) {
-        <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950">Activa</span>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-semibold text-white">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-300"></span>Activa
+        </span>
       }
     </button>
 
@@ -338,89 +342,89 @@
   <!-- ===================== TABLA DE AUDITORÍA DE COSTOS ===================== -->
   @if (lines().length > 0) {
     <section class="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-x-auto mb-5">
-      <table class="w-full text-left border-collapse text-xs">
-        <thead class="bg-slate-900 text-white uppercase tracking-wider text-[11px]">
+      <table class="w-full text-left border-collapse text-sm">
+        <thead class="bg-slate-900 text-white text-sm">
           <tr>
-            <th class="p-3">Producto Recibido</th>
-            <th class="p-3">Cantidad / Importe</th>
-            <th class="p-3 text-right">Costo Anterior</th>
-            <th class="p-3 text-right">Costo Nuevo</th>
-            <th class="p-3 text-right">Precio Venta</th>
-            <th class="p-3">Diagnóstico de Margen</th>
-            @if (mode() === 'manual') { <th class="p-3"></th> }
+            <th class="px-4 py-3.5">Producto Recibido</th>
+            <th class="px-4 py-3.5">Cantidad / Importe</th>
+            <th class="px-4 py-3.5 text-right">Costo Anterior</th>
+            <th class="px-4 py-3.5 text-right">Costo Nuevo</th>
+            <th class="px-4 py-3.5 text-right">Precio Venta</th>
+            <th class="px-4 py-3.5">Diagnóstico de Margen</th>
+            @if (mode() === 'manual') { <th class="px-4 py-3.5"></th> }
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           @for (l of lines(); track l.sku) {
             <tr class="align-top hover:bg-slate-50 transition-colors"
               [class]="l.broken ? 'bg-red-50/50' : (l.resolved ? 'bg-emerald-50/40' : '')">
-              <td class="p-3">
-                <p class="text-sm font-bold text-slate-900 leading-snug">{{ l.name }}</p>
-                <p class="text-[11px] font-mono text-slate-400 mt-0.5">SKU: {{ l.sku }} @if (l.barcode) { · EAN: {{ l.barcode }} }</p>
+              <td class="px-4 py-4">
+                <p class="text-base font-bold text-slate-900 leading-snug">{{ l.name }}</p>
+                <p class="mt-1 text-sm text-slate-500">SKU: {{ l.sku }} @if (l.barcode) { · EAN: {{ l.barcode }} }</p>
               </td>
 
-              <td class="p-3">
-                <p class="font-bold text-slate-900">
+              <td class="px-4 py-4">
+                <p class="text-base font-bold text-slate-900">
                   {{ l.qtyPurchase }} {{ l.purchaseUnit }}{{ l.qtyPurchase > 1 ? (l.purchaseUnit === 'Costal' ? 'es' : (l.purchaseUnit === 'Kg' ? '' : 's')) : '' }}
                 </p>
-                <p class="text-[11px] text-slate-500 font-mono">Importe: {{ l.lineTotal | currency:'MXN':'symbol-narrow' }}</p>
+                <p class="mt-1 text-sm text-slate-600">Importe: {{ l.lineTotal | currency:'MXN':'symbol-narrow' }}</p>
               </td>
 
-              <td class="p-3 text-right font-medium text-slate-600 font-mono">
+              <td class="px-4 py-4 text-right text-base font-medium text-slate-600">
                 {{ l.historicCost | currency:'MXN':'symbol-narrow' }}
               </td>
 
-              <td class="p-3 text-right font-mono">
-                <span class="font-bold" [class]="l.costUp ? 'text-red-700' : 'text-slate-900'">
+              <td class="px-4 py-4 text-right">
+                <span class="text-base font-bold" [class]="l.costUp ? 'text-red-700' : 'text-slate-900'">
                   {{ l.newCost | currency:'MXN':'symbol-narrow' }}
                 </span>
                 @if (l.costUp) {
-                  <span class="block text-[10px] font-bold text-red-600">
+                  <span class="block text-sm font-semibold text-red-600">
                     +{{ l.newCost - l.historicCost | currency:'MXN':'symbol-narrow' }}
                   </span>
                 }
               </td>
 
-              <td class="p-3 text-right font-mono">
-                <span class="text-sm font-bold text-slate-900">{{ l.salePrice | currency:'MXN':'symbol-narrow' }}</span>
-                <span class="block text-[10px] text-slate-400">/{{ l.saleUnit }}</span>
+              <td class="px-4 py-4 text-right">
+                <span class="text-lg font-bold text-slate-900">{{ l.salePrice | currency:'MXN':'symbol-narrow' }}</span>
+                <span class="block text-sm text-slate-500">/{{ l.saleUnit }}</span>
               </td>
 
-              <td class="p-3 min-w-[280px]">
+              <td class="px-4 py-4 min-w-[300px]">
                 @if (l.broken) {
-                  <div class="rounded-lg border border-red-200 bg-white p-3 flex flex-col gap-1.5 shadow-2xs">
+                  <div class="rounded-lg border border-red-200 bg-white p-3.5 flex flex-col gap-2 shadow-2xs">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="px-2 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-bold uppercase">
+                      <span class="px-2.5 py-1 rounded-md bg-red-100 text-red-800 text-sm font-bold">
                         Margen caído: {{ l.margin | number:'1.0-0' }}%
                       </span>
-                      <span class="text-[10px] text-slate-400">Meta: {{ l.targetMargin }}%</span>
+                      <span class="text-sm text-slate-500">Meta: {{ l.targetMargin }}%</span>
                     </div>
-                    <p class="text-[11px] text-slate-600">
+                    <p class="text-sm text-slate-700">
                       Ganancia reducida a <b>{{ l.salePrice - l.newCost | currency:'MXN':'symbol-narrow' }}</b> por {{ l.saleUnit === 'Kg' ? 'kg' : 'unidad' }}.
                     </p>
-                    <button type="button" (click)="applySuggested(l)"
-                      class="h-9 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 flex items-center justify-center transition-colors">
+                      <button type="button" (click)="applySuggested(l)"
+                      class="h-11 rounded-lg border border-brand-700 bg-white px-3 text-sm font-bold text-brand-700 hover:bg-brand-100 flex items-center justify-center transition-colors">
                       Ajustar Precio a {{ l.suggested | currency:'MXN':'symbol-narrow' }}
                     </button>
-                    <span class="text-[10px] text-slate-500 text-center">
+                    <span class="text-sm text-slate-600 text-center">
                       Nuevo margen proyectado: <b class="text-emerald-700">{{ l.suggestedMargin | number:'1.0-0' }}%</b>
                     </span>
                   </div>
                 } @else if (l.resolved) {
-                  <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-xs font-semibold">
+                  <span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-emerald-100 text-emerald-800 text-sm font-semibold">
                     Precio protegido · Margen: {{ l.margin | number:'1.0-0' }}%
                   </span>
                 } @else {
-                  <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
+                  <span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-sm font-semibold">
                     Margen adecuado · {{ l.margin | number:'1.0-0' }}%
                   </span>
                 }
               </td>
 
               @if (mode() === 'manual') {
-                <td class="p-3">
+                <td class="px-4 py-4">
                   <button type="button" (click)="removeManualLine(l.sku)"
-                    class="text-xs font-semibold text-slate-400 hover:text-red-600">
+                    class="text-sm font-semibold text-slate-500 hover:text-red-600">
                     Quitar
                   </button>
                 </td>
@@ -432,27 +436,27 @@
     </section>
 
     <!-- ===================== BARRA INFERIOR DE GUARDADO BLINDADO ===================== -->
-    <section class="rounded-xl border p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs"
+    <section class="rounded-xl border p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs"
       [class]="canSave() ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70'">
       <div>
         @if (canSave()) {
-          <p class="text-sm font-bold text-emerald-950">Listo para registrar entrada</p>
-          <p class="text-xs text-slate-600">
-            {{ lines().length }} productos verificados · Total: <b class="font-mono">{{ total() | currency:'MXN':'symbol-narrow' }}</b> · Todos los márgenes están protegidos.
+          <p class="text-base font-bold text-emerald-950">Listo para registrar entrada</p>
+          <p class="text-sm text-slate-700">
+            {{ lines().length }} productos verificados · Total: <b>{{ total() | currency:'MXN':'symbol-narrow' }}</b> · Todos los márgenes están protegidos.
           </p>
         } @else {
-          <p class="text-sm font-bold text-amber-950">Entrada pausada por alza de costos</p>
-          <p class="text-xs text-slate-600">
+          <p class="text-base font-bold text-amber-950">Entrada pausada por alza de costos</p>
+          <p class="text-sm text-slate-700">
             Tienes <b>{{ pendingCount() }} producto(s) con margen insuficiente</b>. Ajusta los precios sugeridos para guardar.
           </p>
         }
       </div>
 
       <button type="button" (click)="save()" [disabled]="!canSave()"
-        class="h-12 w-full sm:w-auto px-6 rounded-xl font-bold text-xs shadow-2xs transition-colors shrink-0"
+        class="h-12 w-full sm:w-auto px-7 rounded-xl font-bold text-sm shadow-2xs transition-colors shrink-0"
         [class]="canSave()
-          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          : 'bg-slate-200 text-slate-400 cursor-not-allowed'">
+          ? 'bg-brand-700 hover:bg-brand-800 text-white'
+          : 'bg-slate-300 text-slate-700 cursor-not-allowed'">
         {{ canSave() ? 'Guardar Entrada en Inventario' : 'Ajustar Precios para Continuar' }}
       </button>
     </section>

@@ -1,39 +1,87 @@
 @import "tailwindcss";
+@import "@fontsource-variable/figtree";
+@import "@fontsource-variable/bricolage-grotesque";
 
 @theme {
+  /* Tipografías: Bricolage para títulos y cifras grandes, Figtree para todo lo demás */
+  --font-sans: "Figtree Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque Variable", "Figtree Variable", system-ui, sans-serif;
+  --font-mono: "Figtree Variable", "Segoe UI", system-ui, sans-serif;
+
+  /* Colores semánticos (no cambian de significado) */
   --color-ok: #16a34a;
   --color-warn: #d97706;
   --color-bad: #dc2626;
+
+  /* Color de marca: verde petróleo */
+  --color-brand-100: #d6e7ea;
+  --color-brand-200: #a9c4ca;
+  --color-brand-600: #136075;
+  --color-brand-700: #0e4a57;
+  --color-brand-800: #0a3943;
+  --color-brand-900: #072b33;
+
+  /* Neutros con matiz petróleo: reemplazan al gris azulado por defecto,
+     así todas las pantallas existentes se arman con la misma paleta */
+  --color-slate-50: #f5f8f8;
+  --color-slate-100: #eceff0;
+  --color-slate-200: #dde3e4;
+  --color-slate-300: #c5cfd1;
+  --color-slate-400: #93a4a7;
+  --color-slate-500: #667a7e;
+  --color-slate-600: #4c6064;
+  --color-slate-700: #344a4f;
+  --color-slate-800: #1e343a;
+  --color-slate-900: #12292f;
+  --color-slate-950: #0b1d22;
 }
 
-/* ==========================================================================
-   ESTILO NATIVO DE TERMINAL / APLICACIÓN DE ESCRITORIO (SIN SCROLL GLOBAL)
-   ========================================================================== */
+/* ===== Aplicación de escritorio: la ventana nunca se desplaza completa ===== */
 html,
 body {
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
   user-select: none;
-  background-color: #0f172a; /* Slate 900 */
-  color: #0f172a;
-  font-family: "Inter", "Plus Jakarta Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  background-color: var(--color-slate-100);
+  color: var(--color-slate-900);
+  font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.4;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Números tabulares para precios, pesos y conteos de inventario */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* Cifras alineadas en tablas, precios y conteos */
 .tabular-nums,
+.font-mono,
 table td,
 table th {
   font-variant-numeric: tabular-nums;
 }
 
-/* Botones táctiles de alta visibilidad: feedback físico sin atajos ocultos */
+/* Un solo estilo de etiquetas: sin mayúsculas sostenidas ni espaciado exagerado */
+.uppercase {
+  text-transform: none;
+}
+.tracking-wider,
+.tracking-widest {
+  letter-spacing: 0;
+}
+.font-black,
+.font-extrabold {
+  font-weight: 700;
+}
+
 button:not(:disabled),
 a.btn {
   cursor: pointer;
@@ -44,38 +92,65 @@ a.btn {
     background-color 0.12s ease,
     border-color 0.12s ease;
 }
-
 button:not(:disabled):active,
 a.btn:active {
-  transform: scale(0.975);
+  transform: scale(0.985);
 }
 
+/* Botones deshabilitados: se ven apagados, pero el texto sigue legible */
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 1;
+  background-color: var(--color-slate-200);
+  color: var(--color-slate-600);
+  border-color: var(--color-slate-300);
+  box-shadow: none;
 }
 
-/* Foco visible de alto contraste para teclado numérico o lectores */
+/* Un solo color para los botones de acción (antes verde brillante) */
+button[class*="bg-emerald-600"]:not(:disabled),
+a[class*="bg-emerald-600"] {
+  background-color: var(--color-brand-700);
+  color: #ffffff;
+}
+button[class*="bg-emerald-600"]:not(:disabled):hover,
+a[class*="bg-emerald-600"]:hover {
+  background-color: var(--color-brand-800);
+}
+
 :focus-visible {
-  outline: 3px solid #38bdf8;
+  outline: 3px solid #f2a31b;
   outline-offset: 2px;
   border-radius: 8px;
 }
 
-/* Scrollbars limpias para paneles internos */
+/* Barras de desplazamiento discretas */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--color-slate-300);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--color-slate-400);
+}
+
+/* Piezas reutilizables */
+@layer components {
+  .module-card {
+    @apply relative flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-xs hover:border-slate-300 hover:shadow-md;
+  }
+  .module-icon {
+    @apply grid h-12 w-12 shrink-0 place-items-center rounded-xl;
+  }
+  .module-tag {
+    @apply rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
 }
 
 @media print {
