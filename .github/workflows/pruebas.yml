@@ -1,0 +1,77 @@
+name: pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  servidor-y-puente:
+    name: Backend y Puente (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: local-server/requirements-dev.txt
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias Python
+        run: pip install -r local-server/requirements-dev.txt
+
+      - name: Instalar herramientas de compilación vendor
+        run: npm ci --no-audit --no-fund
+        working-directory: local-server/tools
+
+      - name: Ejecutar pruebas del servidor (pytest)
+        run: python -m pytest -q
+        working-directory: local-server
+
+      - name: Ejecutar pruebas del puente WebSocket (bridge)
+        run: node --test tests/bridge.test.mjs
+        working-directory: local-server
+        env:
+          NODE_TLS_REJECT_UNAUTHORIZED: "0"
+
+  angular:
+    name: Frontend Angular (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: abarrotes-app/package-lock.json
+
+      - name: Instalar dependencias npm
+        run: npm ci --no-audit --no-fund
+        working-directory: abarrotes-app
+
+      - name: Compilar aplicación (ng build)
+        run: npx ng build
+        working-directory: abarrotes-app
+
+      - name: Ejecutar pruebas de dominio (shrink.spec.ts)
+        run: node --experimental-strip-types --test src/app/domain/shrink.spec.ts
+        working-directory: abarrotes-app
