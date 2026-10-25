@@ -1087,6 +1087,17 @@ export class MockInventoryService {
           }
         }
       });
+
+      if (window.LanSync) {
+        window.LanSync.on('peers', (s) => {
+          if (s.status !== 'unavailable') {
+            this.phoneLinked.set(s.phones > 0);
+          }
+        });
+        if (window.LanSync.status !== 'unavailable') {
+          this.phoneLinked.set(window.LanSync.phones > 0);
+        }
+      }
     }
   }
 

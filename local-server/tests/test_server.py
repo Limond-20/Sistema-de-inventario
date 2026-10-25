@@ -51,7 +51,7 @@ def test_health_y_cabeceras(app, client):
 
 def test_endpoints_locales_prohibidos_desde_otro_dispositivo(app, client):
     c = client  # 'testclient' no es loopback => es "otro dispositivo"
-    for path in ("/api/pairing", "/api/status", "/vincular"):
+    for path in ("/api/pairing", "/api/pairing/qr.svg", "/api/status", "/vincular"):
         assert c.get(path).status_code == 403
     assert c.post("/api/pairing/rotate").status_code == 403
 
@@ -62,6 +62,23 @@ def test_pairing_desde_la_pc(local_app, local_client):
     assert d["url"].startswith("https://192.168.1.70:8443/movil-prototipo.html?t=")
     assert d["url"].endswith(d["token"])
     assert c.get("/api/pairing").json()["token"] == d["token"]  # estable hasta rotar
+
+
+def test_pairing_qr_svg_desde_la_pc(local_app, local_client):
+    res = local_client.get("/api/pairing/qr.svg")
+    assert res.status_code == 200
+    assert "image/svg+xml" in res.headers["content-type"]
+    assert "no-store" in res.headers.get("cache-control", "")
+    assert "<svg" in res.text and "</svg>" in res.text
+
+
+def test_pairing_qr_svg_cambia_al_rotar(local_app, local_client):
+    c = local_client
+    svg1 = c.get("/api/pairing/qr.svg").text
+    c.post("/api/pairing/rotate")
+    svg2 = c.get("/api/pairing/qr.svg").text
+    assert "<svg" in svg1 and "<svg" in svg2
+    assert svg1 != svg2
 
 
 def test_vincular_muestra_qr(local_app, local_client):

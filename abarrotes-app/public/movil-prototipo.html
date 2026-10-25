@@ -615,6 +615,11 @@
     const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('abarrotes_lan_sync') : null;
 
     function broadcastToPC(payload) {
+      const status = (window.LanSync && window.LanSync.status) || 'unavailable';
+      if (status !== 'open' && status !== 'unavailable') {
+        alert('No se pudo enviar a la PC: sin conexión activa (' + status + '). El puente no encola mensajes; verifica la conexión e intenta de nuevo.');
+        return false;
+      }
       const message = { ...payload, timestamp: new Date().toISOString() };
       if (syncChannel) {
         try { syncChannel.postMessage(message); } catch (e) { console.warn(e); }
@@ -624,6 +629,7 @@
       } catch (e) {
         console.warn('LocalStorage error:', e);
       }
+      return true;
     }
 
     // =========================== NAVEGACIÓN HUB & SPOKE ===========================
@@ -832,14 +838,16 @@
         pill.classList.replace('text-slate-400', 'text-emerald-700');
       }
 
-      showScanToast(title, sub);
-
-      broadcastToPC({
+      const sent = broadcastToPC({
         type: 'BARCODE_SCANNED',
         altType: 'BARCODE_SCAN',
         barcode: code,
         product: product || { barcode: code, name: 'Producto Escaneado', salePrice: 0 }
       });
+
+      if (sent) {
+        showScanToast(title, sub);
+      }
     }
 
     function simulateBarcode(code) {
@@ -992,12 +1000,14 @@
         physicalQty: auditCounts[idx] !== null ? auditCounts[idx] : 0
       }));
 
-      broadcastToPC({
+      const sent = broadcastToPC({
         type: 'AUDIT_SUBMIT',
         auditId,
         counts,
         results
       });
+
+      if (!sent) return;
 
       showScanToast('Auditoría Ciega Enviada', 'Los 15 conteos ya están en la PC ✓');
       setTimeout(() => {
@@ -1167,7 +1177,7 @@
         lines: currentOcrLines,
         rawText: SAMPLE_TICKET_TEXT
       };
-      broadcastToPC({
+      const sent = broadcastToPC({
         type: 'OCR_TICKET_PARSED',
         folio,
         supplier,
@@ -1175,6 +1185,8 @@
         rawText: SAMPLE_TICKET_TEXT,
         ticketData
       });
+
+      if (!sent) return;
 
       showScanToast('Nota OCR Transmitida', `Folio #${folio} enviado a Recepción en PC ✓`);
       setTimeout(() => {
@@ -1325,10 +1337,18 @@
         reviewed: false
       };
 
-      broadcastToPC({
+      const sent = broadcastToPC({
         type: 'MERMA_SUBMIT',
         record
       });
+
+      if (!sent) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = prevHtml;
+        }
+        return;
+      }
 
       showScanToast('Merma Registrada', `${selectedMermaQty}x ${prod.name} reportado a PC ✓`);
       setTimeout(() => {
@@ -1351,27 +1371,48 @@
       goTo('screen-menu');
       updateSimulatePhotoUI();
 
-      if (window.LanSync) {
-        window.LanSync.on('status', function(snap) {
-          updateSimulatePhotoUI();
-          const textEl = document.getElementById('lan-status-text');
-          const dotEl = document.getElementById('lan-status-dot');
-          if (!textEl || !dotEl) return;
-          if (snap.status === 'open') {
-            textEl.textContent = 'CONECTADO A PC (LAN)';
-            textEl.className = 'text-[10px] tracking-wide text-emerald-300 font-extrabold';
-            dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
-          } else if (snap.status === 'connecting') {
-            textEl.textContent = 'CONECTANDO...';
-            textEl.className = 'text-[10px] tracking-wide text-amber-300 font-extrabold';
-            dotEl.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-          } else {
-            textEl.textContent = 'MODO LOCAL (LAN)';
-            textEl.className = 'text-[10px] tracking-wide text-slate-300 font-extrabold';
-            dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400';
-          }
-        });
+      function updateLanStatusBadge(status) {
+        updateSimulatePhotoUI();
+        const textEl = document.getElementById('lan-status-text');
+        const dotEl = document.getElementById('lan-status-dot');
+        if (!textEl || !dotEl) return;
+        if (status === 'open') {
+          textEl.textContent = 'Enlazado con la PC';
+          textEl.className = 'text-[10px] tracking-wide text-emerald-300 font-extrabold';
+          dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        } else if (status === 'connecting' || status === 'closed') {
+          textEl.textContent = 'Reconectando…';
+          textEl.className = 'text-[10px] tracking-wide text-amber-300 font-extrabold';
+          dotEl.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+        } else if (status === 'unauthorized') {
+          textEl.textContent = 'Código vencido: escanea el QR de la PC otra vez';
+          textEl.className = 'text-[10px] tracking-wide text-rose-300 font-extrabold';
+          dotEl.className = 'w-2 h-2 rounded-full bg-rose-500 animate-pulse';
+        } else if (status === 'unavailable') {
+          textEl.textContent = 'Modo demostración';
+          textEl.className = 'text-[10px] tracking-wide text-slate-300 font-extrabold';
+          dotEl.className = 'w-2 h-2 rounded-full bg-slate-400';
+        } else {
+          textEl.textContent = 'Reconectando…';
+          textEl.className = 'text-[10px] tracking-wide text-amber-300 font-extrabold';
+          dotEl.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+        }
       }
+
+      if (window.LanSync) {
+        updateLanStatusBadge(window.LanSync.status);
+        window.LanSync.on('status', function(snap) {
+          updateLanStatusBadge(snap.status);
+        });
+      } else {
+        updateLanStatusBadge('unavailable');
+      }
+
+      window.addEventListener('lansync:status', function(ev) {
+        if (ev && ev.detail && ev.detail.status) {
+          updateLanStatusBadge(ev.detail.status);
+        }
+      });
     });
   </script>
 </body>

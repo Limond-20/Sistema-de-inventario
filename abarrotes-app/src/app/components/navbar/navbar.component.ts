@@ -1,9 +1,10 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { NavigationEnd, Router, RouterLink, RouterModule } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 import { MockInventoryService } from '../../services/mock-inventory.service';
+import { LanSyncService } from '../../services/lan-sync.service';
 import { IconComponent, IconName } from '../icon/icon.component';
 
 /** Genera una matriz tipo QR (simulada) con los 3 cuadros de posición reales. */
@@ -38,6 +39,30 @@ function buildFakeQr(size = 29, seed = 20931): boolean[][] {
 })
 export class NavbarComponent implements OnInit, OnDestroy {
   protected readonly inv = inject(MockInventoryService);
+  protected readonly lanSync = inject(LanSyncService);
+
+  // ---------- Sincronización Celular (LanSync) ----------
+  protected readonly isPhoneLinked = computed(() => {
+    if (this.lanSync.isUnavailable()) {
+      return this.inv.phoneLinked();
+    }
+    return this.lanSync.hasPhones();
+  });
+
+  protected readonly phoneButtonLabel = computed(() => {
+    if (this.lanSync.isUnavailable()) {
+      return this.inv.phoneLinked() ? 'Móvil Conectado (Demo)' : 'Móvil (QR) · Modo demostración';
+    }
+    if (this.lanSync.hasPhones()) {
+      const c = this.lanSync.phones();
+      return c > 1 ? `Móvil Conectado (${c})` : 'Móvil Conectado';
+    }
+    return 'Móvil (QR)';
+  });
+
+  protected readonly realPairingUrl = signal<string>('');
+  protected readonly qrCacheBust = signal<number>(Date.now());
+  protected readonly rotatingCode = signal<boolean>(false);
   private readonly router = inject(Router);
 
   // ---------- Reloj Digital en Vivo ----------
@@ -108,6 +133,32 @@ export class NavbarComponent implements OnInit, OnDestroy {
 
   openQr(): void {
     this.qrOpen.set(true);
+    if (!this.lanSync.isUnavailable()) {
+      this.refreshPairingInfo();
+    }
+  }
+
+  async refreshPairingInfo(): Promise<void> {
+    const info = await this.lanSync.fetchPairingInfo();
+    if (info) {
+      this.realPairingUrl.set(info.url);
+    }
+  }
+
+  async handleRotateCode(): Promise<void> {
+    if (!window.confirm('Se desvincularán los celulares actuales y se generará un código nuevo. ¿Deseas continuar?')) {
+      return;
+    }
+    this.rotatingCode.set(true);
+    try {
+      const info = await this.lanSync.rotatePairing();
+      if (info) {
+        this.realPairingUrl.set(info.url);
+        this.qrCacheBust.set(Date.now());
+      }
+    } finally {
+      this.rotatingCode.set(false);
+    }
   }
   closeQr(): void {
     this.qrOpen.set(false);

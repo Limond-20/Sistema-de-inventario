@@ -226,6 +226,20 @@ def create_app(
         await st.hub.drop_phones()
         return {"token": token, "expiresAt": exp, "url": pairing_url(token)}
 
+    @app.get("/api/pairing/qr.svg", dependencies=[Depends(require_local)])
+    async def get_pairing_qr_svg() -> Response:
+        token, _ = st.pairing.current()
+        url = pairing_url(token)
+        svg = segno.make(url, error="m").svg_inline(scale=7, border=2, dark="#0f172a")
+        return Response(
+            content=svg,
+            media_type="image/svg+xml",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     @app.get("/vincular", response_class=HTMLResponse, dependencies=[Depends(require_local)])
     async def vincular() -> str:
         token, _ = st.pairing.current()
