@@ -1,6 +1,36 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { addShrinkRecordIdempotent } from '../domain/shrink';
 import {
+  toCents,
+  fromCents,
+  sumMoney,
+  subtractMoney,
+  multiplyMoney,
+  formatMxn,
+  calculateTax,
+} from '../domain/money';
+import {
+  computeCreditStatus,
+  applyCreditPaymentPure,
+  applyCreditSalePure,
+  type CreditCustomerStatus,
+} from '../domain/credit';
+import {
+  createKardexEntry,
+  generateKardexId,
+  appendKardexEntry,
+  type KardexEntry,
+  type KardexType,
+} from '../domain/kardex';
+import {
+  createPinConfig,
+  createInitialPinState,
+  verifyPinAttempt,
+  type PinAuthConfig,
+  type PinAuthState,
+  type PinVerificationResult,
+} from '../domain/pin';
+import {
   AbcResult,
   ClassificationDiscrepancy,
   GuidedAnswer,
@@ -71,7 +101,7 @@ export interface Product {
   supplier: string;
 }
 
-export type CreditCustomerStatus = 'AL_CORRIENTE' | 'LIMITE_ALCANZADO' | 'VENCIDO';
+export type { CreditCustomerStatus } from '../domain/credit';
 
 export interface CreditCustomer {
   id: string;
@@ -148,13 +178,7 @@ export interface CreditResult {
   availableCredit?: number;
 }
 
-export interface KardexEntry {
-  id: string;
-  timestamp: string;
-  type: 'VENTA_EFECTIVO' | 'VENTA_FIADO' | 'ABONO_FIADO' | 'ENTRADA_COMPRA' | 'AJUSTE_AUDITORIA' | 'BAJA_MERMA' | 'CONSUMO_INTERNO';
-  description: string;
-  amount: number;
-}
+export type { KardexEntry, KardexType } from '../domain/kardex';
 
 export type AlertKind = 'cambio-fisico' | 'por-agotarse' | 'margen' | 'auditoria';
 
@@ -277,18 +301,19 @@ export function marginPct(cost: number, price: number): number {
  */
 export function calculateCommercialRound(price: number): number {
   if (price <= 0) return 0;
-  if (price < 50) {
-    return +(Math.ceil(price * 2) / 2).toFixed(2);
+  const cents = toCents(price);
+  if (cents < 5000) {
+    return fromCents(Math.ceil(cents / 50) * 50);
   } else {
-    return Math.ceil(price);
+    return fromCents(Math.ceil(cents / 100) * 100);
   }
 }
 
 /** Precio sugerido redondeado comercialmente para cumplir el margen objetivo. */
 export function suggestedPrice(cost: number, targetMargin: number): number {
-  if (targetMargin >= 100) return Math.ceil(cost * 1.5);
-  const raw = cost / (1 - targetMargin / 100);
-  return calculateCommercialRound(raw);
+  if (targetMargin >= 100) return fromCents(Math.ceil(toCents(cost) * 1.5));
+  const rawCents = Math.round(toCents(cost) / (1 - targetMargin / 100));
+  return calculateCommercialRound(fromCents(rawCents));
 }
 
 /** Calcula el Punto de Reorden (ROP): (Venta Diaria × Días Proveedor) + Stock de Seguridad */
@@ -399,13 +424,13 @@ export function parseTicketOCR(rawText: string, catalog: Product[]): ReceptionLi
     if (!product) continue;
 
     let unitNewCost = rawAmount;
-    let lineTotal = +(qty * rawAmount).toFixed(2);
+    let lineTotal = multiplyMoney(rawAmount, qty);
 
     if (qty > 1 && rawAmount > product.historicCost * 2.2) {
       const candidateUnit = rawAmount / qty;
       if (Math.abs(candidateUnit - product.historicCost) < Math.abs(rawAmount - product.historicCost)) {
-        unitNewCost = +candidateUnit.toFixed(2);
-        lineTotal = +rawAmount.toFixed(2);
+        unitNewCost = fromCents(Math.round(toCents(candidateUnit)));
+        lineTotal = fromCents(toCents(rawAmount));
       }
     }
 
@@ -420,7 +445,7 @@ export function parseTicketOCR(rawText: string, catalog: Product[]): ReceptionLi
       saleUnit: product.saleUnit,
       lineTotal,
       historicCost: product.historicCost,
-      newCost: +unitNewCost.toFixed(2),
+      newCost: fromCents(toCents(unitNewCost)),
       salePrice: product.salePrice,
       targetMargin: product.targetMargin,
       resolved: false,
@@ -955,7 +980,7 @@ function buildLine(sku: string, qtyPurchase: number, lineTotal: number): Recepti
     saleUnit: p.saleUnit,
     lineTotal,
     historicCost: p.historicCost,
-    newCost: +(lineTotal / (qtyPurchase * p.unitsPerPurchase)).toFixed(2),
+    newCost: fromCents(Math.round(toCents(lineTotal) / (qtyPurchase * p.unitsPerPurchase))),
     salePrice: p.salePrice,
     targetMargin: p.targetMargin,
     resolved: false,
@@ -1062,6 +1087,9 @@ export class MockInventoryService {
 
   constructor() {
     this.initLanSyncListener();
+    createPinConfig('1234').then((cfg) => {
+      this.pinConfig = cfg;
+    });
   }
 
   private initLanSyncListener(): void {
@@ -1132,27 +1160,39 @@ export class MockInventoryService {
   readonly internalConsumptionRecords = signal<InternalConsumptionRecord[]>([]);
 
   readonly kardex = signal<KardexEntry[]>([
-    {
-      id: 'K-103',
-      timestamp: '10:42 a.m.',
+    createKardexEntry({
       type: 'ABONO_FIADO',
-      description: 'Abono en efectivo de Doña María López - Casa Azul',
+      producto: { sku: 'CLI-03', name: 'Doña María López - Casa Azul' },
+      cantidad: 0,
+      saldoAnterior: 150.0,
+      saldoResultante: 0,
+      usuario: 'Cajero Mostrador',
+      referencia: 'Abono Doña María López',
       amount: 150.0,
-    },
-    {
-      id: 'K-102',
-      timestamp: '10:15 a.m.',
+      description: 'Abono en efectivo de Doña María López - Casa Azul',
+    }),
+    createKardexEntry({
       type: 'VENTA_FIADO',
-      description: 'Venta anotada en libreta a Don Roberto Hernández (3 art.)',
+      producto: { sku: 'CLI-04', name: 'Don Roberto Hernández' },
+      cantidad: -3,
+      saldoAnterior: 0,
+      saldoResultante: 145.0,
+      usuario: 'Cajero Mostrador',
+      referencia: 'Libreta Fiado #102',
       amount: 145.0,
-    },
-    {
-      id: 'K-101',
-      timestamp: '09:50 a.m.',
+      description: 'Venta anotada en libreta a Don Roberto Hernández (3 art.)',
+    }),
+    createKardexEntry({
       type: 'VENTA_EFECTIVO',
-      description: 'Venta de mostrador en efectivo (Leche Lala, Bolillos, Queso)',
+      producto: { sku: 'VAR-01', name: 'Leche Lala, Bolillos, Queso' },
+      cantidad: -3,
+      saldoAnterior: 10,
+      saldoResultante: 7,
+      usuario: 'Cajero Mostrador',
+      referencia: 'Ticket #0101',
       amount: 112.0,
-    },
+      description: 'Venta de mostrador en efectivo (Leche Lala, Bolillos, Queso)',
+    }),
   ]);
 
   readonly morningAlerts = signal<MorningAlert[]>(structuredClone(MORNING_ALERTS));
@@ -1161,6 +1201,25 @@ export class MockInventoryService {
   readonly supplierRoutes = signal<SupplierRoute[]>(structuredClone(SUPPLIER_ROUTES));
   readonly perishableBatches = signal<PerishableBatch[]>(structuredClone(PERISHABLE_BATCHES));
   readonly blindAuditMission = signal<BlindAuditItem[]>([]);
+
+  /** Configuración y estado de intentos del PIN de Administrador (Web Crypto SHA-256 con sal). */
+  private pinConfig: PinAuthConfig | null = null;
+  readonly pinState = signal<PinAuthState>(createInitialPinState());
+
+  /** Configura el PIN de administrador de demostración (configurable, por defecto '1234'). */
+  async configureAdminPin(newPin: string): Promise<void> {
+    this.pinConfig = await createPinConfig(newPin);
+  }
+
+  /** Verifica un intento de PIN (máximo 3 intentos y bloqueo de 30 segundos). */
+  async verifyAdminPin(pin: string, authorizer = 'Administrador'): Promise<PinVerificationResult> {
+    if (!this.pinConfig) {
+      this.pinConfig = await createPinConfig('1234');
+    }
+    const result = await verifyPinAttempt(pin, this.pinConfig, this.pinState(), Date.now(), authorizer);
+    this.pinState.set(result.nextState);
+    return result;
+  }
 
   /** Estado de vinculación con el celular. */
   readonly phoneLinked = signal(false);
@@ -1386,7 +1445,7 @@ export class MockInventoryService {
    */
   getRealDrawerCash(): number {
     const s = this.cashShift();
-    return +(s.openingCash + s.cashSalesTotal + s.creditPaymentsReceived).toFixed(2);
+    return sumMoney([s.openingCash, s.cashSalesTotal, s.creditPaymentsReceived]);
   }
 
   /** Alias para compatibilidad con vistas y componentes existentes. */
@@ -1398,15 +1457,15 @@ export class MockInventoryService {
    * Procesa una venta en efectivo:
    * - Valida que el efectivo recibido cubra el total.
    * - Calcula el cambio exacto.
-   * - Descuenta existencias en tiempo real.
+   * - Descuenta existencias en tiempo real (permite stock negativo y registra faltantes).
    * - Suma a cashSalesTotal en el arqueo del cajón.
-   * - Registra en Kardex como 'VENTA_EFECTIVO'.
+   * - Registra en Kardex como 'VENTA_EFECTIVO' (y 'FALTANTE_SISTEMA' si no había existencia).
    */
   processCashSale(items: CartItem[], cashReceived: number): SaleResult {
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0, change: 0 };
     }
-    const total = +items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2);
+    const total = sumMoney(items.map((item) => item.subtotal));
     if (cashReceived < total) {
       return {
         ok: false,
@@ -1415,14 +1474,62 @@ export class MockInventoryService {
         change: 0,
       };
     }
-    const change = +(cashReceived - total).toFixed(2);
+    const change = subtractMoney(cashReceived, total);
 
-    // Descontar existencias en tiempo real
+    // Descontar existencias en tiempo real sin ocultar faltantes (permite stock negativo)
+    const shortageAlerts: MorningAlert[] = [];
+    const newKardexEntries: KardexEntry[] = [];
+    const nowIso = new Date().toISOString();
+
     this.products.update((list) =>
       list.map((p) => {
         const soldItem = items.find((i) => i.sku === p.sku);
         if (!soldItem) return p;
-        const nextStock = Math.max(0, +(p.stock - soldItem.qty).toFixed(3));
+        const saldoAnterior = p.stock;
+        const nextStock = Math.round((saldoAnterior - soldItem.qty) * 1000) / 1000;
+
+        newKardexEntries.push(
+          createKardexEntry({
+            type: 'VENTA_EFECTIVO',
+            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+            cantidad: -soldItem.qty,
+            saldoAnterior,
+            saldoResultante: nextStock,
+            usuario: 'Cajero Mostrador',
+            referencia: 'Venta Mostrador Efectivo',
+            timestamp: nowIso,
+            amount: soldItem.subtotal,
+            description: `Venta en efectivo: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
+          }),
+        );
+
+        if (nextStock < 0) {
+          newKardexEntries.push(
+            createKardexEntry({
+              type: 'FALTANTE_SISTEMA',
+              producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+              cantidad: nextStock,
+              saldoAnterior,
+              saldoResultante: nextStock,
+              usuario: 'Cajero Mostrador',
+              referencia: `Venta sin existencias: ${p.sku}`,
+              timestamp: nowIso,
+              amount: 0,
+              description: `FALTANTE EN SISTEMA: ${p.name} quedó en ${nextStock} ${p.saleUnit}. Requiere revisión física.`,
+            }),
+          );
+
+          shortageAlerts.push({
+            id: `A-FALTANTE-${p.sku}-${Date.now()}`,
+            kind: 'por-agotarse',
+            icon: '🚨',
+            title: `Stock en negativo: ${p.name} (${nextStock} ${p.saleUnit})`,
+            detail: `Se vendieron productos sin existencia registrada en sistema. Faltante detectado: ${Math.abs(nextStock)} ${p.saleUnit}. Requiere revisión física.`,
+            actionLabel: 'Ver en catálogo',
+            route: '/catalogo',
+          });
+        }
+
         return { ...p, stock: nextStock };
       }),
     );
@@ -1430,26 +1537,19 @@ export class MockInventoryService {
     // Actualizar totales de caja (Efectivo físico entra al cajón)
     this.cashShift.update((s) => ({
       ...s,
-      cashSalesTotal: +(s.cashSalesTotal + total).toFixed(2),
+      cashSalesTotal: sumMoney([s.cashSalesTotal, total]),
     }));
     this.cashRegister.update((r) => ({
       ...r,
-      cashSalesTotal: +(r.cashSalesTotal + total).toFixed(2),
+      cashSalesTotal: sumMoney([r.cashSalesTotal, total]),
     }));
 
-    // Registrar en Kardex
-    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
-    const summaryNames = items.slice(0, 2).map((i) => i.name).join(', ');
-    this.kardex.update((entries) => [
-      {
-        id: 'K-' + String(Date.now()).slice(-4),
-        timestamp: now,
-        type: 'VENTA_EFECTIVO',
-        description: `Venta en efectivo (${items.length} art.: ${summaryNames})`,
-        amount: total,
-      },
-      ...entries,
-    ]);
+    // Registrar en Kardex de forma append-only
+    this.kardex.update((entries) => [...newKardexEntries, ...entries]);
+
+    if (shortageAlerts.length > 0) {
+      this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
+    }
 
     return {
       ok: true,
@@ -1461,89 +1561,132 @@ export class MockInventoryService {
 
   /**
    * Procesa una venta cargada a la Libreta Digital de Fiado (Crédito Vecinal):
-   * - Bloquea la venta si el cliente tiene estatus 'VENCIDO'.
+   * - Bloquea la venta si el cliente tiene estatus 'VENCIDO' (según computeCreditStatus).
    * - Bloquea si la venta excede el límite de crédito disponible.
    * - Suma a creditSalesTotal (NO SUMA EFECTIVO AL CAJÓN: +$0.00).
-   * - Descuenta existencias de inventario físico.
-   * - Registra en Kardex como 'VENTA_FIADO'.
+   * - Descuenta existencias de inventario físico (permite stock negativo y registra faltantes).
+   * - Registra en Kardex como 'VENTA_FIADO' (y 'FALTANTE_SISTEMA' si no había existencias).
    */
   processCreditSale(items: CartItem[], customerId: string): CreditResult {
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0 };
     }
-    const total = +items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2);
+    const total = sumMoney(items.map((item) => item.subtotal));
     const customer = this.creditCustomers().find((c) => c.id === customerId);
     if (!customer) {
       return { ok: false, message: 'Selecciona un cliente para cargar el fiado.', total };
     }
-    if (customer.status === 'VENCIDO') {
+
+    const currentStatus = computeCreditStatus(customer, new Date());
+    const availableCredit = Math.max(0, subtractMoney(customer.creditLimit, customer.currentBalance));
+
+    if (currentStatus === 'VENCIDO') {
       return {
         ok: false,
         message: `Crédito bloqueado: el cliente tiene pagos vencidos ($${customer.currentBalance.toFixed(2)}).`,
         total,
-        availableCredit: Math.max(0, +(customer.creditLimit - customer.currentBalance).toFixed(2)),
+        availableCredit,
       };
     }
-    if (customer.currentBalance + total > customer.creditLimit) {
-      const available = Math.max(0, +(customer.creditLimit - customer.currentBalance).toFixed(2));
+    if (sumMoney([customer.currentBalance, total]) > customer.creditLimit) {
       return {
         ok: false,
-        message: `Límite de crédito excedido. Disponible: $${available.toFixed(2)} de su límite de $${customer.creditLimit.toFixed(2)}.`,
+        message: `Límite de crédito excedido. Disponible: $${availableCredit.toFixed(2)} de su límite de $${customer.creditLimit.toFixed(2)}.`,
         total,
-        availableCredit: available,
+        availableCredit,
       };
     }
 
-    // Actualizar saldo y estatus del cliente
+    // Actualizar saldo y estatus del cliente usando computeCreditStatus
     this.creditCustomers.update((list) =>
       list.map((c) => {
         if (c.id !== customerId) return c;
-        const newBal = +(c.currentBalance + total).toFixed(2);
-        const ratio = newBal / c.creditLimit;
-        const nextStatus: CreditCustomerStatus =
-          c.status === 'VENCIDO' ? 'VENCIDO' : ratio >= 0.9 ? 'LIMITE_ALCANZADO' : 'AL_CORRIENTE';
-        return { ...c, currentBalance: newBal, status: nextStatus };
+        const newBal = sumMoney([c.currentBalance, total]);
+        const candidate = { ...c, currentBalance: newBal };
+        const nextStatus = computeCreditStatus(candidate, new Date());
+        return { ...candidate, status: nextStatus };
       }),
     );
 
     // Sumar a crédito (NO ENTRA DINERO EN EFECTIVO AL CAJÓN)
     this.cashShift.update((s) => ({
       ...s,
-      creditSalesTotal: +(s.creditSalesTotal + total).toFixed(2),
+      creditSalesTotal: sumMoney([s.creditSalesTotal, total]),
     }));
     this.cashRegister.update((r) => ({
       ...r,
-      creditSalesTotal: +(r.creditSalesTotal + total).toFixed(2),
+      creditSalesTotal: sumMoney([r.creditSalesTotal, total]),
     }));
 
-    // Descontar inventario físico
+    // Descontar inventario físico sin Math.max(0, ...) permitiendo stock negativo
+    const shortageAlerts: MorningAlert[] = [];
+    const newKardexEntries: KardexEntry[] = [];
+    const nowIso = new Date().toISOString();
+
     this.products.update((list) =>
       list.map((p) => {
         const soldItem = items.find((i) => i.sku === p.sku);
         if (!soldItem) return p;
-        const nextStock = Math.max(0, +(p.stock - soldItem.qty).toFixed(3));
+        const saldoAnterior = p.stock;
+        const nextStock = Math.round((saldoAnterior - soldItem.qty) * 1000) / 1000;
+
+        newKardexEntries.push(
+          createKardexEntry({
+            type: 'VENTA_FIADO',
+            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+            cantidad: -soldItem.qty,
+            saldoAnterior,
+            saldoResultante: nextStock,
+            usuario: 'Cajero Mostrador',
+            referencia: `Fiado Cliente ${customer.name}`,
+            timestamp: nowIso,
+            amount: soldItem.subtotal,
+            description: `Fiado a ${customer.name}: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
+          }),
+        );
+
+        if (nextStock < 0) {
+          newKardexEntries.push(
+            createKardexEntry({
+              type: 'FALTANTE_SISTEMA',
+              producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+              cantidad: nextStock,
+              saldoAnterior,
+              saldoResultante: nextStock,
+              usuario: 'Cajero Mostrador',
+              referencia: `Venta fiado sin stock: ${p.sku}`,
+              timestamp: nowIso,
+              amount: 0,
+              description: `FALTANTE EN SISTEMA: ${p.name} quedó en ${nextStock} ${p.saleUnit}. Requiere revisión física.`,
+            }),
+          );
+
+          shortageAlerts.push({
+            id: `A-FALTANTE-${p.sku}-${Date.now()}`,
+            kind: 'por-agotarse',
+            icon: '🚨',
+            title: `Stock en negativo: ${p.name} (${nextStock} ${p.saleUnit})`,
+            detail: `Se vendieron productos sin existencia registrada en sistema. Faltante detectado: ${Math.abs(nextStock)} ${p.saleUnit}. Requiere revisión física.`,
+            actionLabel: 'Ver en catálogo',
+            route: '/catalogo',
+          });
+        }
+
         return { ...p, stock: nextStock };
       }),
     );
 
-    // Registrar en Kardex
-    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
-    this.kardex.update((entries) => [
-      {
-        id: 'K-' + String(Date.now()).slice(-4),
-        timestamp: now,
-        type: 'VENTA_FIADO',
-        description: `Fiado cargado a la libreta de ${customer.name} (${items.length} art.)`,
-        amount: total,
-      },
-      ...entries,
-    ]);
+    this.kardex.update((entries) => [...newKardexEntries, ...entries]);
 
-    const remainingAvailable = +(customer.creditLimit - (customer.currentBalance + total)).toFixed(2);
+    if (shortageAlerts.length > 0) {
+      this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
+    }
+
+    const remainingAvailable = Math.max(0, subtractMoney(customer.creditLimit, sumMoney([customer.currentBalance, total])));
 
     return {
       ok: true,
-      message: `Venta cargada a la cuenta de ${customer.name}. Saldo total: $${(customer.currentBalance + total).toFixed(2)}.`,
+      message: `Venta cargada a la cuenta de ${customer.name}. Saldo total: $${sumMoney([customer.currentBalance, total]).toFixed(2)}.`,
       total,
       availableCredit: remainingAvailable,
     };
@@ -1553,7 +1696,7 @@ export class MockInventoryService {
    * Procesa el Consumo Interno (alimentos o suministros tomados para la tienda o comida del personal):
    * - Valida artículos y responsable obligatorio.
    * - Se valúa estrictamente al COSTO DE COMPRA (weightedAvgCost / purchaseCost / historicCost), NO al precio de venta.
-   * - Descuenta existencias físicas de inventario.
+   * - Descuenta existencias físicas de inventario sin Math.max(0, ...) permitiendo negativos.
    * - No entra dinero al cajón de efectivo ($0.00).
    * - Registra en internalConsumptionRecords y Kardex como 'CONSUMO_INTERNO'.
    */
@@ -1574,32 +1717,80 @@ export class MockInventoryService {
         prod?.lastPurchaseCost ??
         prod?.weightedAvgCost ??
         prod?.historicCost ??
-        +(item.unitPrice * 0.75).toFixed(2);
-      const subtotalCost = +(unitCost * item.qty).toFixed(2);
+        multiplyMoney(item.unitPrice, 0.75);
+      const subtotalCost = multiplyMoney(unitCost, item.qty);
       return {
         productId: item.sku,
         name: item.name,
         quantity: item.qty,
-        unitCost: +unitCost.toFixed(2),
+        unitCost: fromCents(toCents(unitCost)),
         subtotalCost,
       };
     });
 
-    const totalCost = +detailedItems.reduce((sum, i) => sum + i.subtotalCost, 0).toFixed(2);
+    const totalCost = sumMoney(detailedItems.map((i) => i.subtotalCost));
 
-    // Descontar inventario físico
+    // Descontar inventario físico sin Math.max(0, ...)
+    const shortageAlerts: MorningAlert[] = [];
+    const newKardexEntries: KardexEntry[] = [];
+    const nowIso = new Date().toISOString();
+
     this.products.update((list) =>
       list.map((p) => {
         const consumed = items.find((i) => i.sku === p.sku);
         if (!consumed) return p;
-        const nextStock = Math.max(0, +(p.stock - consumed.qty).toFixed(3));
+        const saldoAnterior = p.stock;
+        const nextStock = Math.round((saldoAnterior - consumed.qty) * 1000) / 1000;
+
+        newKardexEntries.push(
+          createKardexEntry({
+            type: 'CONSUMO_INTERNO',
+            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+            cantidad: -consumed.qty,
+            saldoAnterior,
+            saldoResultante: nextStock,
+            usuario: cleanResponsible,
+            referencia: `Consumo Interno autorizado por ${cleanResponsible}`,
+            timestamp: nowIso,
+            amount: multiplyMoney(consumed.unitPrice * 0.75, consumed.qty),
+            description: `Consumo interno: ${consumed.qty} ${p.saleUnit} de ${p.name} (Valuado al Costo)`,
+          }),
+        );
+
+        if (nextStock < 0) {
+          newKardexEntries.push(
+            createKardexEntry({
+              type: 'FALTANTE_SISTEMA',
+              producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+              cantidad: nextStock,
+              saldoAnterior,
+              saldoResultante: nextStock,
+              usuario: cleanResponsible,
+              referencia: `Consumo sin existencia: ${p.sku}`,
+              timestamp: nowIso,
+              amount: 0,
+              description: `FALTANTE EN SISTEMA: ${p.name} quedó en ${nextStock} ${p.saleUnit}.`,
+            }),
+          );
+
+          shortageAlerts.push({
+            id: `A-FALTANTE-${p.sku}-${Date.now()}`,
+            kind: 'por-agotarse',
+            icon: '🚨',
+            title: `Stock en negativo: ${p.name} (${nextStock} ${p.saleUnit})`,
+            detail: `Consumo interno dejó stock negativo. Faltante detectado: ${Math.abs(nextStock)} ${p.saleUnit}.`,
+            actionLabel: 'Ver en catálogo',
+            route: '/catalogo',
+          });
+        }
+
         return { ...p, stock: nextStock };
       }),
     );
 
     // Registrar en colección de consumos internos
     const record: InternalConsumptionRecord = {
-      id: 'CI-' + String(Date.now()).slice(-4),
+      id: 'CI-' + generateKardexId().slice(2, 10),
       timestamp: new Date(),
       responsible: cleanResponsible,
       items: detailedItems,
@@ -1610,21 +1801,15 @@ export class MockInventoryService {
     // Sumar al total contable de consumos internos (Cajón de efectivo: +$0.00)
     this.cashShift.update((s) => ({
       ...s,
-      internalConsumptionTotalCost: +(s.internalConsumptionTotalCost + totalCost).toFixed(2),
+      internalConsumptionTotalCost: sumMoney([s.internalConsumptionTotalCost, totalCost]),
     }));
 
     // Registrar en Kardex
-    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
-    this.kardex.update((entries) => [
-      {
-        id: 'K-' + String(Date.now()).slice(-4),
-        timestamp: now,
-        type: 'CONSUMO_INTERNO',
-        description: `Consumo Interno autorizado por ${cleanResponsible} (${items.length} art., Valuado al Costo: $${totalCost.toFixed(2)})`,
-        amount: totalCost,
-      },
-      ...entries,
-    ]);
+    this.kardex.update((entries) => [...newKardexEntries, ...entries]);
+
+    if (shortageAlerts.length > 0) {
+      this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
+    }
 
     return {
       ok: true,
@@ -1645,7 +1830,7 @@ export class MockInventoryService {
       const res = this.processCreditSale(items, customerId || '');
       return { ok: res.ok, message: res.message, total: res.total };
     } else {
-      const total = +items.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2);
+      const total = sumMoney(items.map((item) => item.subtotal));
       const res = this.processCashSale(items, total);
       return { ok: res.ok, message: res.message, total: res.total };
     }
@@ -1653,7 +1838,8 @@ export class MockInventoryService {
 
   /**
    * Registra un abono en efectivo de un cliente de fiado:
-   * - Disminuye su deuda (currentBalance) y actualiza su estatus.
+   * - Disminuye su deuda (currentBalance) y actualiza su estatus con computeCreditStatus.
+   * - REGLA OBLIGATORIA: Un abono parcial NO debe limpiar el estatus VENCIDO si queda saldo con fecha vencida.
    * - Suma el dinero recibido a creditPaymentsReceived (¡SÍ ENTRA EFECTIVO FÍSICO AL CAJÓN!).
    */
   registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string } {
@@ -1672,12 +1858,12 @@ export class MockInventoryService {
     this.creditCustomers.update((list) =>
       list.map((c) => {
         if (c.id !== customerId) return c;
-        const newBal = Math.max(0, +(c.currentBalance - applied).toFixed(2));
-        const nextStatus: CreditCustomerStatus =
-          newBal / c.creditLimit >= 0.9 ? 'LIMITE_ALCANZADO' : 'AL_CORRIENTE';
+        const newBal = Math.max(0, subtractMoney(c.currentBalance, applied));
+        const candidate = { ...c, currentBalance: newBal };
+        // computeCreditStatus: VENCIDO si hay saldo vencido; si no, LIMITE_ALCANZADO cuando saldo/límite >= 0.9; si no, AL_CORRIENTE
+        const nextStatus = computeCreditStatus(candidate, new Date());
         return {
-          ...c,
-          currentBalance: newBal,
+          ...candidate,
           status: nextStatus,
         };
       }),
@@ -1685,23 +1871,26 @@ export class MockInventoryService {
 
     this.cashShift.update((s) => ({
       ...s,
-      creditPaymentsReceived: +(s.creditPaymentsReceived + applied).toFixed(2),
+      creditPaymentsReceived: sumMoney([s.creditPaymentsReceived, applied]),
     }));
 
     this.cashRegister.update((reg) => ({
       ...reg,
-      creditPaymentsReceived: +(reg.creditPaymentsReceived + applied).toFixed(2),
+      creditPaymentsReceived: sumMoney([reg.creditPaymentsReceived, applied]),
     }));
 
-    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
     this.kardex.update((entries) => [
-      {
-        id: 'K-' + String(Date.now()).slice(-4),
-        timestamp: now,
+      createKardexEntry({
         type: 'ABONO_FIADO',
-        description: `Abono en efectivo recibido de ${customer.name}`,
+        producto: { sku: customer.id, name: customer.name },
+        cantidad: 0,
+        saldoAnterior: customer.currentBalance,
+        saldoResultante: Math.max(0, subtractMoney(customer.currentBalance, applied)),
+        usuario: 'Cajero Mostrador',
+        referencia: `Abono deudor: ${customer.name}`,
         amount: applied,
-      },
+        description: `Abono en efectivo recibido de ${customer.name}`,
+      }),
       ...entries,
     ]);
 
@@ -1739,25 +1928,50 @@ export class MockInventoryService {
 
   /** Crea una línea manual a partir de un producto del catálogo. */
   createManualLine(sku: string, qtyPurchase: number, costPerPurchaseUnit: number): ReceptionLine {
-    const line = buildLine(sku, qtyPurchase, +(qtyPurchase * costPerPurchaseUnit).toFixed(2));
+    const line = buildLine(sku, qtyPurchase, multiplyMoney(costPerPurchaseUnit, qtyPurchase));
     const p = this.products().find((x) => x.sku === sku)!;
     line.salePrice = p.salePrice;
     line.historicCost = p.historicCost;
     return line;
   }
 
-  /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado y actualiza Último Costo de Reposición. */
+  /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado, actualiza reposición y genera Kardex. */
   saveReception(lines: ReceptionLine[], folio: string): void {
+    const newKardexEntries: KardexEntry[] = [];
+    const nowIso = new Date().toISOString();
+
     this.products.update((list) =>
       list.map((p) => {
         const line = lines.find((l) => l.sku === p.sku);
         if (!line) return p;
         const incomingUnits = line.qtyPurchase * line.unitsPerPurchase;
-        const newTotalStock = +(p.stock + incomingUnits).toFixed(2);
+        const saldoAnterior = p.stock;
+        const newTotalStock = Math.round((saldoAnterior + incomingUnits) * 1000) / 1000;
         const newWeightedAvg =
           newTotalStock > 0
-            ? +((p.stock * p.weightedAvgCost + incomingUnits * line.newCost) / newTotalStock).toFixed(2)
+            ? fromCents(
+                Math.round(
+                  (toCents(p.stock * p.weightedAvgCost) + toCents(incomingUnits * line.newCost)) /
+                    newTotalStock,
+                ),
+              )
             : line.newCost;
+
+        newKardexEntries.push(
+          createKardexEntry({
+            type: 'ENTRADA_COMPRA',
+            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+            cantidad: incomingUnits,
+            saldoAnterior,
+            saldoResultante: newTotalStock,
+            usuario: 'Don Lupe (Recepción Proveedor)',
+            referencia: `Nota #${folio}`,
+            timestamp: nowIso,
+            amount: line.lineTotal,
+            description: `Entrada compra Nota #${folio}: +${incomingUnits} ${p.saleUnit} de ${p.name}`,
+          }),
+        );
+
         return {
           ...p,
           stock: newTotalStock,
@@ -1769,6 +1983,9 @@ export class MockInventoryService {
         };
       }),
     );
+
+    this.kardex.update((k) => [...newKardexEntries, ...k]);
+
     if (folio === this.ocrNote()?.folio) {
       this.ocrNote.set(null);
       this.morningAlerts.update((a) => a.filter((x) => x.kind !== 'margen'));
@@ -1805,12 +2022,59 @@ export class MockInventoryService {
     this.shrinkRecords.set(next);
     this.cashShift.update((s) => ({
       ...s,
-      shrinkTotalCost: +(s.shrinkTotalCost + (record.qty * record.unitCost)).toFixed(2),
+      shrinkTotalCost: sumMoney([s.shrinkTotalCost, multiplyMoney(record.unitCost, record.qty)]),
     }));
   }
 
-  markShrinkReviewed(id: string): void {
-    this.shrinkRecords.update((list) => list.map((r) => (r.id === id ? { ...r, reviewed: true } : r)));
+  markShrinkReviewed(id: string, authorizedBy = 'Administrador (PIN)'): void {
+    const record = this.shrinkRecords().find((r) => r.id === id);
+    this.shrinkRecords.update((list) =>
+      list.map((r) => (r.id === id ? { ...r, reviewed: true, registeredBy: `${r.registeredBy} | Aprobó: ${authorizedBy}` } : r)),
+    );
+    if (record) {
+      this.kardex.update((k) => [
+        createKardexEntry({
+          type: 'BAJA_MERMA',
+          producto: { sku: record.sku, name: record.name, saleUnit: record.saleUnit },
+          cantidad: -record.qty,
+          saldoAnterior: 0,
+          saldoResultante: 0,
+          usuario: authorizedBy,
+          referencia: `Aprobación merma #${record.id}`,
+          amount: multiplyMoney(record.unitCost, record.qty),
+          description: `Baja de merma #${record.id} aprobada por ${authorizedBy}: ${record.qty} ${record.saleUnit} de ${record.name}`,
+        }),
+        ...k,
+      ]);
+    }
+  }
+
+  /**
+   * Aprueba la baja de merma validando obligatoriamente el PIN de administrador con Web Crypto.
+   * Regla de negocio: Máximo 3 intentos y bloqueo de 30 segundos. Registra quién autorizó en el Kardex.
+   */
+  async authorizeShrinkReview(
+    shrinkRecordId: string,
+    pin: string,
+    authorizerName = 'Administrador',
+  ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
+    const pinResult = await this.verifyAdminPin(pin, authorizerName);
+    if (!pinResult.success) {
+      return {
+        ok: false,
+        message: pinResult.message,
+        remainingAttempts: pinResult.remainingAttempts,
+        isLocked: pinResult.isLocked,
+      };
+    }
+    const authorizer = pinResult.authorizedBy || authorizerName;
+    this.markShrinkReviewed(shrinkRecordId, authorizer);
+    return {
+      ok: true,
+      message: `Merma #${shrinkRecordId} aprobada con éxito por ${authorizer}.`,
+      remainingAttempts: pinResult.remainingAttempts,
+      isLocked: false,
+    };
   }
 
   // ---------- Agenda de Rutas y FEFO ----------
@@ -1841,7 +2105,7 @@ export class MockInventoryService {
   /**
    * Resuelve el cambio físico:
    * - CAMBIO_EFECTIVO: actualiza la caducidad sin alterar costos contables.
-   * - MERMA_RECHAZADA: descuenta a merma al costo contable.
+   * - MERMA_RECHAZADA: descuenta a merma al costo contable (permite stock negativo sin Math.max(0, ...)).
    */
   resolvePhysicalExchange(
     batchId: string,
@@ -1866,22 +2130,39 @@ export class MockInventoryService {
       );
       const product = this.products().find((p) => p.sku === batch.productId);
       const unitCost = product ? product.historicCost : 25;
-      const totalLoss = +(batch.quantity * unitCost).toFixed(2);
+      const totalLoss = multiplyMoney(unitCost, batch.quantity);
 
       if (product) {
+        const saldoAnterior = product.stock;
+        const nextStock = Math.round((saldoAnterior - batch.quantity) * 1000) / 1000;
         this.products.update((list) =>
           list.map((p) =>
             p.sku === batch.productId
-              ? { ...p, stock: Math.max(0, +(p.stock - batch.quantity).toFixed(2)) }
+              ? { ...p, stock: nextStock }
               : p,
           ),
         );
+
+        this.kardex.update((k) => [
+          createKardexEntry({
+            type: 'BAJA_MERMA',
+            producto: { sku: product.sku, name: product.name, saleUnit: product.saleUnit },
+            cantidad: -batch.quantity,
+            saldoAnterior,
+            saldoResultante: nextStock,
+            usuario: 'Módulo FEFO / Mostrador',
+            referencia: `Merma lote ${batch.batchId}`,
+            amount: totalLoss,
+            description: `Merma rechazada FEFO: ${batch.quantity}x ${batch.productName} ($${totalLoss.toFixed(2)})`,
+          }),
+          ...k,
+        ]);
       }
 
       const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
       this.shrinkRecords.update((list) => [
         {
-          id: 'M-' + String(Date.now()).slice(-4),
+          id: 'M-' + generateKardexId().slice(2, 10),
           date: '22/10/2026',
           time: now,
           sku: batch.productId,
@@ -1900,19 +2181,8 @@ export class MockInventoryService {
 
       this.cashShift.update((s) => ({
         ...s,
-        shrinkTotalCost: +(s.shrinkTotalCost + totalLoss).toFixed(2),
+        shrinkTotalCost: sumMoney([s.shrinkTotalCost, totalLoss]),
       }));
-
-      this.kardex.update((k) => [
-        {
-          id: 'K-' + String(Date.now()).slice(-4),
-          timestamp: now,
-          type: 'BAJA_MERMA',
-          description: `Merma rechazada FEFO: ${batch.quantity}x ${batch.productName} ($${totalLoss.toFixed(2)})`,
-          amount: totalLoss,
-        },
-        ...k,
-      ]);
 
       return {
         ok: true,
@@ -2065,16 +2335,18 @@ export class MockInventoryService {
    * Cuadra el stock al conteo físico en una sola transacción:
    * - MERMA_OPERATIVA: merma normal granel/corte.
    * - FALTANTE_INJUSTIFICADO: pérdida o extravío no justificado.
+   * - Registra en Kardex quién autorizó el ajuste.
    */
   applySquareAdjustment(
     productId: string,
     type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO',
+    authorizedBy = 'Administrador (PIN)',
   ): { ok: boolean; message: string } {
     const line = this.auditLines().find((l) => l.sku === productId);
     if (!line) return { ok: false, message: 'Producto no encontrado en auditoría' };
 
-    const diffQty = +(line.countedQty - line.systemQty).toFixed(2);
-    const diffMoney = +(diffQty * line.unitCost).toFixed(2);
+    const diffQty = Math.round((line.countedQty - line.systemQty) * 1000) / 1000;
+    const diffMoney = multiplyMoney(line.unitCost, diffQty);
 
     // 1. Cuadrar stock en catálogo
     this.products.update((list) =>
@@ -2091,16 +2363,19 @@ export class MockInventoryService {
       type === 'MERMA_OPERATIVA'
         ? 'Merma Normal Granel/Corte'
         : 'Faltante Injustificado';
-    const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
 
     this.kardex.update((k) => [
-      {
-        id: 'K-' + String(Date.now()).slice(-4),
-        timestamp: now,
+      createKardexEntry({
         type: 'AJUSTE_AUDITORIA',
-        description: `Ajuste Auditoría [${typeLabel}]: ${line.name} (Dif: ${diffQty > 0 ? '+' : ''}${diffQty} ${line.saleUnit}, $${diffMoney})`,
+        producto: { sku: line.sku, name: line.name, saleUnit: line.saleUnit },
+        cantidad: diffQty,
+        saldoAnterior: line.systemQty,
+        saldoResultante: line.countedQty,
+        usuario: authorizedBy,
+        referencia: `Auditoría Ciega [${typeLabel}] - ${line.sku}`,
         amount: Math.abs(diffMoney),
-      },
+        description: `Ajuste Auditoría [${typeLabel}]: ${line.name} (Dif: ${diffQty > 0 ? '+' : ''}${diffQty} ${line.saleUnit}, $${Math.abs(diffMoney).toFixed(2)})`,
+      }),
       ...k,
     ]);
 
@@ -2109,13 +2384,13 @@ export class MockInventoryService {
       const loss = Math.abs(diffMoney);
       this.cashShift.update((s) => ({
         ...s,
-        shrinkTotalCost: +(s.shrinkTotalCost + loss).toFixed(2),
+        shrinkTotalCost: sumMoney([s.shrinkTotalCost, loss]),
       }));
       this.shrinkRecords.update((list) => [
         {
-          id: 'M-' + String(Date.now()).slice(-4),
+          id: 'M-' + generateKardexId().slice(2, 10),
           date: '22/10/2026',
-          time: now,
+          time: new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' }),
           sku: line.sku,
           name: line.name,
           emoji: '',
@@ -2123,7 +2398,7 @@ export class MockInventoryService {
           saleUnit: line.saleUnit,
           reason: type === 'MERMA_OPERATIVA' ? 'Envase Roto en Piso' : 'Caducado sin devolución',
           unitCost: line.unitCost,
-          registeredBy: 'Auditoría Ciega (' + typeLabel + ')',
+          registeredBy: `Auditoría Ciega (${typeLabel}) - Aut: ${authorizedBy}`,
           hasPhoto: false,
           reviewed: true,
         },
@@ -2133,7 +2408,36 @@ export class MockInventoryService {
 
     return {
       ok: true,
-      message: `Stock cuadrado a ${line.countedQty} ${line.saleUnit}. Kardex actualizado como ${typeLabel}.`,
+      message: `Stock cuadrado a ${line.countedQty} ${line.saleUnit}. Kardex actualizado como ${typeLabel} por ${authorizedBy}.`,
+    };
+  }
+
+  /**
+   * Cuadra el stock verificando el PIN de administrador con Web Crypto API.
+   * Regla de negocio: Máximo 3 intentos y bloqueo de 30 segundos. Registra quién autorizó en el Kardex.
+   */
+  async authorizeAndApplySquareAdjustment(
+    productId: string,
+    type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO',
+    pin: string,
+    authorizerName = 'Administrador',
+  ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
+    const pinResult = await this.verifyAdminPin(pin, authorizerName);
+    if (!pinResult.success) {
+      return {
+        ok: false,
+        message: pinResult.message,
+        remainingAttempts: pinResult.remainingAttempts,
+        isLocked: pinResult.isLocked,
+      };
+    }
+    const authorizer = pinResult.authorizedBy || authorizerName;
+    const res = this.applySquareAdjustment(productId, type, authorizer);
+    return {
+      ok: true,
+      message: res.message,
+      remainingAttempts: pinResult.remainingAttempts,
+      isLocked: false,
     };
   }
 }
