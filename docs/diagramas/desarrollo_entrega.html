@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Del desarrollo a la entrega en el negocio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background-color: #FFF7EA;
+      font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      color: #1E2A32;
+    }
+    .canvas {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background-color: #FFF7EA;
+      overflow: hidden;
+    }
+
+    /* Encabezado */
+    .header-container {
+      position: absolute;
+      top: 18px;
+      left: 35px;
+      width: 1850px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .main-title {
+      font-size: 42px;
+      font-weight: 700;
+      color: #0E4D5C;
+      letter-spacing: -0.5px;
+    }
+    .header-divider {
+      position: absolute;
+      top: 76px;
+      left: 35px;
+      width: 1850px;
+      height: 4px;
+      background: linear-gradient(90deg, #0E4D5C 0%, #167684 45%, #FFB020 85%, #FFF7EA 100%);
+      border-radius: 2px;
+    }
+
+    /* Filas (Lanes / Contenedores) */
+    .lane {
+      position: absolute;
+      left: 35px;
+      width: 1850px;
+      border-radius: 18px;
+      border: 2px solid #E2D7C8;
+    }
+    .lane-superior {
+      top: 114px;
+      height: 330px;
+      background: rgba(255, 255, 255, 0.65);
+    }
+    .lane-inferior {
+      top: 514px;
+      height: 446px;
+      background: rgba(255, 255, 255, 0.65);
+    }
+    .lane-tab {
+      position: absolute;
+      top: -18px;
+      font-size: 26px;
+      font-weight: 700;
+      padding: 6px 26px;
+      border-radius: 8px;
+      color: #FFFFFF;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 12px rgba(14, 77, 92, 0.15);
+      z-index: 10;
+    }
+    .lane-tab-superior {
+      left: 30px;
+      background: #0E4D5C;
+    }
+    .lane-tab-inferior {
+      left: 80px;
+      background: #167684;
+    }
+
+    /* Tarjetas de Pasos (Verde Azulado) */
+    .step-card {
+      position: absolute;
+      background: #FFFFFF;
+      border-radius: 16px;
+      border: 2.5px solid #167684;
+      box-shadow: 0 4px 14px rgba(14, 77, 92, 0.07);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px; /* Margen interno mínimo >= 20px */
+      font-size: 28px; /* Cuerpo >= 28px */
+      font-weight: 600;
+      line-height: 1.32;
+      color: #1E2A32;
+      z-index: 4;
+    }
+
+    /* Tarjetas de Entrega Final (Verde) */
+    .step-card-final {
+      background: #F0FAF5;
+      border: 3px solid #2FA37A;
+      color: #0E4D5C;
+      box-shadow: 0 4px 14px rgba(47, 163, 122, 0.12);
+    }
+
+    /* Símbolo: Rombo de Decisión (Ámbar) */
+    .diamond-container {
+      position: absolute;
+      z-index: 4;
+    }
+    .diamond-text {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 28px; /* Cuerpo >= 28px */
+      font-weight: 700;
+      color: #0E4D5C;
+      line-height: 1.22;
+    }
+
+    /* Caja de retorno: Corregir */
+    .correct-box {
+      position: absolute;
+      background: #FDF2F0;
+      border: 2px solid #B8340F;
+      border-radius: 10px;
+      padding: 10px 22px; /* Margen interno >= 20px horizontal */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: 700;
+      color: #B8340F;
+      box-shadow: 0 3px 10px rgba(184, 52, 15, 0.12);
+      z-index: 4;
+    }
+
+    /* Etiquetas sobre flechas (Contraste >= 4.5:1) */
+    .arrow-label {
+      position: absolute;
+      font-size: 26px;
+      font-weight: 700;
+      z-index: 5;
+    }
+    .label-no {
+      color: #B8340F;
+    }
+    .label-si {
+      color: #1B6B50;
+    }
+
+    /* Etiqueta conector inter-filas */
+    .transition-badge {
+      position: absolute;
+      background: #E2F3F5;
+      border: 2px solid #167684;
+      border-radius: 8px;
+      padding: 6px 20px;
+      font-size: 22px;
+      font-weight: 700;
+      color: #0E4D5C;
+      z-index: 5;
+      white-space: nowrap;
+    }
+
+    /* SVG para flechas de conexión */
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    /* Franja inferior destacada */
+    .footer-highlight {
+      position: absolute;
+      top: 980px;
+      left: 35px;
+      width: 1850px;
+      height: 74px;
+      background: #0E4D5C;
+      border-radius: 14px;
+      border: 2px solid #167684;
+      box-shadow: 0 6px 20px rgba(14, 77, 92, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 28px; /* Margen interno >= 20px */
+    }
+    .footer-highlight-text {
+      font-size: 32px; /* Título / Destacado >= 32px */
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <!-- Encabezado -->
+    <div class="header-container">
+      <div class="main-title">Del desarrollo a la entrega en el negocio</div>
+    </div>
+    <div class="header-divider"></div>
+
+    <!-- Fila Superior: Desarrollo y pruebas -->
+    <div class="lane lane-superior">
+      <div class="lane-tab lane-tab-superior">Desarrollo y pruebas</div>
+    </div>
+
+    <!-- Fila Inferior: Entrega en el negocio -->
+    <div class="lane lane-inferior">
+      <div class="lane-tab lane-tab-inferior">Entrega en el negocio</div>
+    </div>
+
+    <!-- SVG de Conectores y Flechas -->
+    <svg class="connections-svg" width="1920" height="1080">
+      <defs>
+        <!-- Puntas de flecha -->
+        <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#167684"/>
+        </marker>
+        <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#2FA37A"/>
+        </marker>
+        <marker id="arrow-coral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#B8340F"/>
+        </marker>
+      </defs>
+
+      <!-- ==================== CONECTORES FILA SUPERIOR ==================== -->
+
+      <!-- 1. Cambio en el sistema -> Pruebas automáticas (horizontal en y=323) -->
+      <line x1="410" y1="323" x2="470" y2="323" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 2. Pruebas automáticas -> Rombo ¿Pasan? (horizontal en y=323) -->
+      <line x1="830" y1="323" x2="895" y2="323" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 3. Rombo ¿Pasan? -> Sí -> Versión lista para instalar (horizontal en y=323) -->
+      <line x1="1105" y1="323" x2="1170" y2="323" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 4. Loop-back Rombo ¿Pasan? -> No -> Corregir -> Cambio en el sistema -->
+      <path d="M 1000 243 V 180 A 14 14 0 0 0 986 166 H 855" fill="none" stroke="#B8340F" stroke-width="3.5" marker-end="url(#arrow-coral)"/>
+      <path d="M 675 166 H 274 A 14 14 0 0 0 260 180 V 236" fill="none" stroke="#B8340F" stroke-width="3.5" marker-end="url(#arrow-coral)"/>
+
+      <!-- ==================== CONECTOR INTER-FILAS ==================== -->
+      <!-- Trazo por el hueco (y=475), sin salir del contenedor por la izquierda (x=52 > 35) y sin tocar chips -->
+      <path d="M 1500 323 H 1756 A 14 14 0 0 1 1770 337 V 461 A 14 14 0 0 1 1756 475 H 66 A 14 14 0 0 0 52 489 V 776 A 14 14 0 0 0 66 790 H 68" fill="none" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- ==================== CONECTORES FILA INFERIOR ==================== -->
+
+      <!-- 1. Verificación previa -> Rombo ¿Todo correcto? (horizontal en y=790) -->
+      <line x1="358" y1="790" x2="373" y2="790" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 2. Loop-back Rombo ¿Todo correcto? -> No -> Corregir -> Verificación previa -->
+      <path d="M 480.5 685 V 595 A 14 14 0 0 0 466.5 581 H 415" fill="none" stroke="#B8340F" stroke-width="3.5" marker-end="url(#arrow-coral)"/>
+      <path d="M 265 581 H 227 A 14 14 0 0 0 213 595 V 670" fill="none" stroke="#B8340F" stroke-width="3.5" marker-end="url(#arrow-coral)"/>
+
+      <!-- 3. Rombo ¿Todo correcto? -> Sí -> Instalación en la computadora (gap 52px con 16px aire para 'Sí') -->
+      <line x1="588" y1="790" x2="640" y2="790" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 4. Instalación -> Activación de licencia -->
+      <line x1="890" y1="790" x2="905" y2="790" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 5. Activación de licencia -> Vinculación del celular (QR) -->
+      <line x1="1130" y1="790" x2="1145" y2="790" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 6. Vinculación del celular -> Capacitación y entrega (hacia Verde) -->
+      <line x1="1385" y1="790" x2="1400" y2="790" stroke="#2FA37A" stroke-width="3.5" marker-end="url(#arrow-green)"/>
+
+      <!-- 7. Capacitación y entrega -> Soporte y actualizaciones (en Verde) -->
+      <line x1="1605" y1="790" x2="1620" y2="790" stroke="#2FA37A" stroke-width="3.5" marker-end="url(#arrow-green)"/>
+    </svg>
+
+    <!-- Etiquetas de Decisión Fila Superior -->
+    <div class="arrow-label label-no" style="left: 1012px; top: 182px;">No</div>
+    <div class="arrow-label label-si" style="left: 1120px; top: 285px;">Sí</div>
+
+    <!-- Etiquetas de Decisión Fila Inferior (con 16 px de aire garantizados en todas direcciones) -->
+    <div class="arrow-label label-no" style="left: 494px; top: 615px;">No</div>
+    <div class="arrow-label label-si" style="left: 604px; top: 746px;">Sí</div>
+
+    <!-- Etiqueta de Transición entre Filas (ubicada en el hueco a y=456) -->
+    <div class="transition-badge" style="left: 825px; top: 456px;">Pase a entrega en el negocio</div>
+
+    <!-- ==================== ELEMENTOS FILA SUPERIOR ==================== -->
+
+    <!-- Paso 1: Cambio en el sistema (2 líneas balanceadas con amplio margen) -->
+    <div class="step-card" style="left: 110px; top: 236px; width: 300px; height: 175px;">
+      <div style="white-space: nowrap;">Cambio en el</div>
+      <div style="white-space: nowrap;">sistema</div>
+    </div>
+
+    <!-- Caja de retorno Corregir (Fila Superior) -->
+    <div class="correct-box" style="left: 675px; top: 156px; width: 180px; height: 48px;">
+      Corregir
+    </div>
+
+    <!-- Paso 2: Pruebas automáticas (Windows y Linux) -->
+    <div class="step-card" style="left: 470px; top: 236px; width: 360px; height: 175px;">
+      <div style="white-space: nowrap;">Pruebas automáticas</div>
+      <div style="white-space: nowrap;">(Windows y Linux)</div>
+    </div>
+
+    <!-- Rombo: ¿Pasan? -->
+    <div class="diamond-container" style="left: 895px; top: 243px; width: 210px; height: 160px;">
+      <svg width="210" height="160" style="position: absolute; top: 0; left: 0;">
+        <polygon points="105,5 205,80 105,155 5,80" fill="#FFFDF8" stroke="#FFB020" stroke-width="3.5" stroke-linejoin="round"/>
+      </svg>
+      <div class="diamond-text" style="width: 210px; height: 160px;">
+        <div style="white-space: nowrap;">¿Pasan?</div>
+      </div>
+    </div>
+
+    <!-- Paso 3: Versión lista para instalar (2 líneas balanceadas con amplio margen) -->
+    <div class="step-card" style="left: 1170px; top: 236px; width: 330px; height: 175px;">
+      <div style="white-space: nowrap;">Versión lista</div>
+      <div style="white-space: nowrap;">para instalar</div>
+    </div>
+
+
+    <!-- ==================== ELEMENTOS FILA INFERIOR ==================== -->
+
+    <!-- Caja de retorno Corregir (Fila Inferior - cumple >= 40px margen interno superior: top 571 > 554) -->
+    <div class="correct-box" style="left: 265px; top: 571px; width: 150px; height: 48px;">
+      Corregir
+    </div>
+
+    <!-- Paso 1: Verificación previa: cobro, inventario y respaldo (2 words / 2 words / 2 words, margen > 25px) -->
+    <div class="step-card" style="left: 68px; top: 670px; width: 290px; height: 240px;">
+      <div style="white-space: nowrap;">Verificación previa:</div>
+      <div style="white-space: nowrap;">cobro, inventario</div>
+      <div style="white-space: nowrap;">y respaldo</div>
+    </div>
+
+    <!-- Rombo: ¿Todo correcto? (215x205 px para margen >= 16 px sin tocar borde) -->
+    <div class="diamond-container" style="left: 373px; top: 687px; width: 215px; height: 205px;">
+      <svg width="215" height="205" style="position: absolute; top: 0; left: 0;">
+        <polygon points="107.5,5 210,102.5 107.5,200 5,102.5" fill="#FFFDF8" stroke="#FFB020" stroke-width="3.5" stroke-linejoin="round"/>
+      </svg>
+      <div class="diamond-text" style="width: 215px; height: 205px;">
+        <div style="white-space: nowrap;">¿Todo</div>
+        <div style="white-space: nowrap;">correcto?</div>
+      </div>
+    </div>
+
+    <!-- Paso 2: Instalación en la computadora (2 words / 2 words, sin palabras sueltas, margen > 24px) -->
+    <div class="step-card" style="left: 640px; top: 670px; width: 250px; height: 240px;">
+      <div style="white-space: nowrap;">Instalación en</div>
+      <div style="white-space: nowrap;">la computadora</div>
+    </div>
+
+    <!-- Paso 3: Activación de licencia (ancho balanceado con margen > 24px) -->
+    <div class="step-card" style="left: 905px; top: 670px; width: 225px; height: 240px;">
+      <div style="white-space: nowrap;">Activación de</div>
+      <div style="white-space: nowrap;">licencia</div>
+    </div>
+
+    <!-- Paso 4: Vinculación del celular (QR) (2 words / 2 words, sin palabras sueltas, margen > 23px) -->
+    <div class="step-card" style="left: 1145px; top: 670px; width: 240px; height: 240px;">
+      <div style="white-space: nowrap;">Vinculación del</div>
+      <div style="white-space: nowrap;">celular (QR)</div>
+    </div>
+
+    <!-- Paso 5: Capacitación y entrega (Entrega final en verde, margen > 21px) -->
+    <div class="step-card step-card-final" style="left: 1400px; top: 670px; width: 205px; height: 240px;">
+      <div style="white-space: nowrap;">Capacitación</div>
+      <div style="white-space: nowrap;">y entrega</div>
+    </div>
+
+    <!-- Paso 6: Soporte y actualizaciones (Entrega final en verde con margen > 24px) -->
+    <div class="step-card step-card-final" style="left: 1620px; top: 670px; width: 240px; height: 240px;">
+      <div style="white-space: nowrap;">Soporte y</div>
+      <div style="white-space: nowrap;">actualizaciones</div>
+    </div>
+
+
+    <!-- ==================== FRANJA INFERIOR DESTACADA ==================== -->
+    <div class="footer-highlight">
+      <div class="footer-highlight-text">Capacidad: 10 negocios nuevos por mes</div>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Proceso de prestación del servicio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background-color: #FFF7EA;
+      font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      color: #1E2A32;
+    }
+    .canvas {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background-color: #FFF7EA;
+      overflow: hidden;
+    }
+    
+    /* Encabezado */
+    .header-container {
+      position: absolute;
+      top: 22px;
+      left: 55px;
+      width: 1810px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .main-title {
+      font-size: 44px;
+      font-weight: 700;
+      color: #0E4D5C;
+      letter-spacing: -0.5px;
+    }
+    .header-divider {
+      position: absolute;
+      top: 86px;
+      left: 55px;
+      width: 1810px;
+      height: 4px;
+      background: linear-gradient(90deg, #0E4D5C 0%, #167684 45%, #FFB020 85%, #FFF7EA 100%);
+      border-radius: 2px;
+    }
+
+    /* Carriles (Swimlanes) */
+    .swimlane {
+      position: absolute;
+      left: 55px;
+      width: 1810px;
+      border-radius: 16px;
+      border: 2px solid #E2D7C8;
+    }
+    .swimlane-tendero {
+      top: 120px;
+      height: 255px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+    .swimlane-equipo {
+      top: 400px;
+      height: 665px;
+      background: rgba(255, 255, 255, 0.5);
+    }
+    .lane-tab {
+      position: absolute;
+      left: 25px;
+      top: -20px;
+      font-size: 24px;
+      font-weight: 700;
+      padding: 6px 26px;
+      border-radius: 8px;
+      color: #FFFFFF;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 12px rgba(14, 77, 92, 0.15);
+      z-index: 10;
+    }
+    .lane-tab-tendero {
+      background: #167684;
+    }
+    .lane-tab-equipo {
+      background: #0E4D5C;
+    }
+
+    /* Símbolos: Óvalos (Inicio / Fin) */
+    .oval-node {
+      position: absolute;
+      width: 95px;
+      height: 78px;
+      border-radius: 39px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: 700;
+      color: #FFFFFF;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      z-index: 4;
+    }
+    .oval-inicio {
+      background: #0E4D5C;
+    }
+    .oval-fin-equipo {
+      background: #0E4D5C;
+    }
+    .oval-fin-tendero {
+      background: #5C6C74;
+    }
+
+    /* Símbolo: Rombo de Decisión */
+    .diamond-container {
+      position: absolute;
+      z-index: 4;
+    }
+    .diamond-text {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 260px;
+      height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 26px;
+      font-weight: 700;
+      color: #0E4D5C;
+      padding: 16px;
+      line-height: 1.25;
+    }
+
+    /* Tarjetas de Paso (Misma altura para las 5: 420px) */
+    .step-card {
+      position: absolute;
+      top: 435px;
+      height: 420px;
+      background: #FFFFFF;
+      border-radius: 14px;
+      border: 2px solid #167684;
+      box-shadow: 0 4px 16px rgba(14, 77, 92, 0.08);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 14px;
+      z-index: 4;
+    }
+    .step-header {
+      font-size: 32px;
+      font-weight: 700;
+      color: #0E4D5C;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #EEF3F5;
+    }
+    .step-body {
+      font-size: 28px;
+      font-weight: 400;
+      color: #1E2A32;
+      line-height: 1.34;
+      /* Margen >= 20px garantizado por la altura fija de 420px */
+    }
+
+    /* Tarjeta Se mantiene el contacto (Paso en carril Tendero) */
+    .contact-card {
+      position: absolute;
+      background: #FFFFFF;
+      border-radius: 14px;
+      border: 2px solid #5C6C74;
+      box-shadow: 0 4px 16px rgba(92, 108, 116, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 14px 18px;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.25;
+      color: #1E2A32;
+      z-index: 4;
+    }
+
+    /* Etiquetas de Entregable bajadas debajo de las tarjetas */
+    .deliverable-badge {
+      position: absolute;
+      top: 870px;
+      height: 125px;
+      background: #F0FAF5;
+      border: 2px solid #2FA37A;
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: 0 3px 10px rgba(47, 163, 122, 0.12);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 4;
+    }
+    .badge-label {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1B6B50; /* Contraste 6.03:1 con #F0FAF5 (>= 4.5:1) */
+      letter-spacing: 0.3px;
+      margin-bottom: 3px;
+    }
+    .badge-text {
+      font-size: 24px;
+      font-weight: 600;
+      color: #0E4D5C;
+      line-height: 1.22;
+    }
+
+    /* Etiquetas sobre flechas */
+    .arrow-label {
+      position: absolute;
+      font-size: 26px;
+      font-weight: 700;
+      z-index: 5;
+    }
+    .label-no {
+      color: #E4572E;
+    }
+    .label-si {
+      color: #2FA37A;
+    }
+
+    /* SVG para flechas de conexión */
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
+      pointer-events: none;
+      z-index: 3;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <!-- Encabezado -->
+    <div class="header-container">
+      <div class="main-title">Proceso de prestación del servicio</div>
+    </div>
+    <div class="header-divider"></div>
+
+    <!-- Carril 1: Tendero -->
+    <div class="swimlane swimlane-tendero">
+      <div class="lane-tab lane-tab-tendero">Tendero</div>
+    </div>
+
+    <!-- Carril 2: Equipo BinniTech -->
+    <div class="swimlane swimlane-equipo">
+      <div class="lane-tab lane-tab-equipo">Equipo BinniTech</div>
+    </div>
+
+    <!-- SVG de Conectores y Flechas -->
+    <svg class="connections-svg" width="1920" height="1080">
+      <defs>
+        <!-- Punta de flecha Teal (#167684) -->
+        <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#167684"/>
+        </marker>
+        <!-- Punta de flecha Coral (#E4572E) -->
+        <marker id="arrow-coral" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#E4572E"/>
+        </marker>
+        <!-- Punta de flecha Verde (#2FA37A) -->
+        <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#2FA37A"/>
+        </marker>
+        <!-- Punta de flecha Gris (#5C6C74) -->
+        <marker id="arrow-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#5C6C74"/>
+        </marker>
+      </defs>
+
+      <!-- 1. Inicio -> Paso 1 (horizontal en y=645) -->
+      <line x1="155" y1="645" x2="185" y2="645" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 2. Paso 1 -> Rombo (sube verticalmente desde Paso 1 y dobla a la derecha al rombo) -->
+      <!-- Paso 1 centro superior en (320, 435); Rombo vértice izquierdo en (497.5, 230) -->
+      <path d="M 320 435 V 245 A 15 15 0 0 1 335 230 H 497.5" fill="none" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 3. Rombo -> No -> Se mantiene el contacto (horizontal en y=230) -->
+      <!-- Rombo vértice derecho en (757.5, 230); Se mantiene el contacto borde izquierdo en (840, 230) -->
+      <line x1="757.5" y1="230" x2="840" y2="230" stroke="#E4572E" stroke-width="3.5" marker-end="url(#arrow-coral)"/>
+
+      <!-- 4. Se mantiene el contacto -> Fin (horizontal en y=230) -->
+      <!-- Se mantiene el contacto borde derecho en (1130, 230); Fin borde izquierdo en (1185, 230) -->
+      <line x1="1130" y1="230" x2="1185" y2="230" stroke="#5C6C74" stroke-width="3.5" marker-end="url(#arrow-gray)"/>
+
+      <!-- 5. Rombo -> Sí -> Paso 2 (vertical en x=627.5) -->
+      <!-- Rombo vértice inferior en (627.5, 310); Paso 2 borde superior en (627.5, 435) -->
+      <line x1="627.5" y1="310" x2="627.5" y2="435" stroke="#2FA37A" stroke-width="3.5" marker-end="url(#arrow-green)"/>
+
+      <!-- 6. Paso 2 -> Paso 3 (horizontal en y=645) -->
+      <!-- Paso 2 borde derecho en (765, 645); Paso 3 borde izquierdo en (800, 645) -->
+      <line x1="765" y1="645" x2="800" y2="645" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 7. Paso 3 -> Paso 4 (horizontal en y=645) -->
+      <!-- Paso 3 borde derecho en (1075, 645); Paso 4 borde izquierdo en (1110, 645) -->
+      <line x1="1075" y1="645" x2="1110" y2="645" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 8. Paso 4 -> Paso 5 (horizontal en y=645) -->
+      <!-- Paso 4 borde derecho en (1415, 645); Paso 5 borde izquierdo en (1450, 645) -->
+      <line x1="1415" y1="645" x2="1450" y2="645" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+
+      <!-- 9. Paso 5 -> Fin (horizontal en y=645) -->
+      <!-- Paso 5 borde derecho en (1720, 645); Fin borde izquierdo en (1750, 645) -->
+      <line x1="1720" y1="645" x2="1750" y2="645" stroke="#167684" stroke-width="3.5" marker-end="url(#arrow-teal)"/>
+    </svg>
+
+    <!-- Etiquetas de Decisión -->
+    <div class="arrow-label label-no" style="left: 782px; top: 196px;">No</div>
+    <!-- Etiqueta "Sí" ubicada estrictamente DENTRO del carril superior (top 324px < 363px), sin tocar la línea divisoria -->
+    <div class="arrow-label label-si" style="left: 642px; top: 324px;">Sí</div>
+
+    <!-- ==================== ELEMENTOS EN CARRIL TENDERO ==================== -->
+
+    <!-- Rombo de Decisión: ¿Contrata el sistema? -->
+    <div class="diamond-container" style="left: 497.5px; top: 150px; width: 260px; height: 160px;">
+      <svg width="260" height="160" style="position: absolute; top: 0; left: 0;">
+        <polygon points="130,5 255,80 130,155 5,80" fill="#FFFDF8" stroke="#FFB020" stroke-width="3.5" stroke-linejoin="round"/>
+      </svg>
+      <div class="diamond-text">¿Contrata el sistema?</div>
+    </div>
+
+    <!-- Paso: Se mantiene el contacto -->
+    <div class="contact-card" style="left: 840px; top: 175px; width: 290px; height: 110px;">
+      Se mantiene el contacto
+    </div>
+
+    <!-- Fin (Carril Tendero) -->
+    <div class="oval-node oval-fin-tendero" style="left: 1185px; top: 191px;">
+      Fin
+    </div>
+
+    <!-- ==================== ELEMENTOS EN CARRIL EQUIPO BINNITECH ==================== -->
+
+    <!-- Inicio -->
+    <div class="oval-node oval-inicio" style="left: 60px; top: 606px;">
+      Inicio
+    </div>
+
+    <!-- Paso 1: Demostración -->
+    <div class="step-card" style="left: 185px; width: 270px;">
+      <div class="step-header">1. Demostración</div>
+      <div class="step-body">El equipo muestra el sistema con productos del propio negocio.</div>
+    </div>
+    <div class="deliverable-badge" style="left: 185px; width: 270px;">
+      <div class="badge-label">Entregado:</div>
+      <div class="badge-text">Sistema probado con sus productos</div>
+    </div>
+
+    <!-- Paso 2: Instalación y licencia -->
+    <div class="step-card" style="left: 490px; width: 275px;">
+      <div class="step-header">2. Instalación y licencia</div>
+      <div class="step-body">Se instala en su computadora y se activa la licencia mensual o semestral por WhatsApp.</div>
+    </div>
+    <div class="deliverable-badge" style="left: 490px; width: 275px;">
+      <div class="badge-label">Entregado:</div>
+      <div class="badge-text">Licencia activa</div>
+    </div>
+
+    <!-- Paso 3: Vinculación del celular -->
+    <div class="step-card" style="left: 800px; width: 275px;">
+      <div class="step-header">3. Vinculación del celular</div>
+      <div class="step-body">Se enlaza con un código QR; funciona como escáner, sin internet ni lector.</div>
+    </div>
+    <div class="deliverable-badge" style="left: 800px; width: 275px;">
+      <div class="badge-label">Entregado:</div>
+      <div class="badge-text">Celular enlazado</div>
+    </div>
+
+    <!-- Paso 4: Capacitación en el local -->
+    <div class="step-card" style="left: 1110px; width: 305px;">
+      <div class="step-header">4. Capacitación en el local</div>
+      <div class="step-body">Alta de productos, cobro de contado o a crédito, compras a proveedores, mermas y corte de caja.</div>
+    </div>
+    <div class="deliverable-badge" style="left: 1110px; width: 305px;">
+      <div class="badge-label">Entregado:</div>
+      <div class="badge-text">Personal capacitado</div>
+    </div>
+
+    <!-- Paso 5: Seguimiento -->
+    <div class="step-card" style="left: 1450px; width: 270px;">
+      <div class="step-header">5. Seguimiento</div>
+      <div class="step-body">Dudas por WhatsApp o visitas, y actualizaciones del sistema.</div>
+    </div>
+    <div class="deliverable-badge" style="left: 1450px; width: 270px;">
+      <div class="badge-label">Entregado:</div>
+      <div class="badge-text">Soporte continuo</div>
+    </div>
+
+    <!-- Fin (Carril Equipo BinniTech) -->
+    <div class="oval-node oval-fin-equipo" style="left: 1750px; top: 606px;">
+      Fin
+    </div>
+
+  </div>
+</body>
+</html>

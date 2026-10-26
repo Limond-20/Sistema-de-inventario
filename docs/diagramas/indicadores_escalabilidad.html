@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Indicadores y escalabilidad</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background-color: #FFF7EA;
+      font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      color: #1E2A32;
+    }
+    .canvas {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background-color: #FFF7EA;
+      overflow: hidden;
+    }
+
+    /* Encabezado */
+    .header-container {
+      position: absolute;
+      top: 18px;
+      left: 38px;
+      width: 1844px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .main-title {
+      font-size: 42px;
+      font-weight: 700;
+      color: #0E4D5C;
+      letter-spacing: -0.5px;
+    }
+    .header-divider {
+      position: absolute;
+      top: 76px;
+      left: 38px;
+      width: 1844px;
+      height: 4px;
+      background: linear-gradient(90deg, #0E4D5C 0%, #167684 45%, #FFB020 85%, #FFF7EA 100%);
+      border-radius: 2px;
+    }
+
+    /* Paneles principales (top: 122px para separar 24px de la divisoria del encabezado) */
+    .panel {
+      position: absolute;
+      top: 122px;
+      height: 930px;
+      background: rgba(255, 255, 255, 0.72);
+      border-radius: 18px;
+      border: 2px solid #E2D7C8;
+      box-shadow: 0 6px 20px rgba(14, 77, 92, 0.05);
+    }
+    .panel-left {
+      left: 38px;
+      width: 875px;
+    }
+    .panel-right {
+      left: 932px;
+      width: 950px;
+    }
+
+    /* Pestañas de título de panel (Títulos a 32px, 24px de aire con la línea divisoria) */
+    .panel-tab {
+      position: absolute;
+      top: -18px;
+      left: 32px;
+      font-size: 32px; /* Título a 32px */
+      font-weight: 700;
+      padding: 6px 28px;
+      border-radius: 10px;
+      color: #FFFFFF;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 14px rgba(14, 77, 92, 0.16);
+      z-index: 10;
+    }
+    .tab-indicadores {
+      background: #0E4D5C;
+    }
+    .tab-escalabilidad {
+      background: #167684;
+    }
+
+    /* ==================== PANEL IZQUIERDO: TABLA INDICADORES ==================== */
+    /* top: 48px para dejar exactamente 24px antes de la primera fila */
+    .table-container {
+      position: absolute;
+      top: 48px;
+      left: 20px;
+      width: 835px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Encabezado de la tabla (Títulos a 30-32px) */
+    .table-header {
+      display: flex;
+      align-items: center;
+      background: #0E4D5C;
+      border-radius: 12px;
+      padding: 8px 16px;
+      margin-bottom: 8px;
+      height: 52px;
+      box-shadow: 0 3px 10px rgba(14, 77, 92, 0.12);
+    }
+    .th-indicador {
+      width: 355px;
+      font-size: 30px; /* Título a 30-32px */
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: 0.3px;
+      padding-left: 10px;
+    }
+    .th-mide {
+      width: 480px;
+      font-size: 30px; /* Título a 30-32px */
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: 0.3px;
+      padding-left: 16px;
+    }
+
+    /* Filas de la tabla (8 filas de altura 82px con cuerpo a 28px) */
+    .table-row {
+      display: flex;
+      align-items: center;
+      background: #FFFFFF;
+      border: 1.5px solid #E2D7C8;
+      border-radius: 12px;
+      padding: 8px 16px;
+      margin-bottom: 8px;
+      height: 82px;
+      box-shadow: 0 2px 8px rgba(14, 77, 92, 0.04);
+    }
+    .table-row:nth-child(even) {
+      background: #FCFAF6;
+    }
+    .td-indicador {
+      width: 355px;
+      font-size: 28px; /* Cuerpo a 28px */
+      font-weight: 700;
+      color: #0E4D5C;
+      padding-left: 10px;
+      padding-right: 14px;
+      line-height: 1.2;
+    }
+    .td-mide {
+      width: 480px;
+      font-size: 27px; /* Cuerpo a 27-28px */
+      font-weight: 500;
+      color: #1E2A32;
+      padding-left: 16px;
+      padding-right: 10px;
+      line-height: 1.24;
+      border-left: 2.5px solid #EAE1D2;
+    }
+
+    /* Línea de fuente en panel izquierdo (24px, gris #5C6C74) */
+    .source-note {
+      margin-top: 10px;
+      padding-left: 6px;
+      font-size: 24px;
+      font-weight: 500;
+      color: #5C6C74;
+      line-height: 1.26;
+    }
+
+    /* ==================== PANEL DERECHO: MATRIZ ESCALABILIDAD ==================== */
+    /* top: 48px para dejar exactamente 24px antes de la primera fila */
+    .matrix-container {
+      position: absolute;
+      top: 48px;
+      left: 23px;
+      width: 904px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Encabezado de columnas de la matriz */
+    .matrix-header-row {
+      display: flex;
+      align-items: stretch;
+      margin-bottom: 12px;
+      height: 76px;
+    }
+    .mth-corner {
+      width: 185px;
+      margin-right: 8px;
+    }
+    .mth-col {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 8px 12px;
+      border-radius: 12px;
+      font-size: 26px; /* Título de columna */
+      font-weight: 700;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+      margin-right: 8px;
+      line-height: 1.2;
+    }
+    .mth-col:last-child {
+      margin-right: 0;
+    }
+    .mth-piloto {
+      width: 205px;
+      background: #FFF3D6;
+      border: 2px solid #FFB020;
+      color: #8F5500;
+    }
+    .mth-etapa1 {
+      width: 285px;
+      background: #E2F3F5;
+      border: 2px solid #167684;
+      color: #0E4D5C;
+    }
+    .mth-etapa2 {
+      width: 205px;
+      background: #E4F6EE;
+      border: 2px solid #2FA37A;
+      color: #166A4E;
+    }
+
+    /* Filas de la matriz (3 filas altas de 246px que eliminan franja vacía) */
+    .matrix-row {
+      display: flex;
+      align-items: stretch;
+      margin-bottom: 12px;
+      height: 246px;
+    }
+    .matrix-row:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Celda de encabezado de fila (ancho 185px con margen >= 25px para Alcance, Entrega y Tecnología) */
+    .matrix-row-header {
+      width: 185px;
+      background: #0E4D5C;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px 24px; /* Margen >= 20px garantizado a ambos lados */
+      font-size: 28px; /* Mismo tamaño en las tres */
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: 0.5px;
+      margin-right: 8px;
+      box-shadow: 0 4px 12px rgba(14, 77, 92, 0.12);
+    }
+
+    /* Celdas de contenido de la matriz (Cuerpo a 28px) */
+    .matrix-cell {
+      background: #FFFFFF;
+      border-radius: 14px;
+      border: 2px solid #E2D7C8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px 14px;
+      font-size: 28px; /* Cuerpo a 28px */
+      font-weight: 600;
+      line-height: 1.34;
+      color: #1E2A32;
+      box-shadow: 0 4px 12px rgba(14, 77, 92, 0.05);
+      margin-right: 8px;
+    }
+    .matrix-cell:last-child {
+      margin-right: 0;
+    }
+    .cell-piloto {
+      width: 205px;
+      border-color: #F0D9AA;
+      background: #FFFDF9;
+    }
+    .cell-etapa1 {
+      width: 285px;
+      border-color: #B5DFE5;
+      background: #F9FDFF;
+    }
+    .cell-etapa2 {
+      width: 205px;
+      border-color: #B4E8D1;
+      background: #F8FDFB;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <!-- Encabezado -->
+    <div class="header-container">
+      <div class="main-title">Indicadores y escalabilidad</div>
+    </div>
+    <div class="header-divider"></div>
+
+    <!-- ==================== PANEL IZQUIERDO ==================== -->
+    <div class="panel panel-left">
+      <div class="panel-tab tab-indicadores">Indicadores operativos</div>
+      
+      <div class="table-container">
+        <!-- Encabezados de tabla (Títulos a 30-32px) -->
+        <div class="table-header">
+          <div class="th-indicador">Indicador</div>
+          <div class="th-mide">Qué mide</div>
+        </div>
+
+        <!-- Fila 1: Ventas -->
+        <div class="table-row">
+          <div class="td-indicador">Ventas</div>
+          <div class="td-mide">Ingreso diario y por periodo</div>
+        </div>
+
+        <!-- Fila 2: Márgenes -->
+        <div class="table-row">
+          <div class="td-indicador">Márgenes</div>
+          <div class="td-mide">Ganancia por producto y por venta</div>
+        </div>
+
+        <!-- Fila 3: Mermas -->
+        <div class="table-row">
+          <div class="td-indicador">Mermas</div>
+          <div class="td-mide">Pérdidas por caducidad, rotura o faltante</div>
+        </div>
+
+        <!-- Fila 4: Créditos vencidos -->
+        <div class="table-row">
+          <div class="td-indicador">Créditos vencidos</div>
+          <div class="td-mide">Fiado fuera de plazo</div>
+        </div>
+
+        <!-- Fila 5: Diferencia stock-conteo -->
+        <div class="table-row">
+          <div class="td-indicador">Diferencia stock-conteo</div>
+          <div class="td-mide">Existencia del sistema contra el conteo físico</div>
+        </div>
+
+        <!-- Fila 6: Tiempo por venta -->
+        <div class="table-row">
+          <div class="td-indicador">Tiempo por venta</div>
+          <div class="td-mide">Rapidez de cobro en el mostrador</div>
+        </div>
+
+        <!-- Fila 7: Uso a los 30 días -->
+        <div class="table-row">
+          <div class="td-indicador">Uso a los 30 días</div>
+          <div class="td-mide">Negocios que siguen usando el sistema</div>
+        </div>
+
+        <!-- Fila 8: Satisfacción del tendero -->
+        <div class="table-row">
+          <div class="td-indicador">Satisfacción del tendero</div>
+          <div class="td-mide">Opinión del dueño tras la capacitación</div>
+        </div>
+
+        <!-- Línea pequeña de Fuente (24px, gris #5C6C74 en 2 líneas perfectamente balanceadas) -->
+        <div class="source-note">
+          <div>Fuente: datos del propio sistema y</div>
+          <div>seguimiento del equipo con cada negocio.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PANEL DERECHO ==================== -->
+    <div class="panel panel-right">
+      <div class="panel-tab tab-escalabilidad">Escalabilidad</div>
+      
+      <div class="matrix-container">
+        <!-- Encabezado de columnas -->
+        <div class="matrix-header-row">
+          <div class="mth-corner"></div>
+          <div class="mth-col mth-piloto">Piloto</div>
+          <div class="mth-col mth-etapa1">Etapa 1:<br>licencias locales</div>
+          <div class="mth-col mth-etapa2">Etapa 2:<br>nube</div>
+        </div>
+
+        <!-- Fila 1: Alcance -->
+        <div class="matrix-row">
+          <div class="matrix-row-header">Alcance</div>
+          <div class="matrix-cell cell-piloto">
+            <div style="white-space: nowrap;">Primeros</div>
+            <div style="white-space: nowrap;">negocios</div>
+          </div>
+          <div class="matrix-cell cell-etapa1">
+            <div style="white-space: nowrap;">10 negocios</div>
+            <div style="white-space: nowrap;">nuevos por mes</div>
+          </div>
+          <div class="matrix-cell cell-etapa2">
+            <div style="white-space: nowrap;">Varias</div>
+            <div style="white-space: nowrap;">sucursales</div>
+          </div>
+        </div>
+
+        <!-- Fila 2: Entrega -->
+        <div class="matrix-row">
+          <div class="matrix-row-header">Entrega</div>
+          <div class="matrix-cell cell-piloto">
+            <div style="white-space: nowrap;">Instalación y</div>
+            <div style="white-space: nowrap;">capacitación</div>
+            <div style="white-space: nowrap;">presencial</div>
+          </div>
+          <div class="matrix-cell cell-etapa1">
+            <div style="white-space: nowrap;">Proceso repetible</div>
+            <div style="white-space: nowrap;">por zonas, soporte</div>
+            <div style="white-space: nowrap;">por WhatsApp</div>
+          </div>
+          <div class="matrix-cell cell-etapa2">
+            <div style="white-space: nowrap;">Consulta</div>
+            <div style="white-space: nowrap;">remota</div>
+          </div>
+        </div>
+
+        <!-- Fila 3: Tecnología -->
+        <div class="matrix-row">
+          <div class="matrix-row-header">Tecnología</div>
+          <div class="matrix-cell cell-piloto">
+            <div style="white-space: nowrap;">Sistema local</div>
+            <div style="white-space: nowrap;">sin internet</div>
+          </div>
+          <div class="matrix-cell cell-etapa1">
+            <div style="white-space: nowrap;">Mismo sistema,</div>
+            <div style="white-space: nowrap;">con actualizaciones</div>
+          </div>
+          <div class="matrix-cell cell-etapa2">
+            <div style="white-space: nowrap;">Respaldos</div>
+            <div style="white-space: nowrap;">externos en</div>
+            <div style="white-space: nowrap;">la nube</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

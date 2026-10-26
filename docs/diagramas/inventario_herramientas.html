@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Inventario de herramientas físicas y digitales</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background-color: #FFF7EA;
+      font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      color: #1E2A32;
+    }
+    .canvas {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background-color: #FFF7EA;
+      overflow: hidden;
+    }
+
+    /* Encabezado */
+    .header-container {
+      position: absolute;
+      top: 20px;
+      left: 55px;
+      width: 1810px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .main-title {
+      font-size: 42px;
+      font-weight: 700;
+      color: #0E4D5C;
+      letter-spacing: -0.5px;
+    }
+    .legend-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .legend-title {
+      font-size: 24px;
+      font-weight: 600;
+      color: #5C6C74;
+      margin-right: 4px;
+    }
+    .header-divider {
+      position: absolute;
+      top: 86px;
+      left: 55px;
+      width: 1810px;
+      height: 4px;
+      background: linear-gradient(90deg, #0E4D5C 0%, #167684 45%, #FFB020 85%, #FFF7EA 100%);
+      border-radius: 2px;
+    }
+
+    /* Paneles principales */
+    .panels-container {
+      position: absolute;
+      top: 104px;
+      left: 55px;
+      width: 1810px;
+      height: 855px;
+      display: flex;
+      gap: 40px;
+    }
+    .panel {
+      flex: 1;
+      height: 855px;
+      background: rgba(255, 255, 255, 0.65);
+      border-radius: 18px;
+      border: 2px solid #E2D7C8;
+      padding: 22px 24px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 6px 20px rgba(14, 77, 92, 0.04);
+    }
+
+    /* Encabezado de cada panel */
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #E2D7C8;
+    }
+    .panel-title {
+      font-size: 34px;
+      font-weight: 700;
+      color: #0E4D5C;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .panel-pill {
+      font-size: 20px;
+      font-weight: 600;
+      color: #5C6C74;
+      background: #F0EAE1;
+      padding: 4px 14px;
+      border-radius: 20px;
+    }
+
+    /* Lista y Tarjetas de elementos */
+    .items-list {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      justify-content: space-between;
+    }
+    .item-card {
+      background: #FFFFFF;
+      border-radius: 14px;
+      border: 2px solid #DCE6E8;
+      box-shadow: 0 4px 12px rgba(14, 77, 92, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px; /* Margen interno mínimo >= 20px en toda caja */
+    }
+    .panel-fisicas .item-card {
+      height: 106px;
+    }
+    .panel-digitales .item-card {
+      height: 124px;
+      padding: 22px 24px;
+    }
+    .item-text {
+      flex: 1;
+      font-size: 28px; /* Cuerpo >= 28px */
+      font-weight: 500;
+      color: #1E2A32;
+      line-height: 1.28;
+      padding-right: 18px;
+    }
+
+    /* Etiquetas de color con contraste >= 4.5:1 */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 25px;
+      font-weight: 700;
+      padding: 10px 20px;
+      border-radius: 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    /* "Del cliente" (ámbar) -> fondo #FEF3DC, texto #704400 (contraste 7.5:1) */
+    .badge-cliente {
+      background-color: #FEF3DC;
+      border: 2px solid #E59E00;
+      color: #704400;
+    }
+    /* "Del equipo" (verde azulado) -> fondo #E2F3F5, texto #0E4D5C (contraste 8.2:1) */
+    .badge-equipo {
+      background-color: #E2F3F5;
+      border: 2px solid #167684;
+      color: #0E4D5C;
+    }
+    /* "De terceros" (gris) -> fondo #EEF2F4, texto #2E3A40 (contraste 9.8:1) */
+    .badge-terceros {
+      background-color: #EEF2F4;
+      border: 2px solid #8C9DA6;
+      color: #2E3A40;
+    }
+
+    /* Pie de página */
+    .footer-banner {
+      position: absolute;
+      top: 980px;
+      left: 55px;
+      width: 1810px;
+      height: 74px;
+      background: #FFFFFF;
+      border-radius: 14px;
+      border: 2px solid #167684;
+      box-shadow: 0 4px 16px rgba(14, 77, 92, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 28px; /* Margen interno >= 20px */
+    }
+    .footer-text {
+      font-size: 28px; /* Cuerpo >= 28px */
+      font-weight: 600;
+      color: #0E4D5C;
+      letter-spacing: 0.1px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <!-- Encabezado con título y leyenda -->
+    <div class="header-container">
+      <div class="main-title">Inventario de herramientas físicas y digitales</div>
+      <div class="legend-container">
+        <span class="legend-title">Propiedad:</span>
+        <span class="badge badge-cliente">Del cliente</span>
+        <span class="badge badge-equipo">Del equipo</span>
+        <span class="badge badge-terceros">De terceros</span>
+      </div>
+    </div>
+    <div class="header-divider"></div>
+
+    <!-- Paneles Lado a Lado -->
+    <div class="panels-container">
+
+      <!-- PANEL 1: FÍSICAS -->
+      <div class="panel panel-fisicas">
+        <div class="panel-header">
+          <div class="panel-title">FÍSICAS</div>
+          <div class="panel-pill">6 herramientas</div>
+        </div>
+        <div class="items-list">
+          <!-- 1 -->
+          <div class="item-card">
+            <div class="item-text">Computadora básica de escritorio o laptop (Windows 10/11 o Linux)</div>
+            <span class="badge badge-cliente">Del cliente</span>
+          </div>
+          <!-- 2 -->
+          <div class="item-card">
+            <div class="item-text">Celular con cámara (Android 8 o iOS 13 en adelante)</div>
+            <span class="badge badge-cliente">Del cliente</span>
+          </div>
+          <!-- 3 -->
+          <div class="item-card">
+            <div class="item-text">Red Wi-Fi local o router (sin internet)</div>
+            <span class="badge badge-cliente">Del cliente</span>
+          </div>
+          <!-- 4 -->
+          <div class="item-card">
+            <div class="item-text">Respaldo en la computadora</div>
+            <span class="badge badge-cliente">Del cliente</span>
+          </div>
+          <!-- 5 -->
+          <div class="item-card">
+            <div class="item-text">Laptop de instalación y capacitación</div>
+            <span class="badge badge-equipo">Del equipo</span>
+          </div>
+          <!-- 6 -->
+          <div class="item-card">
+            <div class="item-text">Celulares de prueba</div>
+            <span class="badge badge-equipo">Del equipo</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 2: DIGITALES -->
+      <div class="panel panel-digitales">
+        <div class="panel-header">
+          <div class="panel-title">DIGITALES</div>
+          <div class="panel-pill">5 herramientas</div>
+        </div>
+        <div class="items-list">
+          <!-- 1 -->
+          <div class="item-card">
+            <div class="item-text">Sistema de punto de venta e inventario (aplicación propia)</div>
+            <span class="badge badge-equipo">Del equipo</span>
+          </div>
+          <!-- 2 -->
+          <div class="item-card">
+            <div class="item-text">Servidor local con conexión segura y código QR de vinculación</div>
+            <span class="badge badge-equipo">Del equipo</span>
+          </div>
+          <!-- 3 -->
+          <div class="item-card">
+            <div class="item-text">Escáner de códigos de barras con la cámara del celular</div>
+            <span class="badge badge-equipo">Del equipo</span>
+          </div>
+          <!-- 4 -->
+          <div class="item-card">
+            <div class="item-text">OCR para leer notas de proveedores, sin internet</div>
+            <span class="badge badge-equipo">Del equipo</span>
+          </div>
+          <!-- 5 -->
+          <div class="item-card">
+            <div class="item-text">WhatsApp para soporte y activación de licencias</div>
+            <span class="badge badge-terceros">De terceros</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Pie de página actualizado -->
+    <div class="footer-banner">
+      <div class="footer-text">El sistema opera sin internet y sin comprar lectores; solo el soporte y la activación de licencia usan WhatsApp.</div>
+    </div>
+  </div>
+</body>
+</html>
