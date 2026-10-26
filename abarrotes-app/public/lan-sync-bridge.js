@@ -25,7 +25,14 @@
   var state = { status: 'idle', pc: false, phones: 0, id: null };
   var listeners = { status: [], peers: [] };
   var channels = [];
-  var ws = null, retry = 0, retryTimer = null, hbTimer = null, lastRx = 0, stopped = false, token = null, probing = false;
+  var ws = null, retry = 0, retryTimer = null, hbTimer = null, lastRx = 0, stopped = false, token = null, probing = false, probeTimer = null, probeRetryCount = 0;
+
+  function isLocalhostOrDemo() {
+    var host = (loc.host || '').split(':')[0].toLowerCase();
+    var isLocal = host === 'localhost' || host === '127.0.0.1';
+    var isDemoParam = /[?&]demo=1\b/.test(loc.search || '');
+    return isLocal || isDemoParam;
+  }
 
   function snapshot() {
     return { status: state.status, role: role, pc: state.pc, phones: state.phones, id: state.id, connected: state.status === 'open' };
@@ -134,6 +141,28 @@
     sock.onerror = function () {};
   }
 
+  function scheduleProbeRetry() {
+    if (stopped || ws || probeTimer) return;
+    probeRetryCount++;
+    var delay = Math.min(15000, 3000 * probeRetryCount);
+    probeTimer = setTimeout(function () {
+      probeTimer = null;
+      start();
+    }, delay);
+    if (probeTimer && typeof probeTimer.unref === 'function') {
+      try { probeTimer.unref(); } catch (e) {}
+    }
+  }
+
+  function handleProbeFailure() {
+    if (isLocalhostOrDemo()) {
+      setStatus('unavailable');
+    } else {
+      setStatus('closed');
+      scheduleProbeRetry();
+    }
+  }
+
   // Solo intenta el WebSocket si en este mismo sitio hay un servidor de la tienda.
   function start() {
     if (stopped || ws || probing || !loc.host) return;
@@ -142,8 +171,19 @@
     probing = true;
     global.fetch('/api/health', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { probing = false; if (j && j.ok) open(); else setStatus('unavailable'); })
-      .catch(function () { probing = false; setStatus('unavailable'); });
+      .then(function (j) {
+        probing = false;
+        if (j && j.ok) {
+          probeRetryCount = 0;
+          open();
+        } else {
+          handleProbeFailure();
+        }
+      })
+      .catch(function () {
+        probing = false;
+        handleProbeFailure();
+      });
   }
 
   // ------------------------- Canal compatible con BroadcastChannel -------------------------
@@ -341,15 +381,28 @@
     uploadEvidence: uploadEvidence,
     on: function (type, fn) { if (listeners[type] && typeof fn === 'function') listeners[type].push(fn); },
     off: function (type, fn) { if (listeners[type]) listeners[type] = listeners[type].filter(function (f) { return f !== fn; }); },
-    connect: function () { stopped = false; retry = 0; if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; } if (!ws) { state.status === 'open' || setStatus('idle'); start(); } },
-    disconnect: function () { stopped = true; if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; } if (ws) { try { ws.close(); } catch (e) {} } }
+    connect: function () {
+      stopped = false; retry = 0; probeRetryCount = 0;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      if (probeTimer) { clearTimeout(probeTimer); probeTimer = null; }
+      if (!ws) { state.status === 'open' || setStatus('idle'); start(); }
+    },
+    disconnect: function () {
+      stopped = true;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      if (probeTimer) { clearTimeout(probeTimer); probeTimer = null; }
+      if (ws) { try { ws.close(); } catch (e) {} }
+    }
   };
 
   // Al volver a usar el celular (pantalla encendida, Wi-Fi recuperado) se reconecta de inmediato.
   function wake() {
-    if (stopped || ws || state.status === 'unavailable' || state.status === 'unauthorized' || state.status === 'idle') return;
+    if (stopped || ws || state.status === 'unauthorized' || state.status === 'idle') return;
+    if (state.status === 'unavailable' && isLocalhostOrDemo()) return;
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
-    retry = 0; open();
+    if (probeTimer) { clearTimeout(probeTimer); probeTimer = null; }
+    retry = 0; probeRetryCount = 0;
+    start();
   }
   if (typeof global.addEventListener === 'function') {
     global.addEventListener('online', wake);

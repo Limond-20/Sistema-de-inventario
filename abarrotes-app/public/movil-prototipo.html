@@ -614,12 +614,30 @@
     // =========================== SINCRONIZACIÓN LAN (BROADCAST + LOCALSTORAGE) ===========================
     const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('abarrotes_lan_sync') : null;
 
+    function isRealDemoMode() {
+      const h = (window.location.host || '').split(':')[0].toLowerCase();
+      const isLocal = h === 'localhost' || h === '127.0.0.1';
+      const isDemoParam = /[?&]demo=1\b/.test(window.location.search || '');
+      return isLocal || isDemoParam;
+    }
+
     function broadcastToPC(payload) {
-      const status = (window.LanSync && window.LanSync.status) || 'unavailable';
-      if (status !== 'open' && status !== 'unavailable') {
+      const isDemo = isRealDemoMode();
+      const status = (window.LanSync && window.LanSync.status) || (isDemo ? 'unavailable' : 'closed');
+
+      // Fuera de modo demostración real (host no localhost y sin ?demo=1),
+      // si no hay enlace open, debe avisar que NO se envió; nunca simular éxito.
+      if (!isDemo && status !== 'open') {
+        alert('No se pudo enviar a la PC: sin conexión activa (' + status + '). El puente no encola mensajes; verifica el enlace con la PC e intenta de nuevo.');
+        return false;
+      }
+
+      // En modo demostración real, si el estado no es open ni unavailable, también rechaza
+      if (isDemo && status !== 'open' && status !== 'unavailable') {
         alert('No se pudo enviar a la PC: sin conexión activa (' + status + '). El puente no encola mensajes; verifica la conexión e intenta de nuevo.');
         return false;
       }
+
       const message = { ...payload, timestamp: new Date().toISOString() };
       if (syncChannel) {
         try { syncChannel.postMessage(message); } catch (e) { console.warn(e); }

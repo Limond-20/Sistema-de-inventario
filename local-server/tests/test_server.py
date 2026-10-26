@@ -81,6 +81,28 @@ def test_pairing_qr_svg_cambia_al_rotar(local_app, local_client):
     assert svg1 != svg2
 
 
+def test_pairing_con_parametro_ip_valida(local_app, local_client):
+    c = local_client
+    res = c.get("/api/pairing?ip=192.168.1.70")
+    assert res.status_code == 200
+    assert "https://192.168.1.70:8443/movil-prototipo.html?t=" in res.json()["url"]
+
+    res_qr = c.get("/api/pairing/qr.svg?ip=192.168.1.70&nocache=123")
+    assert res_qr.status_code == 200
+    assert "<svg" in res_qr.text
+
+
+def test_pairing_con_parametro_ip_invalida_rechaza_400(local_app, local_client):
+    c = local_client
+    res = c.get("/api/pairing?ip=10.99.99.99")
+    assert res.status_code == 400
+    assert "IP no válida" in res.text
+
+    res_qr = c.get("/api/pairing/qr.svg?ip=10.99.99.99&nocache=123")
+    assert res_qr.status_code == 400
+    assert "IP no válida" in res_qr.text
+
+
 def test_vincular_muestra_qr(local_app, local_client):
     html = TestClient(local_app).get("/vincular").text
     assert "<svg" in html and "movil-prototipo.html?t=" in html

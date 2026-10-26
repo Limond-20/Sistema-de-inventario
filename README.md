@@ -49,3 +49,24 @@ Abre en tu navegador: [http://localhost:4200](http://localhost:4200)
 
 ### 2. Abrir el Prototipo Móvil (Celular):
 - En la PC, abre: [http://localhost:4200/movil-prototipo.html](http://localhost:4200/movil-prototipo.html) (o abre directamente el archivo en tu navegador móvil dentro de la misma red local).
+
+
+---
+
+## 🧪 Pruebas Automatizadas
+
+* **Pruebas de dominio Angular (TypeScript puro):**
+  `ash
+  cd abarrotes-app && npm run test:domain
+  `
+  *(Requiere **Node.js >= 22.6** para ejecución nativa con --experimental-strip-types)*
+
+* **Pruebas de servidor y frescura CSS (Python pytest):**
+  `ash
+  cd local-server && python -m pytest -q
+  `
+
+* **Pruebas de integración del puente WebSocket:**
+  `ash
+  cd local-server && NODE_TLS_REJECT_UNAUTHORIZED=0 node --test tests/bridge.test.mjs
+  `

@@ -60,9 +60,17 @@ export class NavbarComponent implements OnInit, OnDestroy {
     return 'Móvil (QR)';
   });
 
+  protected readonly availableIps = signal<string[]>([]);
+  protected readonly selectedIp = signal<string>('');
+  protected readonly forbiddenAccess = signal<boolean>(false);
   protected readonly realPairingUrl = signal<string>('');
   protected readonly qrCacheBust = signal<number>(Date.now());
   protected readonly rotatingCode = signal<boolean>(false);
+
+  protected readonly qrImageUrl = computed(() => {
+    const ipParam = this.selectedIp() ? `&ip=${encodeURIComponent(this.selectedIp())}` : '';
+    return `/api/pairing/qr.svg?nocache=${this.qrCacheBust()}${ipParam}`;
+  });
   private readonly router = inject(Router);
 
   // ---------- Reloj Digital en Vivo ----------
@@ -134,15 +142,37 @@ export class NavbarComponent implements OnInit, OnDestroy {
   openQr(): void {
     this.qrOpen.set(true);
     if (!this.lanSync.isUnavailable()) {
-      this.refreshPairingInfo();
+      this.initPairingModal();
     }
   }
 
-  async refreshPairingInfo(): Promise<void> {
-    const info = await this.lanSync.fetchPairingInfo();
-    if (info) {
-      this.realPairingUrl.set(info.url);
+  async initPairingModal(): Promise<void> {
+    const status = await this.lanSync.fetchStatus();
+    if (status && Array.isArray(status.ips)) {
+      this.availableIps.set(status.ips);
+      if (status.ips.length > 0 && !status.ips.includes(this.selectedIp())) {
+        this.selectedIp.set(status.ips[0]);
+      }
     }
+    await this.refreshPairingInfo();
+  }
+
+  async refreshPairingInfo(): Promise<void> {
+    const res = await this.lanSync.fetchPairingInfo(this.selectedIp() || undefined);
+    if (res.forbidden) {
+      this.forbiddenAccess.set(true);
+      return;
+    }
+    this.forbiddenAccess.set(false);
+    if (res.ok && res.info) {
+      this.realPairingUrl.set(res.info.url);
+    }
+  }
+
+  onIpChange(ip: string): void {
+    this.selectedIp.set(ip);
+    this.qrCacheBust.set(Date.now());
+    this.refreshPairingInfo();
   }
 
   async handleRotateCode(): Promise<void> {
@@ -153,8 +183,8 @@ export class NavbarComponent implements OnInit, OnDestroy {
     try {
       const info = await this.lanSync.rotatePairing();
       if (info) {
-        this.realPairingUrl.set(info.url);
         this.qrCacheBust.set(Date.now());
+        await this.refreshPairingInfo();
       }
     } finally {
       this.rotatingCode.set(false);

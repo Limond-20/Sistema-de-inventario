@@ -186,10 +186,18 @@ def create_app(
         if not token or not st.pairing.valid(token):
             raise HTTPException(status_code=401, detail="Token no válido o ausente")
 
-    def pairing_url(token: str) -> str:
+    def validate_ip_param(ip: str | None) -> str | None:
+        if not ip:
+            return None
+        valid_ips = st.ips if st.ips else ["localhost", "127.0.0.1"]
+        if ip not in valid_ips and ip not in ("localhost", "127.0.0.1"):
+            raise HTTPException(status_code=400, detail="IP no válida o no disponible")
+        return ip
+
+    def pairing_url(token: str, ip: str | None = None) -> str:
         scheme = "https" if st.tls else "http"
-        ip = st.ips[0] if st.ips else "localhost"
-        return f"{scheme}://{ip}:{st.port}/movil-prototipo.html?t={token}"
+        chosen_ip = ip or (st.ips[0] if st.ips else "localhost")
+        return f"{scheme}://{chosen_ip}:{st.port}/movil-prototipo.html?t={token}"
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -216,9 +224,10 @@ def create_app(
         return {"pc": p["pc"], "phones": p["phones"], "ips": st.ips, "port": st.port, "tls": st.tls}
 
     @app.get("/api/pairing", dependencies=[Depends(require_local)])
-    async def get_pairing() -> dict:
+    async def get_pairing(ip: str | None = None) -> dict:
+        valid_ip = validate_ip_param(ip)
         token, exp = st.pairing.current()
-        return {"token": token, "expiresAt": exp, "url": pairing_url(token)}
+        return {"token": token, "expiresAt": exp, "url": pairing_url(token, valid_ip)}
 
     @app.post("/api/pairing/rotate", dependencies=[Depends(require_local)])
     async def rotate_pairing() -> dict:
@@ -227,9 +236,10 @@ def create_app(
         return {"token": token, "expiresAt": exp, "url": pairing_url(token)}
 
     @app.get("/api/pairing/qr.svg", dependencies=[Depends(require_local)])
-    async def get_pairing_qr_svg() -> Response:
+    async def get_pairing_qr_svg(ip: str | None = None, nocache: str | None = None) -> Response:
+        valid_ip = validate_ip_param(ip)
         token, _ = st.pairing.current()
-        url = pairing_url(token)
+        url = pairing_url(token, valid_ip)
         svg = segno.make(url, error="m").svg_inline(scale=7, border=2, dark="#0f172a")
         return Response(
             content=svg,

@@ -204,3 +204,39 @@ test('LanSync.uploadEvidence rechaza si status es unavailable', async () => {
   );
   phone.LanSync.disconnect();
 });
+
+test('localhost sin servidor: pasa a unavailable y no entra en bucle cerrado', async () => {
+  const page = makePage({ host: 'localhost:54321', pathname: '/pos' });
+  await until(() => status(page) === 'unavailable', 6000, 'localhost sin servidor pasa a unavailable');
+  await sleep(3500);
+  assert.equal(status(page), 'unavailable', 'permanece en unavailable');
+  page.LanSync.disconnect();
+});
+
+test('servidor que aparece tarde: celular en LAN queda en closed y conecta al iniciar el servidor', async () => {
+  const { token } = await api('/api/pairing');
+  await stopServer();
+
+  const phone = makePage({ host: `${LAN}:${port}`, pathname: '/movil-prototipo.html', search: `?t=${token}` });
+  await until(() => status(phone) === 'closed', 6000, 'celular queda en closed sin servidor');
+  assert.equal(status(phone), 'closed');
+
+  await startServer();
+  await until(() => status(phone) === 'open', 15000, 'celular conecta cuando servidor aparece tarde');
+  phone.LanSync.disconnect();
+});
+
+test('servidor que cae y vuelve: pasa a closed y luego reconecta a open', async () => {
+  const { token } = await api('/api/pairing');
+  const phone = makePage({ host: `${LAN}:${port}`, pathname: '/movil-prototipo.html', search: `?t=${token}` });
+  await until(() => status(phone) === 'open', 8000, 'celular abierto');
+
+  await stopServer();
+  await until(() => status(phone) === 'closed', 6000, 'caída detectada como closed');
+  assert.equal(status(phone), 'closed');
+
+  await startServer();
+  await until(() => status(phone) === 'open', 15000, 'reconectado a open');
+  phone.LanSync.disconnect();
+});
+

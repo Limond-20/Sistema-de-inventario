@@ -73,5 +73,5 @@ jobs:
         working-directory: abarrotes-app
 
       - name: Ejecutar pruebas de dominio (shrink.spec.ts)
-        run: node --experimental-strip-types --test src/app/domain/shrink.spec.ts
+        run: npm run test:domain
         working-directory: abarrotes-app

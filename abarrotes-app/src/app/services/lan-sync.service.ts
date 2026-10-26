@@ -38,6 +38,20 @@ export interface PairingInfo {
   url: string;
 }
 
+export interface StatusResponse {
+  pc: boolean;
+  phones: number;
+  ips: string[];
+  port: number;
+  tls: boolean;
+}
+
+export interface PairingResult {
+  ok: boolean;
+  forbidden?: boolean;
+  info?: PairingInfo;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -87,14 +101,30 @@ export class LanSyncService {
     }
   }
 
-  async fetchPairingInfo(): Promise<PairingInfo | null> {
+  async fetchStatus(): Promise<StatusResponse | null> {
     if (this.isUnavailable()) return null;
     try {
-      const res = await fetch('/api/pairing', { cache: 'no-store' });
+      const res = await fetch('/api/status', { cache: 'no-store' });
       if (!res.ok) return null;
-      return (await res.json()) as PairingInfo;
+      return (await res.json()) as StatusResponse;
     } catch {
       return null;
+    }
+  }
+
+  async fetchPairingInfo(ip?: string): Promise<PairingResult> {
+    if (this.isUnavailable()) return { ok: false };
+    try {
+      const query = ip ? `?ip=${encodeURIComponent(ip)}` : '';
+      const res = await fetch(`/api/pairing${query}`, { cache: 'no-store' });
+      if (res.status === 403) {
+        return { ok: false, forbidden: true };
+      }
+      if (!res.ok) return { ok: false };
+      const info = (await res.json()) as PairingInfo;
+      return { ok: true, info };
+    } catch {
+      return { ok: false };
     }
   }
 
