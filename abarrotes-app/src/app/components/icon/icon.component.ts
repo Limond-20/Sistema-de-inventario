@@ -17,7 +17,8 @@ const ICONS = {
   close: ['M6 6l12 12', 'M18 6L6 18'],
   arrow: ['M5 12h14', 'M13 6l6 6-6 6'],
   logo: ['M12 3l9 9-9 9-9-9z', 'M9.8 12a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0 -4.4 0'],
-    refresh: ['M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5'],
+  refresh: ['M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5'],
+  user: ['M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8'],
 } as const;
 
 export type IconName = keyof typeof ICONS;

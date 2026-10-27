@@ -94,3 +94,50 @@ export function calculateTax(
   }
   return isCents ? taxCents : fromCents(taxCents);
 }
+
+export interface TaxLineItem {
+  price: number;
+  qty: number;
+  taxRate: number; // Ej. 0.16 para 16% IVA
+}
+
+export interface TaxCalculationResult {
+  lineSubtotals: number[]; // Subtotales por línea en pesos
+  lineTaxes: number[];     // Impuesto por línea en pesos (redondeado por partida)
+  totalSubtotal: number;   // Suma de subtotales
+  totalTaxByLineSum: number; // Suma de impuestos calculados por línea
+  taxOnTotalBase: number;  // Impuesto calculado sobre la base total agrupada
+  roundingDifferenceCents: number; // Diferencia en centavos entre ambos métodos
+}
+
+/**
+ * Calcula impuestos partida por partida vs sobre la base total.
+ * Permite auditar discrepancias de centavos habituales en facturación e inventario.
+ */
+export function calculateCartTaxes(items: TaxLineItem[]): TaxCalculationResult {
+  let totalSubtotalCents = 0;
+  let totalTaxByLineCents = 0;
+  const lineSubtotals: number[] = [];
+  const lineTaxes: number[] = [];
+
+  for (const item of items) {
+    const lineCents = Math.round(toCents(item.price) * item.qty);
+    const lineTaxCents = Math.round(lineCents * item.taxRate);
+    totalSubtotalCents += lineCents;
+    totalTaxByLineCents += lineTaxCents;
+    lineSubtotals.push(fromCents(lineCents));
+    lineTaxes.push(fromCents(lineTaxCents));
+  }
+
+  const uniformRate = items.length > 0 ? items[0].taxRate : 0.16;
+  const taxOnTotalCents = Math.round(totalSubtotalCents * uniformRate);
+
+  return {
+    lineSubtotals,
+    lineTaxes,
+    totalSubtotal: fromCents(totalSubtotalCents),
+    totalTaxByLineSum: fromCents(totalTaxByLineCents),
+    taxOnTotalBase: fromCents(taxOnTotalCents),
+    roundingDifferenceCents: Math.abs(totalTaxByLineCents - taxOnTotalCents),
+  };
+}

@@ -698,6 +698,39 @@
 
         <!-- Botones de Acción -->
         <div class="grid grid-cols-2 gap-2 pt-1">
+        @if (hasExceedingStockItems()) {
+          <div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 flex flex-col gap-2">
+            <p class="font-bold flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>Baja supera existencia física registrada</span>
+            </p>
+            <p class="text-[11px] text-amber-800">
+              Uno o más artículos superan el stock registrado. Para autorizar baja que deja saldo negativo se requiere PIN de administrador y motivo justificado.
+            </p>
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-amber-800 mb-1">PIN Admin:</label>
+                <input
+                  type="password"
+                  maxlength="8"
+                  [value]="consumptionPin()"
+                  (input)="consumptionPin.set($any($event.target).value)"
+                  placeholder="PIN..."
+                  class="w-full h-9 rounded-lg border border-amber-300 bg-white px-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-amber-800 mb-1">Motivo justificado:</label>
+                <input
+                  type="text"
+                  [value]="consumptionReason()"
+                  (input)="consumptionReason.set($any($event.target).value)"
+                  placeholder="Ej. Merma no reportada"
+                  class="w-full h-9 rounded-lg border border-amber-300 bg-white px-2.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              </div>
+            </div>
+          </div>
+        }
+
           <button type="button" (click)="closeInternalConsumptionModal()"
             class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs">
             Cancelar

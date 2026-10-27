@@ -1,75 +1,89 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createPinConfig,
-  createInitialPinState,
+  MemoryPinStorage,
+  isPinConfigured,
+  setupInitialPin,
   verifyPinAttempt,
-  computePinHash,
+  loadPinState,
+  loadPinConfig,
 } from './pin.ts';
 
-test('PIN correcto, incorrecto y bloqueo (3 intentos, 30 s)', async () => {
-  const PIN_DEMO = '4321';
-  const config = await createPinConfig(PIN_DEMO, 'sal-de-prueba-fija', 3, 30_000);
+test('PIN: Obliga a crear el PIN en el primer uso (sin PIN por defecto)', async () => {
+  const storage = new MemoryPinStorage();
 
-  // Aseguramos que nunca se guarde el PIN en claro
-  assert.equal('pin' in (config as any), false, 'La configuración nunca debe guardar el PIN en texto claro');
-  assert.ok(config.pinHash, 'Debe contener un hash SHA-256');
-  assert.equal(config.pinHash.length, 64, 'El hash SHA-256 debe tener 64 caracteres hex');
+  // 1. Al inicio no debe haber PIN configurado
+  assert.equal(isPinConfigured(storage), false, 'No debe existir un PIN predeterminado');
 
-  let state = createInitialPinState();
-  const t0 = 100_000;
+  // Intento de verificación sin PIN configurado
+  const resSinConfig = await verifyPinAttempt('1234', storage);
+  assert.equal(resSinConfig.success, false);
+  assert.equal(resSinConfig.isFirstUseRequired, true);
+  assert.match(resSinConfig.message, /primer uso/i);
 
-  // Intento 1 con PIN incorrecto:
-  const intento1 = await verifyPinAttempt('0000', config, state, t0);
+  // 2. Se obliga a crear el PIN inicial con PBKDF2 >= 100,000 iteraciones
+  const config = await setupInitialPin('7890', storage, 100_000);
+  assert.equal(isPinConfigured(storage), true);
+  assert.equal(config.iterations, 100_000);
+  assert.equal(config.pinHash.length, 64, 'El hash PBKDF2 debe ser de 256 bits (64 hex)');
+
+  // 3. Verificación con el nuevo PIN
+  const resExito = await verifyPinAttempt('7890', storage, Date.now(), 'Don Lupe (Dueño)');
+  assert.equal(resExito.success, true);
+  assert.equal(resExito.authorizedBy, 'Don Lupe (Dueño)');
+});
+
+test('PIN: Persiste intentos fallidos y bloqueo (sobreviven a recargar)', async () => {
+  // Simulamos el almacenamiento del navegador que sobrevive a recargas
+  const sharedBrowserStorage = new MemoryPinStorage();
+
+  await setupInitialPin('4321', sharedBrowserStorage, 100_000, 3, 30_000);
+  const t0 = 1_000_000;
+
+  // Intento 1 incorrecto
+  const intento1 = await verifyPinAttempt('0000', sharedBrowserStorage, t0);
   assert.equal(intento1.success, false);
-  assert.equal(intento1.isLocked, false);
   assert.equal(intento1.remainingAttempts, 2);
-  assert.equal(intento1.nextState.failedAttempts, 1);
-  state = intento1.nextState;
 
-  // Intento 2 con PIN incorrecto:
-  const intento2 = await verifyPinAttempt('1111', config, state, t0 + 1000);
-  assert.equal(intento2.success, false);
-  assert.equal(intento2.isLocked, false);
+  // SIMULACIÓN DE RECARGA DE PÁGINA (creamos una nueva instancia sobre el mismo almacenamiento)
+  const estadoTrasRecarga1 = loadPinState(sharedBrowserStorage);
+  assert.equal(
+    estadoTrasRecarga1.failedAttempts,
+    1,
+    'El intento fallido debe persistir tras recargar'
+  );
+
+  // Intento 2 incorrecto
+  const intento2 = await verifyPinAttempt('1111', sharedBrowserStorage, t0 + 2000);
   assert.equal(intento2.remainingAttempts, 1);
-  assert.equal(intento2.nextState.failedAttempts, 2);
-  state = intento2.nextState;
 
-  // Intento 3 con PIN incorrecto (activa bloqueo de 30 segundos):
-  const intento3 = await verifyPinAttempt('9999', config, state, t0 + 2000);
-  assert.equal(intento3.success, false);
-  assert.equal(intento3.isLocked, true, 'Debe quedar bloqueado tras 3 intentos');
-  assert.equal(intento3.remainingAttempts, 0);
+  // SIMULACIÓN DE SEGUNDA RECARGA DE PÁGINA
+  const estadoTrasRecarga2 = loadPinState(sharedBrowserStorage);
+  assert.equal(estadoTrasRecarga2.failedAttempts, 2);
+
+  // Intento 3 incorrecto (bloquea por 30 segundos)
+  const intento3 = await verifyPinAttempt('9999', sharedBrowserStorage, t0 + 4000);
+  assert.equal(intento3.isLocked, true);
   assert.equal(intento3.lockedRemainingSeconds, 30);
-  assert.equal(intento3.nextState.lockedUntil, (t0 + 2000) + 30_000);
-  state = intento3.nextState;
+  assert.equal(intento3.nextState.lockedUntil, (t0 + 4000) + 30_000);
 
-  // Intento 4 durante la ventana de bloqueo (15 segundos después):
-  // Incluso con el PIN correcto, debe rechazar por estar bloqueado
-  const intentoBloqueado = await verifyPinAttempt(PIN_DEMO, config, state, t0 + 17_000);
-  assert.equal(intentoBloqueado.success, false);
-  assert.equal(intentoBloqueado.isLocked, true);
-  assert.match(intentoBloqueado.message, /bloqueado/i);
-  assert.equal(intentoBloqueado.lockedRemainingSeconds, 15);
+  // SIMULACIÓN DE RECARGA DURANTE EL BLOQUEO (10 segundos después)
+  const intentoDuranteBloqueo = await verifyPinAttempt('4321', sharedBrowserStorage, t0 + 14_000);
+  assert.equal(
+    intentoDuranteBloqueo.isLocked,
+    true,
+    'El bloqueo de 30s debe persistir aunque el usuario recargue el navegador'
+  );
+  assert.equal(intentoDuranteBloqueo.lockedRemainingSeconds, 20);
 
-  // Intento 5 después de transcurridos los 30 segundos de bloqueo (31 segundos después) con PIN correcto:
-  const intentoLiberado = await verifyPinAttempt(PIN_DEMO, config, state, t0 + 33_000, 'Don Lupe (Dueño)');
+  // Intento después de que expira el bloqueo (35 segundos después) con PIN correcto
+  const intentoLiberado = await verifyPinAttempt('4321', sharedBrowserStorage, t0 + 39_000);
   assert.equal(intentoLiberado.success, true);
   assert.equal(intentoLiberado.isLocked, false);
   assert.equal(intentoLiberado.remainingAttempts, 3);
-  assert.equal(intentoLiberado.authorizedBy, 'Don Lupe (Dueño)');
-  assert.equal(intentoLiberado.nextState.failedAttempts, 0);
-  assert.equal(intentoLiberado.nextState.lockedUntil, null);
-});
 
-test('PIN configurable de demostración', async () => {
-  // Configuración con PIN personalizado
-  const config = await createPinConfig('9876');
-  const state = createInitialPinState();
-
-  const fallo = await verifyPinAttempt('1234', config, state);
-  assert.equal(fallo.success, false);
-
-  const exito = await verifyPinAttempt('9876', config, state);
-  assert.equal(exito.success, true);
+  // Verificar que el estado guardado se limpió tras el éxito
+  const estadoLimpio = loadPinState(sharedBrowserStorage);
+  assert.equal(estadoLimpio.failedAttempts, 0);
+  assert.equal(estadoLimpio.lockedUntil, null);
 });

@@ -72,6 +72,6 @@ jobs:
         run: npx ng build
         working-directory: abarrotes-app
 
-      - name: Ejecutar pruebas de dominio (shrink.spec.ts)
+      - name: Ejecutar pruebas de dominio (npm run test:domain)
         run: npm run test:domain
         working-directory: abarrotes-app

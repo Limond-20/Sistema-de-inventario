@@ -19,13 +19,20 @@ import {
   createKardexEntry,
   generateKardexId,
   appendKardexEntry,
+  deductStock,
+  deductStockForDisposal,
+  resolveShortageAlertAdjustment,
+  verifyKardexChain,
+  verifyProductContinuity,
   type KardexEntry,
   type KardexType,
 } from '../domain/kardex';
 import {
-  createPinConfig,
-  createInitialPinState,
+  isPinConfigured,
+  setupInitialPin,
   verifyPinAttempt,
+  loadPinState,
+  createInitialPinState,
   type PinAuthConfig,
   type PinAuthState,
   type PinVerificationResult,
@@ -1080,16 +1087,70 @@ export const PERISHABLE_BATCHES: PerishableBatch[] = [
 //  SERVICIO
 // =====================================================================
 
+function buildInitialKardex(): KardexEntry[] {
+  // Cadena criptográfica semilla (orden cronológico ascendente)
+  const e1 = createKardexEntry({
+    type: 'VENTA_EFECTIVO',
+    producto: { sku: 'VAR-01', name: 'Leche Lala, Bolillos, Queso' },
+    cantidad: -3,
+    saldoAnterior: 10,
+    saldoResultante: 7,
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Ticket #0101',
+    amount: 112.0,
+    description: 'Venta de mostrador en efectivo (Leche Lala, Bolillos, Queso)',
+  }, 'GENESIS');
+
+  const e2 = createKardexEntry({
+    type: 'VENTA_FIADO',
+    producto: { sku: 'CLI-04', name: 'Don Roberto Hernández' },
+    cantidad: -3,
+    saldoAnterior: 0,
+    saldoResultante: 145.0,
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Libreta Fiado #102',
+    amount: 145.0,
+    description: 'Venta anotada en libreta a Don Roberto Hernández (3 art.)',
+  }, e1.entryHash);
+
+  const e3 = createKardexEntry({
+    type: 'ABONO_FIADO',
+    producto: { sku: 'CLI-03', name: 'Doña María López - Casa Azul' },
+    cantidad: 0,
+    saldoAnterior: 150.0,
+    saldoResultante: 0,
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Abono Doña María López',
+    amount: 150.0,
+    description: 'Abono en efectivo de Doña María López - Casa Azul',
+  }, e2.entryHash);
+
+  // Se retorna newest-first: [e3, e2, e1]
+  return [e3, e2, e1];
+}
+
 @Injectable({ providedIn: 'root' })
 export class MockInventoryService {
   readonly storeName = 'Abarrotes Doña Lupe';
   readonly today = 'Jueves 22 de octubre de 2026';
 
+  /** Selector de cajero/usuario actual en la app (no valor fijo) */
+  readonly availableUsers = signal<string[]>([
+    'Don Lupe (Encargado)',
+    'María (Cajera Mañana)',
+    'Pedro (Cajero Tarde)',
+    'Administrador',
+  ]);
+  readonly activeUser = signal<string>('Don Lupe (Encargado)');
+
+  setActiveUser(name: string): void {
+    if (name?.trim()) {
+      this.activeUser.set(name.trim());
+    }
+  }
+
   constructor() {
     this.initLanSyncListener();
-    createPinConfig('1234').then((cfg) => {
-      this.pinConfig = cfg;
-    });
   }
 
   private initLanSyncListener(): void {
@@ -1159,41 +1220,7 @@ export class MockInventoryService {
   /** Registro histórico de consumos internos para alimentación o uso de la tienda. */
   readonly internalConsumptionRecords = signal<InternalConsumptionRecord[]>([]);
 
-  readonly kardex = signal<KardexEntry[]>([
-    createKardexEntry({
-      type: 'ABONO_FIADO',
-      producto: { sku: 'CLI-03', name: 'Doña María López - Casa Azul' },
-      cantidad: 0,
-      saldoAnterior: 150.0,
-      saldoResultante: 0,
-      usuario: 'Cajero Mostrador',
-      referencia: 'Abono Doña María López',
-      amount: 150.0,
-      description: 'Abono en efectivo de Doña María López - Casa Azul',
-    }),
-    createKardexEntry({
-      type: 'VENTA_FIADO',
-      producto: { sku: 'CLI-04', name: 'Don Roberto Hernández' },
-      cantidad: -3,
-      saldoAnterior: 0,
-      saldoResultante: 145.0,
-      usuario: 'Cajero Mostrador',
-      referencia: 'Libreta Fiado #102',
-      amount: 145.0,
-      description: 'Venta anotada en libreta a Don Roberto Hernández (3 art.)',
-    }),
-    createKardexEntry({
-      type: 'VENTA_EFECTIVO',
-      producto: { sku: 'VAR-01', name: 'Leche Lala, Bolillos, Queso' },
-      cantidad: -3,
-      saldoAnterior: 10,
-      saldoResultante: 7,
-      usuario: 'Cajero Mostrador',
-      referencia: 'Ticket #0101',
-      amount: 112.0,
-      description: 'Venta de mostrador en efectivo (Leche Lala, Bolillos, Queso)',
-    }),
-  ]);
+  readonly kardex = signal<KardexEntry[]>(buildInitialKardex());
 
   readonly morningAlerts = signal<MorningAlert[]>(structuredClone(MORNING_ALERTS));
   readonly auditLines = signal<AuditLine[]>(structuredClone(AUDIT_LINES));
@@ -1202,23 +1229,44 @@ export class MockInventoryService {
   readonly perishableBatches = signal<PerishableBatch[]>(structuredClone(PERISHABLE_BATCHES));
   readonly blindAuditMission = signal<BlindAuditItem[]>([]);
 
-  /** Configuración y estado de intentos del PIN de Administrador (Web Crypto SHA-256 con sal). */
-  private pinConfig: PinAuthConfig | null = null;
-  readonly pinState = signal<PinAuthState>(createInitialPinState());
+  // ===================================================================
+  // SEGURIDAD OPERACIONAL: PIN DE AUTORIZACIÓN (PBKDF2 >= 100,000 it.)
+  // Control de autorización para piso de venta, no seguridad física de la PC.
+  // ===================================================================
+  readonly isPinSetupRequired = signal<boolean>(!isPinConfigured());
+  readonly pinState = signal<PinAuthState>(loadPinState());
 
-  /** Configura el PIN de administrador de demostración (configurable, por defecto '1234'). */
-  async configureAdminPin(newPin: string): Promise<void> {
-    this.pinConfig = await createPinConfig(newPin);
+  /** Establece el PIN de administrador por primera vez (obligatorio en primer uso). */
+  async setupInitialPin(newPin: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await setupInitialPin(newPin);
+      this.isPinSetupRequired.set(false);
+      this.pinState.set(loadPinState());
+      return { success: true, message: 'PIN de administrador configurado exitosamente.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Error al configurar el PIN.' };
+    }
   }
 
-  /** Verifica un intento de PIN (máximo 3 intentos y bloqueo de 30 segundos). */
-  async verifyAdminPin(pin: string, authorizer = 'Administrador'): Promise<PinVerificationResult> {
-    if (!this.pinConfig) {
-      this.pinConfig = await createPinConfig('1234');
-    }
-    const result = await verifyPinAttempt(pin, this.pinConfig, this.pinState(), Date.now(), authorizer);
-    this.pinState.set(result.nextState);
+  /** Reconfigura el PIN de administrador. */
+  async configureAdminPin(newPin: string): Promise<void> {
+    await this.setupInitialPin(newPin);
+  }
+
+  /**
+   * Verifica un intento de PIN con persistencia ante recarga de página (máx. 3 intentos y bloqueo 30s).
+   * Registra quién autorizó la operación en el Kardex.
+   */
+  async verifyAdminPin(pin: string, authorizer?: string): Promise<PinVerificationResult> {
+    const authUser = authorizer || this.activeUser();
+    const result = await verifyPinAttempt(pin, undefined, Date.now(), authUser);
+    this.pinState.set(loadPinState());
     return result;
+  }
+
+  /** Verifica la integridad de la cadena criptográfica completa del Kardex. */
+  verifyKardexIntegrity(): { valid: boolean; errorIndex?: number; error?: string; tamperedEntryId?: string } {
+    return verifyKardexChain(this.kardex(), 'newest-first');
   }
 
   /** Estado de vinculación con el celular. */
@@ -1457,9 +1505,9 @@ export class MockInventoryService {
    * Procesa una venta en efectivo:
    * - Valida que el efectivo recibido cubra el total.
    * - Calcula el cambio exacto.
-   * - Descuenta existencias en tiempo real (permite stock negativo y registra faltantes).
+   * - Descuenta existencias en tiempo real con deductStock (permite stock negativo y registra faltantes reales).
    * - Suma a cashSalesTotal en el arqueo del cajón.
-   * - Registra en Kardex como 'VENTA_EFECTIVO' (y 'FALTANTE_SISTEMA' si no había existencia).
+   * - Registra en Kardex como 'VENTA_EFECTIVO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
   processCashSale(items: CartItem[], cashReceived: number): SaleResult {
     if (!items.length) {
@@ -1476,61 +1524,35 @@ export class MockInventoryService {
     }
     const change = subtractMoney(cashReceived, total);
 
-    // Descontar existencias en tiempo real sin ocultar faltantes (permite stock negativo)
     const shortageAlerts: MorningAlert[] = [];
     const newKardexEntries: KardexEntry[] = [];
-    const nowIso = new Date().toISOString();
+    let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const currentUser = this.activeUser();
 
     this.products.update((list) =>
       list.map((p) => {
         const soldItem = items.find((i) => i.sku === p.sku);
         if (!soldItem) return p;
-        const saldoAnterior = p.stock;
-        const nextStock = Math.round((saldoAnterior - soldItem.qty) * 1000) / 1000;
 
-        newKardexEntries.push(
-          createKardexEntry({
-            type: 'VENTA_EFECTIVO',
-            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
-            cantidad: -soldItem.qty,
-            saldoAnterior,
-            saldoResultante: nextStock,
-            usuario: 'Cajero Mostrador',
-            referencia: 'Venta Mostrador Efectivo',
-            timestamp: nowIso,
-            amount: soldItem.subtotal,
-            description: `Venta en efectivo: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
-          }),
-        );
+        const deduction = deductStock(p, soldItem.qty, {
+          saleType: 'VENTA_EFECTIVO',
+          usuario: currentUser,
+          referencia: 'Venta Mostrador Efectivo',
+          amount: soldItem.subtotal,
+          description: `Venta en efectivo: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
+          previousHash: currentHash,
+        });
 
-        if (nextStock < 0) {
-          newKardexEntries.push(
-            createKardexEntry({
-              type: 'FALTANTE_SISTEMA',
-              producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
-              cantidad: nextStock,
-              saldoAnterior,
-              saldoResultante: nextStock,
-              usuario: 'Cajero Mostrador',
-              referencia: `Venta sin existencias: ${p.sku}`,
-              timestamp: nowIso,
-              amount: 0,
-              description: `FALTANTE EN SISTEMA: ${p.name} quedó en ${nextStock} ${p.saleUnit}. Requiere revisión física.`,
-            }),
-          );
-
-          shortageAlerts.push({
-            id: `A-FALTANTE-${p.sku}-${Date.now()}`,
-            kind: 'por-agotarse',
-            icon: '🚨',
-            title: `Stock en negativo: ${p.name} (${nextStock} ${p.saleUnit})`,
-            detail: `Se vendieron productos sin existencia registrada en sistema. Faltante detectado: ${Math.abs(nextStock)} ${p.saleUnit}. Requiere revisión física.`,
-            actionLabel: 'Ver en catálogo',
-            route: '/catalogo',
-          });
+        for (const entry of deduction.kardexEntries) {
+          newKardexEntries.push(entry);
+          currentHash = entry.entryHash;
         }
 
-        return { ...p, stock: nextStock };
+        if (deduction.shortageAlert) {
+          shortageAlerts.push(deduction.shortageAlert);
+        }
+
+        return deduction.updatedProduct;
       }),
     );
 
@@ -1544,8 +1566,8 @@ export class MockInventoryService {
       cashSalesTotal: sumMoney([r.cashSalesTotal, total]),
     }));
 
-    // Registrar en Kardex de forma append-only
-    this.kardex.update((entries) => [...newKardexEntries, ...entries]);
+    // Registrar en Kardex encadenado (el más reciente al frente)
+    this.kardex.update((entries) => [...newKardexEntries.reverse(), ...entries]);
 
     if (shortageAlerts.length > 0) {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
@@ -1561,11 +1583,11 @@ export class MockInventoryService {
 
   /**
    * Procesa una venta cargada a la Libreta Digital de Fiado (Crédito Vecinal):
-   * - Bloquea la venta si el cliente tiene estatus 'VENCIDO' (según computeCreditStatus).
+   * - Bloquea la venta si el cliente tiene estatus 'VENCIDO' (según applyCreditSalePure).
    * - Bloquea si la venta excede el límite de crédito disponible.
    * - Suma a creditSalesTotal (NO SUMA EFECTIVO AL CAJÓN: +$0.00).
-   * - Descuenta existencias de inventario físico (permite stock negativo y registra faltantes).
-   * - Registra en Kardex como 'VENTA_FIADO' (y 'FALTANTE_SISTEMA' si no había existencias).
+   * - Descuenta existencias de inventario físico con deductStock.
+   * - Registra en Kardex como 'VENTA_FIADO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
   processCreditSale(items: CartItem[], customerId: string): CreditResult {
     if (!items.length) {
@@ -1577,35 +1599,19 @@ export class MockInventoryService {
       return { ok: false, message: 'Selecciona un cliente para cargar el fiado.', total };
     }
 
-    const currentStatus = computeCreditStatus(customer, new Date());
-    const availableCredit = Math.max(0, subtractMoney(customer.creditLimit, customer.currentBalance));
-
-    if (currentStatus === 'VENCIDO') {
+    const saleResult = applyCreditSalePure(customer, total, new Date());
+    if (!saleResult.ok) {
       return {
         ok: false,
-        message: `Crédito bloqueado: el cliente tiene pagos vencidos ($${customer.currentBalance.toFixed(2)}).`,
+        message: saleResult.message,
         total,
-        availableCredit,
-      };
-    }
-    if (sumMoney([customer.currentBalance, total]) > customer.creditLimit) {
-      return {
-        ok: false,
-        message: `Límite de crédito excedido. Disponible: $${availableCredit.toFixed(2)} de su límite de $${customer.creditLimit.toFixed(2)}.`,
-        total,
-        availableCredit,
+        availableCredit: saleResult.availableCredit,
       };
     }
 
-    // Actualizar saldo y estatus del cliente usando computeCreditStatus
+    // Actualizar cliente usando lógica pura
     this.creditCustomers.update((list) =>
-      list.map((c) => {
-        if (c.id !== customerId) return c;
-        const newBal = sumMoney([c.currentBalance, total]);
-        const candidate = { ...c, currentBalance: newBal };
-        const nextStatus = computeCreditStatus(candidate, new Date());
-        return { ...candidate, status: nextStatus };
-      }),
+      list.map((c) => (c.id === customerId ? saleResult.updatedCustomer! : c)),
     );
 
     // Sumar a crédito (NO ENTRA DINERO EN EFECTIVO AL CAJÓN)
@@ -1618,98 +1624,101 @@ export class MockInventoryService {
       creditSalesTotal: sumMoney([r.creditSalesTotal, total]),
     }));
 
-    // Descontar inventario físico sin Math.max(0, ...) permitiendo stock negativo
     const shortageAlerts: MorningAlert[] = [];
     const newKardexEntries: KardexEntry[] = [];
-    const nowIso = new Date().toISOString();
+    let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const currentUser = this.activeUser();
 
     this.products.update((list) =>
       list.map((p) => {
         const soldItem = items.find((i) => i.sku === p.sku);
         if (!soldItem) return p;
-        const saldoAnterior = p.stock;
-        const nextStock = Math.round((saldoAnterior - soldItem.qty) * 1000) / 1000;
 
-        newKardexEntries.push(
-          createKardexEntry({
-            type: 'VENTA_FIADO',
-            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
-            cantidad: -soldItem.qty,
-            saldoAnterior,
-            saldoResultante: nextStock,
-            usuario: 'Cajero Mostrador',
-            referencia: `Fiado Cliente ${customer.name}`,
-            timestamp: nowIso,
-            amount: soldItem.subtotal,
-            description: `Fiado a ${customer.name}: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
-          }),
-        );
+        const deduction = deductStock(p, soldItem.qty, {
+          saleType: 'VENTA_FIADO',
+          usuario: currentUser,
+          referencia: `Fiado Cliente ${customer.name}`,
+          amount: soldItem.subtotal,
+          description: `Fiado a ${customer.name}: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
+          previousHash: currentHash,
+        });
 
-        if (nextStock < 0) {
-          newKardexEntries.push(
-            createKardexEntry({
-              type: 'FALTANTE_SISTEMA',
-              producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
-              cantidad: nextStock,
-              saldoAnterior,
-              saldoResultante: nextStock,
-              usuario: 'Cajero Mostrador',
-              referencia: `Venta fiado sin stock: ${p.sku}`,
-              timestamp: nowIso,
-              amount: 0,
-              description: `FALTANTE EN SISTEMA: ${p.name} quedó en ${nextStock} ${p.saleUnit}. Requiere revisión física.`,
-            }),
-          );
-
-          shortageAlerts.push({
-            id: `A-FALTANTE-${p.sku}-${Date.now()}`,
-            kind: 'por-agotarse',
-            icon: '🚨',
-            title: `Stock en negativo: ${p.name} (${nextStock} ${p.saleUnit})`,
-            detail: `Se vendieron productos sin existencia registrada en sistema. Faltante detectado: ${Math.abs(nextStock)} ${p.saleUnit}. Requiere revisión física.`,
-            actionLabel: 'Ver en catálogo',
-            route: '/catalogo',
-          });
+        for (const entry of deduction.kardexEntries) {
+          newKardexEntries.push(entry);
+          currentHash = entry.entryHash;
         }
 
-        return { ...p, stock: nextStock };
+        if (deduction.shortageAlert) {
+          shortageAlerts.push(deduction.shortageAlert);
+        }
+
+        return deduction.updatedProduct;
       }),
     );
 
-    this.kardex.update((entries) => [...newKardexEntries, ...entries]);
+    this.kardex.update((entries) => [...newKardexEntries.reverse(), ...entries]);
 
     if (shortageAlerts.length > 0) {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
-    const remainingAvailable = Math.max(0, subtractMoney(customer.creditLimit, sumMoney([customer.currentBalance, total])));
-
     return {
       ok: true,
-      message: `Venta cargada a la cuenta de ${customer.name}. Saldo total: $${sumMoney([customer.currentBalance, total]).toFixed(2)}.`,
+      message: saleResult.message,
       total,
-      availableCredit: remainingAvailable,
+      availableCredit: saleResult.availableCredit,
     };
   }
 
   /**
    * Procesa el Consumo Interno (alimentos o suministros tomados para la tienda o comida del personal):
    * - Valida artículos y responsable obligatorio.
-   * - Se valúa estrictamente al COSTO DE COMPRA (weightedAvgCost / purchaseCost / historicCost), NO al precio de venta.
-   * - Descuenta existencias físicas de inventario sin Math.max(0, ...) permitiendo negativos.
+   * - Se valúa estrictamente al COSTO DE COMPRA, NO al precio de venta.
+   * - No permite baja mayor que la existencia a menos que se autorice con PIN de administrador y motivo.
+   * - Si se autoriza en negativo, FALTANTE_SISTEMA registra solo el déficit real que sobrepasó la existencia.
    * - No entra dinero al cajón de efectivo ($0.00).
-   * - Registra en internalConsumptionRecords y Kardex como 'CONSUMO_INTERNO'.
+   * - Registra en internalConsumptionRecords y Kardex encadenado como 'CONSUMO_INTERNO'.
    */
-  processInternalConsumption(
+  async processInternalConsumption(
     items: CartItem[],
     responsible: string,
-  ): { ok: boolean; message: string; totalCost: number } {
+    pin?: string,
+    reason?: string,
+  ): Promise<{ ok: boolean; message: string; totalCost: number; remainingAttempts?: number; isLocked?: boolean }> {
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', totalCost: 0 };
     }
-    const cleanResponsible = responsible?.trim() || 'Dueño (Don Lupe)';
-
+    const cleanResponsible = responsible?.trim() || this.activeUser();
     const catalog = this.products();
+
+    // Validar si algún producto sobrepasa la existencia disponible
+    const hasExceedingItems = items.some((item) => {
+      const prod = catalog.find((p) => p.sku === item.sku);
+      return prod ? item.qty > prod.stock : false;
+    });
+
+    let authorizer = cleanResponsible;
+    if (hasExceedingItems) {
+      if (!pin || !reason?.trim()) {
+        return {
+          ok: false,
+          message: 'Baja bloqueada: la cantidad solicitada supera la existencia disponible en tienda. Requiere autorización con PIN de administrador y motivo justificado.',
+          totalCost: 0,
+        };
+      }
+      const pinResult = await this.verifyAdminPin(pin, cleanResponsible);
+      if (!pinResult.success) {
+        return {
+          ok: false,
+          message: pinResult.message,
+          totalCost: 0,
+          remainingAttempts: pinResult.remainingAttempts,
+          isLocked: pinResult.isLocked,
+        };
+      }
+      authorizer = pinResult.authorizedBy || cleanResponsible;
+    }
+
     const detailedItems = items.map((item) => {
       const prod = catalog.find((p) => p.sku === item.sku);
       const unitCost =
@@ -1729,62 +1738,44 @@ export class MockInventoryService {
     });
 
     const totalCost = sumMoney(detailedItems.map((i) => i.subtotalCost));
-
-    // Descontar inventario físico sin Math.max(0, ...)
     const shortageAlerts: MorningAlert[] = [];
     const newKardexEntries: KardexEntry[] = [];
-    const nowIso = new Date().toISOString();
+    let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
 
     this.products.update((list) =>
       list.map((p) => {
         const consumed = items.find((i) => i.sku === p.sku);
         if (!consumed) return p;
-        const saldoAnterior = p.stock;
-        const nextStock = Math.round((saldoAnterior - consumed.qty) * 1000) / 1000;
 
-        newKardexEntries.push(
-          createKardexEntry({
-            type: 'CONSUMO_INTERNO',
-            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
-            cantidad: -consumed.qty,
-            saldoAnterior,
-            saldoResultante: nextStock,
-            usuario: cleanResponsible,
-            referencia: `Consumo Interno autorizado por ${cleanResponsible}`,
-            timestamp: nowIso,
-            amount: multiplyMoney(consumed.unitPrice * 0.75, consumed.qty),
-            description: `Consumo interno: ${consumed.qty} ${p.saleUnit} de ${p.name} (Valuado al Costo)`,
-          }),
-        );
+        const disposal = deductStockForDisposal({
+          product: p,
+          qtyToDeduct: consumed.qty,
+          type: 'CONSUMO_INTERNO',
+          usuario: authorizer,
+          referencia: `Consumo Interno autorizado por ${authorizer}`,
+          adminPinAuthorized: hasExceedingItems,
+          overrideReason: reason?.trim(),
+          amount: multiplyMoney(consumed.unitPrice * 0.75, consumed.qty),
+          description: `Consumo interno: ${consumed.qty} ${p.saleUnit} de ${p.name} (Valuado al Costo)`,
+          previousHash: currentHash,
+        });
 
-        if (nextStock < 0) {
-          newKardexEntries.push(
-            createKardexEntry({
-              type: 'FALTANTE_SISTEMA',
-              producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
-              cantidad: nextStock,
-              saldoAnterior,
-              saldoResultante: nextStock,
-              usuario: cleanResponsible,
-              referencia: `Consumo sin existencia: ${p.sku}`,
-              timestamp: nowIso,
-              amount: 0,
-              description: `FALTANTE EN SISTEMA: ${p.name} quedó en ${nextStock} ${p.saleUnit}.`,
-            }),
-          );
-
-          shortageAlerts.push({
-            id: `A-FALTANTE-${p.sku}-${Date.now()}`,
-            kind: 'por-agotarse',
-            icon: '🚨',
-            title: `Stock en negativo: ${p.name} (${nextStock} ${p.saleUnit})`,
-            detail: `Consumo interno dejó stock negativo. Faltante detectado: ${Math.abs(nextStock)} ${p.saleUnit}.`,
-            actionLabel: 'Ver en catálogo',
-            route: '/catalogo',
-          });
+        if (!disposal.ok || !disposal.updatedProduct) {
+          return p;
         }
 
-        return { ...p, stock: nextStock };
+        if (disposal.kardexEntries) {
+          for (const entry of disposal.kardexEntries) {
+            newKardexEntries.push(entry);
+            currentHash = entry.entryHash;
+          }
+        }
+
+        if (disposal.shortageAlert) {
+          shortageAlerts.push(disposal.shortageAlert);
+        }
+
+        return disposal.updatedProduct;
       }),
     );
 
@@ -1792,7 +1783,7 @@ export class MockInventoryService {
     const record: InternalConsumptionRecord = {
       id: 'CI-' + generateKardexId().slice(2, 10),
       timestamp: new Date(),
-      responsible: cleanResponsible,
+      responsible: authorizer,
       items: detailedItems,
       totalCost,
     };
@@ -1804,8 +1795,8 @@ export class MockInventoryService {
       internalConsumptionTotalCost: sumMoney([s.internalConsumptionTotalCost, totalCost]),
     }));
 
-    // Registrar en Kardex
-    this.kardex.update((entries) => [...newKardexEntries, ...entries]);
+    // Registrar en Kardex encadenado (el más reciente al frente)
+    this.kardex.update((entries) => [...newKardexEntries.reverse(), ...entries]);
 
     if (shortageAlerts.length > 0) {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
@@ -1813,8 +1804,63 @@ export class MockInventoryService {
 
     return {
       ok: true,
-      message: `Consumo interno registrado a cargo de ${cleanResponsible} por un costo contable de $${totalCost.toFixed(2)}. Existencias descontadas sin entrada al cajón.`,
+      message: `Consumo interno registrado a cargo de ${authorizer} por un costo contable de $${totalCost.toFixed(2)}. Existencias descontadas sin entrada al cajón.`,
       totalCost,
+    };
+  }
+
+  /**
+   * Resuelve una alerta de faltante o stock en negativo realizando un ajuste físico autorizado con PIN.
+   * Regla de negocio: Cuadra el stock al conteo físico real, registra AJUSTE_AUDITORIA en Kardex y limpia la alerta.
+   */
+  async resolveShortageAlertWithPin(
+    alertId: string,
+    sku: string,
+    realPhysicalStock: number,
+    pin: string,
+    authorizerName = 'Administrador',
+    reason = 'Ajuste físico de stock para resolver alerta de faltante',
+  ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
+    const pinResult = await this.verifyAdminPin(pin, authorizerName);
+    if (!pinResult.success) {
+      return {
+        ok: false,
+        message: pinResult.message,
+        remainingAttempts: pinResult.remainingAttempts,
+        isLocked: pinResult.isLocked,
+      };
+    }
+
+    const prod = this.products().find((p) => p.sku === sku);
+    if (!prod) {
+      return { ok: false, message: `Producto con SKU ${sku} no encontrado.` };
+    }
+
+    const authorizer = pinResult.authorizedBy || authorizerName;
+    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const { updatedProduct, kardexEntry } = resolveShortageAlertAdjustment(
+      prod,
+      realPhysicalStock,
+      authorizer,
+      alertId,
+      previousHash,
+    );
+
+    // Actualizar existencia física en catálogo
+    this.products.update((list) =>
+      list.map((p) => (p.sku === sku ? updatedProduct : p)),
+    );
+
+    this.kardex.update((k) => [kardexEntry, ...k]);
+
+    // Eliminar la alerta de morningAlerts
+    this.morningAlerts.update((alerts) =>
+      alerts.filter((a) => a.id !== alertId && !(a.id.includes(sku) && a.kind === 'por-agotarse')),
+    );
+
+    return {
+      ok: true,
+      message: `Alerta resuelta: inventario de ${prod.name} cuadrado a ${realPhysicalStock} ${prod.saleUnit} por ${authorizer}.`,
     };
   }
 
@@ -1838,9 +1884,10 @@ export class MockInventoryService {
 
   /**
    * Registra un abono en efectivo de un cliente de fiado:
-   * - Disminuye su deuda (currentBalance) y actualiza su estatus con computeCreditStatus.
+   * - Aplica amortización FIFO pura con applyCreditPaymentPure (primero lo vencido, más antiguo primero).
    * - REGLA OBLIGATORIA: Un abono parcial NO debe limpiar el estatus VENCIDO si queda saldo con fecha vencida.
    * - Suma el dinero recibido a creditPaymentsReceived (¡SÍ ENTRA EFECTIVO FÍSICO AL CAJÓN!).
+   * - Registra entrada en Kardex encadenada.
    */
   registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string } {
     if (isNaN(amount) || amount <= 0) {
@@ -1850,23 +1897,15 @@ export class MockInventoryService {
     if (!customer) {
       return { ok: false, message: 'Cliente no encontrado.' };
     }
-    const applied = Math.min(amount, customer.currentBalance);
+
+    const paymentResult = applyCreditPaymentPure(customer, amount, new Date());
+    const applied = paymentResult.appliedAmount;
     if (applied <= 0) {
       return { ok: false, message: `${customer.name} no tiene deuda pendiente.` };
     }
 
     this.creditCustomers.update((list) =>
-      list.map((c) => {
-        if (c.id !== customerId) return c;
-        const newBal = Math.max(0, subtractMoney(c.currentBalance, applied));
-        const candidate = { ...c, currentBalance: newBal };
-        // computeCreditStatus: VENCIDO si hay saldo vencido; si no, LIMITE_ALCANZADO cuando saldo/límite >= 0.9; si no, AL_CORRIENTE
-        const nextStatus = computeCreditStatus(candidate, new Date());
-        return {
-          ...candidate,
-          status: nextStatus,
-        };
-      }),
+      list.map((c) => (c.id === customerId ? paymentResult.updatedCustomer : c)),
     );
 
     this.cashShift.update((s) => ({
@@ -1879,20 +1918,20 @@ export class MockInventoryService {
       creditPaymentsReceived: sumMoney([reg.creditPaymentsReceived, applied]),
     }));
 
-    this.kardex.update((entries) => [
-      createKardexEntry({
-        type: 'ABONO_FIADO',
-        producto: { sku: customer.id, name: customer.name },
-        cantidad: 0,
-        saldoAnterior: customer.currentBalance,
-        saldoResultante: Math.max(0, subtractMoney(customer.currentBalance, applied)),
-        usuario: 'Cajero Mostrador',
-        referencia: `Abono deudor: ${customer.name}`,
-        amount: applied,
-        description: `Abono en efectivo recibido de ${customer.name}`,
-      }),
-      ...entries,
-    ]);
+    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const entry = createKardexEntry({
+      type: 'ABONO_FIADO',
+      producto: { sku: customer.id, name: customer.name },
+      cantidad: 0,
+      saldoAnterior: customer.currentBalance,
+      saldoResultante: paymentResult.updatedCustomer.currentBalance,
+      usuario: this.activeUser(),
+      referencia: `Abono deudor: ${customer.name}`,
+      amount: applied,
+      description: `Abono en efectivo recibido de ${customer.name}`,
+    }, previousHash);
+
+    this.kardex.update((entries) => [entry, ...entries]);
 
     return {
       ok: true,
@@ -1935,10 +1974,12 @@ export class MockInventoryService {
     return line;
   }
 
-  /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado, actualiza reposición y genera Kardex. */
+  /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado, actualiza reposición y genera Kardex encadenado. */
   saveReception(lines: ReceptionLine[], folio: string): void {
     const newKardexEntries: KardexEntry[] = [];
     const nowIso = new Date().toISOString();
+    let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const currentUser = this.activeUser();
 
     this.products.update((list) =>
       list.map((p) => {
@@ -1957,20 +1998,21 @@ export class MockInventoryService {
               )
             : line.newCost;
 
-        newKardexEntries.push(
-          createKardexEntry({
-            type: 'ENTRADA_COMPRA',
-            producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
-            cantidad: incomingUnits,
-            saldoAnterior,
-            saldoResultante: newTotalStock,
-            usuario: 'Don Lupe (Recepción Proveedor)',
-            referencia: `Nota #${folio}`,
-            timestamp: nowIso,
-            amount: line.lineTotal,
-            description: `Entrada compra Nota #${folio}: +${incomingUnits} ${p.saleUnit} de ${p.name}`,
-          }),
-        );
+        const entry = createKardexEntry({
+          type: 'ENTRADA_COMPRA',
+          producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+          cantidad: incomingUnits,
+          saldoAnterior,
+          saldoResultante: newTotalStock,
+          usuario: currentUser,
+          referencia: `Nota #${folio}`,
+          timestamp: nowIso,
+          amount: line.lineTotal,
+          description: `Entrada compra Nota #${folio}: +${incomingUnits} ${p.saleUnit} de ${p.name}`,
+        }, currentHash);
+
+        newKardexEntries.push(entry);
+        currentHash = entry.entryHash;
 
         return {
           ...p,
@@ -1984,7 +2026,7 @@ export class MockInventoryService {
       }),
     );
 
-    this.kardex.update((k) => [...newKardexEntries, ...k]);
+    this.kardex.update((k) => [...newKardexEntries.reverse(), ...k]);
 
     if (folio === this.ocrNote()?.folio) {
       this.ocrNote.set(null);
@@ -2026,37 +2068,81 @@ export class MockInventoryService {
     }));
   }
 
-  markShrinkReviewed(id: string, authorizedBy = 'Administrador (PIN)'): void {
+  /**
+   * Marca una merma como revisada/aprobada.
+   * Regla de negocio: No permite baja mayor que la existencia disponible sin PIN de administrador y motivo.
+   */
+  markShrinkReviewed(
+    id: string,
+    authorizedBy = 'Administrador (PIN)',
+    pin?: string,
+    reason?: string,
+  ): { ok: boolean; message: string } {
     const record = this.shrinkRecords().find((r) => r.id === id);
-    this.shrinkRecords.update((list) =>
-      list.map((r) => (r.id === id ? { ...r, reviewed: true, registeredBy: `${r.registeredBy} | Aprobó: ${authorizedBy}` } : r)),
-    );
-    if (record) {
-      this.kardex.update((k) => [
-        createKardexEntry({
-          type: 'BAJA_MERMA',
-          producto: { sku: record.sku, name: record.name, saleUnit: record.saleUnit },
-          cantidad: -record.qty,
-          saldoAnterior: 0,
-          saldoResultante: 0,
-          usuario: authorizedBy,
-          referencia: `Aprobación merma #${record.id}`,
-          amount: multiplyMoney(record.unitCost, record.qty),
-          description: `Baja de merma #${record.id} aprobada por ${authorizedBy}: ${record.qty} ${record.saleUnit} de ${record.name}`,
-        }),
-        ...k,
-      ]);
+    if (!record) return { ok: false, message: 'Registro de merma no encontrado.' };
+
+    const prod = this.products().find((p) => p.sku === record.sku);
+    if (!prod) return { ok: false, message: `Producto ${record.sku} no encontrado en catálogo.` };
+
+    const currentStock = prod.stock;
+    const isExceeding = record.qty > currentStock;
+
+    if (isExceeding && (!pin || !reason?.trim())) {
+      return {
+        ok: false,
+        message: `Baja de merma bloqueada: la cantidad (${record.qty}) supera la existencia disponible (${currentStock}). Requiere PIN de administrador y motivo justificado.`,
+      };
     }
+
+    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const disposal = deductStockForDisposal({
+      product: prod,
+      qtyToDeduct: record.qty,
+      type: 'BAJA_MERMA',
+      usuario: authorizedBy,
+      referencia: `Aprobación merma #${record.id}`,
+      adminPinAuthorized: isExceeding,
+      overrideReason: reason?.trim(),
+      amount: multiplyMoney(record.unitCost, record.qty),
+      description: `Baja de merma #${record.id} aprobada por ${authorizedBy}: ${record.qty} ${record.saleUnit} de ${record.name}`,
+      previousHash,
+    });
+
+    if (!disposal.ok || !disposal.updatedProduct) {
+      return { ok: false, message: disposal.message };
+    }
+
+    this.products.update((list) =>
+      list.map((p) => (p.sku === record.sku ? disposal.updatedProduct! : p)),
+    );
+
+    this.shrinkRecords.update((list) =>
+      list.map((r) =>
+        r.id === id
+          ? { ...r, reviewed: true, registeredBy: `${r.registeredBy} | Aprobó: ${authorizedBy}` }
+          : r,
+      ),
+    );
+
+    if (disposal.kardexEntries) {
+      this.kardex.update((k) => [...disposal.kardexEntries!.reverse(), ...k]);
+    }
+
+    return {
+      ok: true,
+      message: `Merma #${record.id} aprobada con éxito por ${authorizedBy}.`,
+    };
   }
 
   /**
-   * Aprueba la baja de merma validando obligatoriamente el PIN de administrador con Web Crypto.
+   * Aprueba la baja de merma validando obligatoriamente el PIN de administrador con Web Crypto PBKDF2.
    * Regla de negocio: Máximo 3 intentos y bloqueo de 30 segundos. Registra quién autorizó en el Kardex.
    */
   async authorizeShrinkReview(
     shrinkRecordId: string,
     pin: string,
     authorizerName = 'Administrador',
+    reason = 'Autorización de baja por merma',
   ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
     const pinResult = await this.verifyAdminPin(pin, authorizerName);
     if (!pinResult.success) {
@@ -2068,10 +2154,10 @@ export class MockInventoryService {
       };
     }
     const authorizer = pinResult.authorizedBy || authorizerName;
-    this.markShrinkReviewed(shrinkRecordId, authorizer);
+    const res = this.markShrinkReviewed(shrinkRecordId, authorizer, pin, reason);
     return {
-      ok: true,
-      message: `Merma #${shrinkRecordId} aprobada con éxito por ${authorizer}.`,
+      ok: res.ok,
+      message: res.message,
       remainingAttempts: pinResult.remainingAttempts,
       isLocked: false,
     };
@@ -2105,12 +2191,14 @@ export class MockInventoryService {
   /**
    * Resuelve el cambio físico:
    * - CAMBIO_EFECTIVO: actualiza la caducidad sin alterar costos contables.
-   * - MERMA_RECHAZADA: descuenta a merma al costo contable (permite stock negativo sin Math.max(0, ...)).
+   * - MERMA_RECHAZADA: descuenta a merma al costo contable con deductStockForDisposal (bloquea si excede stock sin PIN).
    */
   resolvePhysicalExchange(
     batchId: string,
     action: 'CAMBIO_EFECTIVO' | 'MERMA_RECHAZADA',
     newExpiryDate?: string,
+    pin?: string,
+    reason?: string,
   ): { ok: boolean; message: string } {
     const batch = this.perishableBatches().find((b) => b.batchId === batchId);
     if (!batch) return { ok: false, message: 'Lote no encontrado' };
@@ -2125,38 +2213,50 @@ export class MockInventoryService {
         message: `Cambio físico exitoso de ${batch.quantity} piezas de ${batch.productName}. Nueva caducidad: ${nextDate}. Sin afectación a costos.`,
       };
     } else {
+      const product = this.products().find((p) => p.sku === batch.productId);
+      const currentStock = product ? product.stock : 0;
+      const isExceeding = batch.quantity > currentStock;
+
+      if (isExceeding && (!pin || !reason?.trim())) {
+        return {
+          ok: false,
+          message: `Baja de merma bloqueada: la cantidad (${batch.quantity}) supera la existencia en tienda (${currentStock}). Requiere PIN de administrador y motivo.`,
+        };
+      }
+
       this.perishableBatches.update((list) =>
         list.map((b) => (b.batchId === batchId ? { ...b, status: 'VENCIDO' } : b)),
       );
-      const product = this.products().find((p) => p.sku === batch.productId);
+
       const unitCost = product ? product.historicCost : 25;
       const totalLoss = multiplyMoney(unitCost, batch.quantity);
 
       if (product) {
-        const saldoAnterior = product.stock;
-        const nextStock = Math.round((saldoAnterior - batch.quantity) * 1000) / 1000;
+        const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+        const disposal = deductStockForDisposal({
+          product,
+          qtyToDeduct: batch.quantity,
+          type: 'BAJA_MERMA',
+          usuario: this.activeUser(),
+          referencia: `Merma lote ${batch.batchId}`,
+          adminPinAuthorized: isExceeding,
+          overrideReason: reason?.trim(),
+          amount: totalLoss,
+          description: `Merma rechazada FEFO: ${batch.quantity}x ${batch.productName} ($${totalLoss.toFixed(2)})`,
+          previousHash,
+        });
+
+        if (!disposal.ok || !disposal.updatedProduct) {
+          return { ok: false, message: disposal.message };
+        }
+
         this.products.update((list) =>
-          list.map((p) =>
-            p.sku === batch.productId
-              ? { ...p, stock: nextStock }
-              : p,
-          ),
+          list.map((p) => (p.sku === batch.productId ? disposal.updatedProduct! : p)),
         );
 
-        this.kardex.update((k) => [
-          createKardexEntry({
-            type: 'BAJA_MERMA',
-            producto: { sku: product.sku, name: product.name, saleUnit: product.saleUnit },
-            cantidad: -batch.quantity,
-            saldoAnterior,
-            saldoResultante: nextStock,
-            usuario: 'Módulo FEFO / Mostrador',
-            referencia: `Merma lote ${batch.batchId}`,
-            amount: totalLoss,
-            description: `Merma rechazada FEFO: ${batch.quantity}x ${batch.productName} ($${totalLoss.toFixed(2)})`,
-          }),
-          ...k,
-        ]);
+        if (disposal.kardexEntries) {
+          this.kardex.update((k) => [...disposal.kardexEntries!.reverse(), ...k]);
+        }
       }
 
       const now = new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
@@ -2172,7 +2272,7 @@ export class MockInventoryService {
           saleUnit: product ? product.saleUnit : 'Pieza',
           reason: 'Caducado sin devolución',
           unitCost,
-          registeredBy: 'Módulo FEFO / Mostrador',
+          registeredBy: `${this.activeUser()} (Módulo FEFO)`,
           hasPhoto: false,
           reviewed: true,
         },
@@ -2358,12 +2458,13 @@ export class MockInventoryService {
       list.map((l) => (l.sku === productId ? { ...l, status: 'autorizado' as AuditStatus } : l)),
     );
 
-    // 3. Registrar Kardex
+    // 3. Registrar Kardex encadenado
     const typeLabel =
       type === 'MERMA_OPERATIVA'
         ? 'Merma Normal Granel/Corte'
         : 'Faltante Injustificado';
 
+    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
     this.kardex.update((k) => [
       createKardexEntry({
         type: 'AJUSTE_AUDITORIA',
@@ -2375,7 +2476,7 @@ export class MockInventoryService {
         referencia: `Auditoría Ciega [${typeLabel}] - ${line.sku}`,
         amount: Math.abs(diffMoney),
         description: `Ajuste Auditoría [${typeLabel}]: ${line.name} (Dif: ${diffQty > 0 ? '+' : ''}${diffQty} ${line.saleUnit}, $${Math.abs(diffMoney).toFixed(2)})`,
-      }),
+      }, previousHash),
       ...k,
     ]);
 

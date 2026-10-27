@@ -8,6 +8,7 @@ import {
   multiplyMoney,
   formatMxn,
   calculateTax,
+  calculateCartTaxes,
 } from './money.ts';
 
 test('Dinero en centavos: 0.1 + 0.2 en centavos no sufre de imprecisión flotante', () => {
@@ -75,4 +76,46 @@ test('Formato MXN de montos', () => {
   // Normalizar espacios no separables si los genera Intl en es-MX
   const normalizado = formateado.replace(/\u00a0/g, ' ');
   assert.ok(normalizado.includes('$1,250.50') || normalizado.includes('1,250.50'));
+});
+
+test('Venta a granel exacta: 0.350 kg x $87.50 a nivel centavos', () => {
+  const precioKilo = 87.50;
+  const peso = 0.350;
+
+  // 87.50 pesos = 8750 centavos
+  const centavosKilo = toCents(precioKilo);
+  assert.equal(centavosKilo, 8750);
+
+  // 8750 * 0.350 = 3062.5 centavos -> Math.round -> 3063 centavos ($30.63)
+  const total = multiplyMoney(precioKilo, peso);
+  assert.equal(total, 30.63);
+  assert.equal(toCents(total), 3063);
+
+  // Verificamos que formateado da $30.63
+  const formateado = formatMxn(total).replace(/\u00a0/g, ' ');
+  assert.ok(formateado.includes('30.63'));
+});
+
+test('IVA por línea contra el IVA sobre el total (auditoría de discrepancia de centavos)', () => {
+  // Tres partidas que generan fracciones de centavos en IVA al 16%:
+  // Línea 1: 1 x $10.33 -> 1033 centavos. IVA 16% = 165.28 -> 165 centavos ($1.65)
+  // Línea 2: 1 x $10.33 -> 1033 centavos. IVA 16% = 165.28 -> 165 centavos ($1.65)
+  // Línea 3: 1 x $10.33 -> 1033 centavos. IVA 16% = 165.28 -> 165 centavos ($1.65)
+  // Suma IVA por línea: 165 + 165 + 165 = 495 centavos ($4.95)
+  // Base total: 3 x 1033 = 3099 centavos ($30.99)
+  // IVA sobre base total: 3099 * 0.16 = 495.84 -> 496 centavos ($4.96)
+  // Discrepancia: exactamente 1 centavo
+  const items = [
+    { price: 10.33, qty: 1, taxRate: 0.16 },
+    { price: 10.33, qty: 1, taxRate: 0.16 },
+    { price: 10.33, qty: 1, taxRate: 0.16 },
+  ];
+
+  const resultado = calculateCartTaxes(items);
+
+  assert.equal(resultado.totalSubtotal, 30.99);
+  assert.deepEqual(resultado.lineTaxes, [1.65, 1.65, 1.65]);
+  assert.equal(resultado.totalTaxByLineSum, 4.95);
+  assert.equal(resultado.taxOnTotalBase, 4.96);
+  assert.equal(resultado.roundingDifferenceCents, 1);
 });

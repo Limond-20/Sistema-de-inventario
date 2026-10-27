@@ -72,6 +72,15 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Modal Consumo Interno ----------
   protected readonly internalConsumptionModalOpen = signal<boolean>(false);
   protected readonly consumptionResponsible = signal<string>('Dueño (Don Lupe)');
+  protected readonly consumptionPin = signal<string>('');
+  protected readonly consumptionReason = signal<string>('');
+  protected readonly hasExceedingStockItems = computed(() => {
+    const catalog = this.inv.products();
+    return this.cart().some((item) => {
+      const p = catalog.find((x) => x.sku === item.sku);
+      return p ? item.qty > p.stock : false;
+    });
+  });
   protected readonly responsibleOptions: string[] = [
     'Dueño (Don Lupe)',
     'Empleado 1 (Toño)',
@@ -479,12 +488,19 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.internalConsumptionModalOpen.set(false);
   }
 
-  confirmInternalConsumption(): void {
+  async confirmInternalConsumption(): Promise<void> {
     if (!this.cart().length) return;
-    const res = this.inv.processInternalConsumption(this.cart(), this.consumptionResponsible());
+    const res = await this.inv.processInternalConsumption(
+      this.cart(),
+      this.consumptionResponsible(),
+      this.consumptionPin(),
+      this.consumptionReason(),
+    );
     if (res.ok) {
       this.saleFeedback.set({ ok: true, text: res.message });
       this.cart.set([]);
+      this.consumptionPin.set('');
+      this.consumptionReason.set('');
       this.closeInternalConsumptionModal();
     } else {
       this.saleFeedback.set({ ok: false, text: res.message });
