@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   toCents,
   fromCents,
+  parseMoneyToCents,
+  parseMoney,
   sumMoney,
   subtractMoney,
   multiplyMoney,
@@ -37,6 +39,30 @@ test('fromCents y toCents conversiones y valores borde', () => {
   assert.equal(fromCents(99), 0.99);
   assert.equal(fromCents(0), 0);
   assert.equal(fromCents(NaN), 0);
+});
+
+test('parseMoneyToCents y parseMoney manejan cadenas, símbolos monetarios y redondeo de centavos', () => {
+  assert.equal(parseMoneyToCents('$1,250.50'), 125050);
+  assert.equal(parseMoney('$1,250.50'), 1250.5);
+
+  assert.equal(parseMoneyToCents(' 87.50 '), 8750);
+  assert.equal(parseMoney(' 87.50 '), 87.5);
+
+  assert.equal(parseMoneyToCents('10.335'), 1034); // Mitad hacia arriba
+  assert.equal(parseMoneyToCents('10.334'), 1033);
+
+  assert.equal(parseMoneyToCents('-$45.20'), -4520);
+  assert.equal(parseMoney('-$45.20'), -45.2);
+
+  // Valores vacíos o inválidos
+  assert.equal(parseMoneyToCents(''), 0);
+  assert.equal(parseMoneyToCents(null), 0);
+  assert.equal(parseMoneyToCents(undefined), 0);
+  assert.equal(parseMoneyToCents('abc'), 0);
+
+  // Valor numérico directo
+  assert.equal(parseMoneyToCents(12.5), 1250);
+  assert.equal(parseMoney(12.5), 12.5);
 });
 
 test('Resta y multiplicación monetaria sin residuos decimales', () => {

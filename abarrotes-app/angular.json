@@ -108,6 +108,9 @@
             ],
             "styles": [
               "src/styles.css"
+            ],
+            "exclude": [
+              "src/app/domain/**/*.spec.ts"
             ]
           }
         }

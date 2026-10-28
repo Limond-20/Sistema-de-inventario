@@ -9,249 +9,240 @@ import {
   resolveShortageAlertAdjustment,
   verifyKardexChain,
   verifyProductContinuity,
-  type StockItemLike,
+  KardexAsyncQueue,
   type KardexEntry,
 } from './kardex.ts';
 
 test('Kardex: IDs de Kardex únicos en 1,000 movimientos', () => {
   const ids = new Set<string>();
-  const total = 1000;
-  for (let i = 0; i < total; i++) {
+  for (let i = 0; i < 1000; i++) {
     const id = generateKardexId();
-    assert.ok(id && id.length > 5);
+    assert.equal(ids.has(id), false, `ID duplicado detectado: ${id}`);
     ids.add(id);
   }
-  assert.equal(ids.size, total, `Se debieron generar ${total} IDs estrictamente únicos`);
+  assert.equal(ids.size, 1000, 'Deben generarse exactamente 1000 IDs únicos');
 });
 
 test('Kardex: Hash encadenado y verifyKardexChain detecta una entrada alterada', () => {
-  // Construimos una cadena de 4 movimientos
-  const e1 = createKardexEntry({
-    type: 'ENTRADA_COMPRA',
-    producto: { sku: 'ACE-NUT-850', name: 'Aceite Nutrioli' },
-    cantidad: 10,
-    saldoAnterior: 0,
-    saldoResultante: 10,
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Nota #101',
-  }, 'GENESIS');
+  // Construimos una secuencia válida de 5 movimientos
+  let history: KardexEntry[] = [];
+  let prevHash = 'GENESIS';
 
-  const e2 = createKardexEntry({
-    type: 'VENTA_EFECTIVO',
-    producto: { sku: 'ACE-NUT-850', name: 'Aceite Nutrioli' },
-    cantidad: -2,
-    saldoAnterior: 10,
-    saldoResultante: 8,
-    usuario: 'Cajero Matutino (Ana)',
-    referencia: 'Ticket #001',
-  }, e1.entryHash);
+  for (let i = 1; i <= 5; i++) {
+    const entry = createKardexEntry(
+      {
+        type: 'VENTA_EFECTIVO',
+        producto: { sku: 'COCA-600', name: 'Coca Cola 600ml' },
+        cantidad: -1,
+        saldoAnterior: 20 - (i - 1),
+        saldoResultante: 20 - i,
+        usuario: 'Don Lupe (Encargado)',
+        referencia: `Ticket #${i}`,
+      },
+      prevHash
+    );
+    history = appendKardexEntry(history, entry);
+    prevHash = entry.entryHash;
+  }
 
-  const e3 = createKardexEntry({
-    type: 'VENTA_FIADO',
-    producto: { sku: 'ACE-NUT-850', name: 'Aceite Nutrioli' },
-    cantidad: -1,
-    saldoAnterior: 8,
-    saldoResultante: 7,
-    usuario: 'Cajero Matutino (Ana)',
-    referencia: 'Libreta Fiado Doña Carmen',
-  }, e2.entryHash);
+  // 1. Verificación inicial de la cadena intacta
+  const checkInitial = verifyKardexChain(history);
+  assert.equal(checkInitial.valid, true, 'La cadena inicial debe ser 100% válida');
 
-  // Orden cronológico inverso (el más reciente primero, como en el array del servicio)
-  const cadenaValida: KardexEntry[] = [e3, e2, e1];
+  // 2. Modificación maliciosa de una entrada (alteramos cantidad de la entrada 2)
+  const tamperedHistory = history.map((e, idx) => {
+    if (idx === 2) {
+      return { ...e, cantidad: -10 }; // Alteración sin recalcular hash
+    }
+    return e;
+  });
 
-  const resultadoValido = verifyKardexChain(cadenaValida, 'newest-first');
-  assert.equal(resultadoValido.valid, true, 'La cadena no alterada debe ser 100% válida');
+  const checkTampered = verifyKardexChain(tamperedHistory);
+  assert.equal(checkTampered.valid, false, 'verifyKardexChain debe detectar la alteración');
+  assert.ok(checkTampered.error?.includes('Entrada alterada') || checkTampered.error?.includes('Ruptura de cadena'));
+});
 
-  // CASO DE ALTERACIÓN MALICIOSA: Modificamos la cantidad o el usuario de e2
-  const e2Alterada: KardexEntry = {
-    ...e2,
-    cantidad: -1, // Se intenta ocultar una venta de 2 a 1
-    saldoResultante: 9,
-  };
-  const cadenaAlterada: KardexEntry[] = [e3, e2Alterada, e1];
+test('Kardex Concurrencia: 200 movimientos asíncronos concurrentes con Promise.all mantienen la cadena válida sin bifurcaciones', async () => {
+  const queue = new KardexAsyncQueue();
+  let entries: KardexEntry[] = [];
+  let currentStock = 1000;
 
-  const resultadoInvalido = verifyKardexChain(cadenaAlterada, 'newest-first');
-  assert.equal(resultadoInvalido.valid, false, 'verifyKardexChain debe detectar la alteración');
-  assert.equal(resultadoInvalido.tamperedEntryId, e2.id);
-  assert.match(resultadoInvalido.error || '', /alterada/i);
+  // Lanzamos 200 movimientos concurrentes usando Promise.all y la cola serializadora
+  const promises = Array.from({ length: 200 }, (_, i) => {
+    return queue.enqueue(async () => {
+      // Simular cálculo de hash o retraso asíncrono para forzar condiciones de carrera concurrentes
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 2));
+      const prevHash = entries.length > 0 ? entries[0].entryHash : 'GENESIS';
+      const cantidad = -1;
+      const saldoAnterior = currentStock;
+      const saldoResultante = saldoAnterior + cantidad;
+      currentStock = saldoResultante;
+
+      const newEntry = createKardexEntry(
+        {
+          type: 'VENTA_EFECTIVO',
+          producto: { sku: 'TEST-CONCURRENCIA', name: 'Producto Prueba' },
+          cantidad,
+          saldoAnterior,
+          saldoResultante,
+          usuario: `Cajero ${i % 3}`,
+          referencia: `Ticket #${i + 1}`,
+        },
+        prevHash
+      );
+      entries = appendKardexEntry(entries, newEntry);
+    });
+  });
+
+  await Promise.all(promises);
+
+  assert.equal(entries.length, 200, 'Deben existir exactamente 200 entradas en el historial');
+  const chainCheck = verifyKardexChain(entries);
+  assert.equal(chainCheck.valid, true, `La cadena debe ser íntegra y no bifurcada: ${chainCheck.error}`);
+  const continuityCheck = verifyProductContinuity('TEST-CONCURRENCIA', entries, currentStock);
+  assert.equal(continuityCheck.valid, true, `La continuidad debe ser perfecta: ${continuityCheck.error}`);
 });
 
 test('Kardex: Prueba de continuidad: saldoResultante[i] == saldoAnterior[i+1] y stock actual == último saldoResultante', () => {
-  const sku = 'LECHE-LALA-1L';
+  let entries: KardexEntry[] = [];
   let prevHash = 'GENESIS';
+  let stock = 100;
 
-  // Paso 0: Entrada inicial (stock inicial: 0 -> 12)
-  const mov1 = createKardexEntry({
-    type: 'ENTRADA_COMPRA',
-    producto: { sku, name: 'Leche Lala 1L' },
-    cantidad: 12,
-    saldoAnterior: 0,
-    saldoResultante: 12,
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Nota Lala #554',
-  }, prevHash);
-  prevHash = mov1.entryHash;
+  // 10 transacciones secuenciales del producto 'JABON-ROSA'
+  for (let i = 0; i < 10; i++) {
+    const qty = -(i + 1);
+    const saldoAnt = stock;
+    stock = saldoAnt + qty;
+    const entry = createKardexEntry(
+      {
+        type: 'VENTA_EFECTIVO',
+        producto: { sku: 'JABON-ROSA', name: 'Jabón Rosa 400g' },
+        cantidad: qty,
+        saldoAnterior: saldoAnt,
+        saldoResultante: stock,
+        usuario: 'Don Lupe (Encargado)',
+        referencia: `Venta #${i + 1}`,
+      },
+      prevHash
+    );
+    entries = appendKardexEntry(entries, entry);
+    prevHash = entry.entryHash;
+  }
 
-  // Paso 1: Venta efectivo (12 -> 8)
-  const mov2 = createKardexEntry({
-    type: 'VENTA_EFECTIVO',
-    producto: { sku, name: 'Leche Lala 1L' },
-    cantidad: -4,
-    saldoAnterior: 12,
-    saldoResultante: 8,
-    usuario: 'Cajero Vespertino (Pedro)',
-    referencia: 'Ticket #020',
-  }, prevHash);
-  prevHash = mov2.entryHash;
+  // Verificación de continuidad exitosa
+  const continuityOk = verifyProductContinuity('JABON-ROSA', entries, stock);
+  assert.equal(continuityOk.valid, true);
 
-  // Paso 2: Merma autorizada (8 -> 6)
-  const mov3 = createKardexEntry({
-    type: 'BAJA_MERMA',
-    producto: { sku, name: 'Leche Lala 1L' },
-    cantidad: -2,
-    saldoAnterior: 8,
-    saldoResultante: 6,
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Envase roto',
-  }, prevHash);
-  prevHash = mov3.entryHash;
-
-  // Paso 3: Consumo interno (6 -> 5)
-  const mov4 = createKardexEntry({
-    type: 'CONSUMO_INTERNO',
-    producto: { sku, name: 'Leche Lala 1L' },
-    cantidad: -1,
-    saldoAnterior: 6,
-    saldoResultante: 5,
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Comida personal',
-  }, prevHash);
-
-  const historialNewestFirst = [mov4, mov3, mov2, mov1];
-  const stockActual = 5;
-
-  const continuidadValida = verifyProductContinuity(sku, historialNewestFirst, stockActual, 'newest-first');
-  assert.equal(continuidadValida.valid, true, 'La continuidad debe cumplirse a lo largo de todo el ciclo de vida');
-
-  // Si el stock actual no coincide con el último saldoResultante
-  const continuidadDiscrepante = verifyProductContinuity(sku, historialNewestFirst, 4, 'newest-first');
-  assert.equal(continuidadDiscrepante.valid, false);
-  assert.match(continuidadDiscrepante.error || '', /Discontinuidad final/);
+  // Verificación de falla si el stock actual no coincide con el último saldo
+  const continuityFail = verifyProductContinuity('JABON-ROSA', entries, stock + 5);
+  assert.equal(continuityFail.valid, false);
+  assert.ok(continuityFail.error?.includes('Discontinuidad final'));
 });
 
 test('Mermas y consumo interno: no permitir baja mayor que la existencia a menos que se autorice con PIN y motivo', () => {
-  const producto: StockItemLike = {
-    sku: 'PAN-BIM-BLA',
-    name: 'Pan Bimbo Blanco',
-    stock: 2,
-    saleUnit: 'Pieza',
-  };
+  const prod = { sku: 'LECHE-LALA', name: 'Leche Entera 1L', stock: 5, saleUnit: 'L' };
 
-  // Intento 1: Dar de baja 5 piezas sin PIN
+  // 1. Intento de baja por 8 unidades (mayor a stock: 5) SIN PIN: Bloqueado
   const bajaBloqueada = deductStockForDisposal({
-    product: producto,
-    qtyToDeduct: 5,
+    product: prod,
+    qtyToDeduct: 8,
     type: 'BAJA_MERMA',
-    usuario: 'Cajero (Pedro)',
-    referencia: 'Rotura en piso',
+    usuario: 'Pedro (Cajero)',
+    referencia: 'Cartón aplastado',
   });
 
   assert.equal(bajaBloqueada.ok, false);
   assert.equal(bajaBloqueada.requiresPin, true);
-  assert.match(bajaBloqueada.message, /supera la existencia disponible/);
+  assert.ok(bajaBloqueada.message.includes('supera la existencia disponible'));
 
-  // Intento 2: Con PIN pero sin motivo
+  // 2. Intento de baja CON PIN pero SIN motivo: Bloqueado
   const bajaSinMotivo = deductStockForDisposal({
-    product: producto,
-    qtyToDeduct: 5,
+    product: prod,
+    qtyToDeduct: 8,
     type: 'BAJA_MERMA',
-    usuario: 'Cajero (Pedro)',
-    referencia: 'Rotura en piso',
+    usuario: 'Pedro (Cajero)',
+    referencia: 'Cartón aplastado',
     adminPinAuthorized: true,
-    overrideReason: '',
+    overrideReason: '   ',
   });
-  assert.equal(bajaSinMotivo.ok, false);
-  assert.match(bajaSinMotivo.message, /obligatorio indicar el motivo/);
 
-  // Intento 3: Con PIN y motivo justificado
+  assert.equal(bajaSinMotivo.ok, false);
+  assert.ok(bajaSinMotivo.message.includes('obligatorio indicar el motivo'));
+
+  // 3. Intento de baja CON PIN y CON motivo: Aprobada, genera FALTANTE_SISTEMA y alerta
   const bajaAutorizada = deductStockForDisposal({
-    product: producto,
-    qtyToDeduct: 5,
+    product: prod,
+    qtyToDeduct: 8,
     type: 'BAJA_MERMA',
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Rotura en descarga',
+    usuario: 'Pedro (Cajero)',
+    referencia: 'Cartón aplastado',
     adminPinAuthorized: true,
-    overrideReason: 'Caja completa se aplastó en la camioneta del proveedor',
+    overrideReason: 'Cajas llegaron rotas del proveedor y no se habían registrado',
   });
 
   assert.equal(bajaAutorizada.ok, true);
-  assert.equal(bajaAutorizada.updatedProduct?.stock, -3);
-
-  // FALTANTE_SISTEMA registra estrictamente el déficit real (tenía 2, bajó 5 -> déficit real: 3)
-  const faltanteEntry = bajaAutorizada.kardexEntries?.find((e) => e.type === 'FALTANTE_SISTEMA');
-  assert.ok(faltanteEntry, 'Debe registrar movimiento FALTANTE_SISTEMA');
-  assert.equal(faltanteEntry.cantidad, -3, 'El déficit real debe ser exactamente 3 piezas');
+  assert.equal(bajaAutorizada.updatedProduct?.stock, -3); // 5 - 8 = -3
+  assert.equal(bajaAutorizada.kardexEntries?.length, 2); // BAJA_MERMA + FALTANTE_SISTEMA
+  assert.equal(bajaAutorizada.kardexEntries?.[0].type, 'BAJA_MERMA');
+  assert.equal(bajaAutorizada.kardexEntries?.[1].type, 'FALTANTE_SISTEMA');
+  assert.equal(bajaAutorizada.kardexEntries?.[1].cantidad, -3); // Solo el déficit real
+  assert.ok(bajaAutorizada.shortageAlert !== undefined);
+  assert.equal(bajaAutorizada.shortageAlert?.negativeStock, -3);
 });
 
 test('FALTANTE_SISTEMA en ventas registra solo el déficit real que sobrepasó la existencia', () => {
-  // Caso 1: Había 2 en existencia y se vendieron 5 -> el déficit real es 3 (no 5)
-  const prod1: StockItemLike = {
-    sku: 'JAB-ZOT-BLA',
-    name: 'Jabón Zote Blanco',
-    stock: 2,
-    saleUnit: 'Pieza',
-  };
-  const res1 = deductStock(prod1, 5, {
+  // Caso A: Stock inicial positivo (3 piezas). Vendemos 5 piezas.
+  // Déficit real que faltó: 5 - 3 = 2 piezas. Saldo resultante = -2.
+  const prodA = { sku: 'ATUN-140', name: 'Atún Dolores 140g', stock: 3, saleUnit: 'Pz' };
+  const resA = deductStock(prodA, 5, {
     saleType: 'VENTA_EFECTIVO',
-    usuario: 'Cajero Matutino',
-    referencia: 'Ticket #100',
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Ticket V-001',
   });
 
-  assert.equal(res1.updatedProduct.stock, -3);
-  const faltante1 = res1.kardexEntries.find((e) => e.type === 'FALTANTE_SISTEMA');
-  assert.ok(faltante1);
-  assert.equal(faltante1.cantidad, -3, 'El déficit real es de 3 piezas');
+  assert.equal(resA.updatedProduct.stock, -2);
+  assert.equal(resA.kardexEntries.length, 2);
+  assert.equal(resA.kardexEntries[0].type, 'VENTA_EFECTIVO');
+  assert.equal(resA.kardexEntries[0].cantidad, -5);
+  assert.equal(resA.kardexEntries[0].saldoResultante, -2);
 
-  // Caso 2: El stock ya estaba en -1 y se venden 2 más -> el déficit real introducido por esta venta es 2
-  const prod2: StockItemLike = {
-    sku: 'JAB-ZOT-BLA',
-    name: 'Jabón Zote Blanco',
-    stock: -1,
-    saleUnit: 'Pieza',
-  };
-  const res2 = deductStock(prod2, 2, {
+  assert.equal(resA.kardexEntries[1].type, 'FALTANTE_SISTEMA');
+  assert.equal(resA.kardexEntries[1].cantidad, -2); // Exactamente el déficit real
+  assert.equal(resA.kardexEntries[1].saldoAnterior, -2);
+  assert.equal(resA.kardexEntries[1].saldoResultante, -2); // No salta saldo
+
+  // Caso B: Stock inicial ya en negativo (-2 piezas). Vendemos 3 piezas más.
+  // Todo lo vendido es déficit real (3 piezas). Saldo resultante = -5.
+  const prodB = { sku: 'ATUN-140', name: 'Atún Dolores 140g', stock: -2, saleUnit: 'Pz' };
+  const resB = deductStock(prodB, 3, {
     saleType: 'VENTA_EFECTIVO',
-    usuario: 'Cajero Matutino',
-    referencia: 'Ticket #101',
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Ticket V-002',
   });
 
-  assert.equal(res2.updatedProduct.stock, -3);
-  const faltante2 = res2.kardexEntries.find((e) => e.type === 'FALTANTE_SISTEMA');
-  assert.ok(faltante2);
-  assert.equal(faltante2.cantidad, -2, 'El déficit real de la nueva venta es de 2 piezas completas');
+  assert.equal(resB.updatedProduct.stock, -5);
+  assert.equal(resB.kardexEntries[1].cantidad, -3); // Déficit de 3 piezas
+  assert.equal(resB.kardexEntries[1].saldoResultante, -5);
 });
 
 test('Resolución de alerta de faltante con ajuste físico autorizado con PIN', () => {
-  const prodNegativo: StockItemLike = {
-    sku: 'FRI-NEG-50K',
-    name: 'Frijol Negro Granel',
-    stock: -4.5,
-    saleUnit: 'Kg',
-  };
+  const prodEnNegativo = { sku: 'HUEVO-KG', name: 'Huevo Blanco 1Kg', stock: -4, saleUnit: 'Kg' };
+  const alertId = 'A-FALTANTE-HUEVO-KG-12345';
 
-  // El encargado cuenta en piso y encuentra 15 kg reales
-  const resolucion = resolveShortageAlertAdjustment(
-    prodNegativo,
-    15,
+  // El dueño cuenta en anaquel y constata que físicamente hay 12 kg
+  const res = resolveShortageAlertAdjustment(
+    prodEnNegativo,
+    12,
     'Don Lupe (Encargado)',
-    'A-FALTANTE-01'
+    alertId,
+    'PREV-HASH-XYZ'
   );
 
-  assert.equal(resolucion.updatedProduct.stock, 15);
-  assert.equal(resolucion.kardexEntry.type, 'AJUSTE_AUDITORIA');
-  assert.equal(resolucion.kardexEntry.saldoAnterior, -4.5);
-  assert.equal(resolucion.kardexEntry.saldoResultante, 15);
-  assert.equal(resolucion.kardexEntry.cantidad, 19.5); // -4.5 a 15 es una subida neta de +19.5
-  assert.equal(resolucion.kardexEntry.usuario, 'Don Lupe (Encargado)');
-  assert.match(resolucion.kardexEntry.referencia, /A-FALTANTE-01/);
+  assert.equal(res.updatedProduct.stock, 12);
+  assert.equal(res.kardexEntry.type, 'AJUSTE_AUDITORIA');
+  assert.equal(res.kardexEntry.saldoAnterior, -4);
+  assert.equal(res.kardexEntry.saldoResultante, 12);
+  assert.equal(res.kardexEntry.cantidad, 16); // 12 - (-4) = +16 kg ajustados
+  assert.equal(res.kardexEntry.usuario, 'Don Lupe (Encargado)');
+  assert.ok(res.kardexEntry.referencia.includes(alertId));
 });

@@ -1,89 +1,134 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MemoryPinStorage,
-  isPinConfigured,
   setupInitialPin,
   verifyPinAttempt,
-  loadPinState,
   loadPinConfig,
+  loadPinState,
+  isPinConfigured,
+  validatePinPolicy,
+  isTrivialPin,
+  MemoryPinStorage,
+  DEFAULT_PIN_ITERATIONS,
+  FIRST_LOCKOUT_MS,
+  SUBSEQUENT_LOCKOUT_MS,
 } from './pin.ts';
+
+test('PIN Política: mínimo 6 dígitos y rechazo de secuencias triviales', () => {
+  // Menos de 6 dígitos
+  assert.equal(validatePinPolicy('12345').valid, false);
+  assert.equal(validatePinPolicy('123').valid, false);
+
+  // Caracteres no numéricos
+  assert.equal(validatePinPolicy('12345a').valid, false);
+  assert.equal(validatePinPolicy('abcdef').valid, false);
+
+  // Triviales repetidos
+  assert.equal(isTrivialPin('111111'), true);
+  assert.equal(isTrivialPin('999999'), true);
+  assert.equal(validatePinPolicy('111111').valid, false);
+
+  // Triviales consecutivos ascendentes
+  assert.equal(isTrivialPin('123456'), true);
+  assert.equal(isTrivialPin('234567'), true);
+  assert.equal(isTrivialPin('012345'), true);
+  assert.equal(validatePinPolicy('123456').valid, false);
+
+  // Triviales consecutivos descendentes
+  assert.equal(isTrivialPin('654321'), true);
+  assert.equal(isTrivialPin('543210'), true);
+  assert.equal(validatePinPolicy('654321').valid, false);
+
+  // Triviales por pares repetidos
+  assert.equal(isTrivialPin('121212'), true);
+  assert.equal(validatePinPolicy('121212').valid, false);
+
+  // PIN válido no trivial (mínimo 6 dígitos)
+  assert.equal(isTrivialPin('839201'), false);
+  assert.equal(validatePinPolicy('839201').valid, true);
+  assert.equal(validatePinPolicy('491827').valid, true);
+});
 
 test('PIN: Obliga a crear el PIN en el primer uso (sin PIN por defecto)', async () => {
   const storage = new MemoryPinStorage();
 
-  // 1. Al inicio no debe haber PIN configurado
-  assert.equal(isPinConfigured(storage), false, 'No debe existir un PIN predeterminado');
+  // 1. Al inicio no hay ningún PIN configurado
+  assert.equal(isPinConfigured(storage), false);
+  assert.equal(loadPinConfig(storage), null);
 
   // Intento de verificación sin PIN configurado
-  const resSinConfig = await verifyPinAttempt('1234', storage);
-  assert.equal(resSinConfig.success, false);
-  assert.equal(resSinConfig.isFirstUseRequired, true);
-  assert.match(resSinConfig.message, /primer uso/i);
+  const attemptWithoutConfig = await verifyPinAttempt('839201', storage);
+  assert.equal(attemptWithoutConfig.success, false);
+  assert.equal(attemptWithoutConfig.isFirstUseRequired, true);
 
-  // 2. Se obliga a crear el PIN inicial con PBKDF2 >= 100,000 iteraciones
-  const config = await setupInitialPin('7890', storage, 100_000);
+  // 2. Configurar PIN inicial de 6 dígitos con PBKDF2 (>= 600,000 iteraciones)
+  const config = await setupInitialPin('839201', storage, DEFAULT_PIN_ITERATIONS);
   assert.equal(isPinConfigured(storage), true);
-  assert.equal(config.iterations, 100_000);
-  assert.equal(config.pinHash.length, 64, 'El hash PBKDF2 debe ser de 256 bits (64 hex)');
+  assert.equal(config.iterations >= 600_000, true);
+  assert.equal(config.pinHash.length, 64); // SHA-256 hex string
 
-  // 3. Verificación con el nuevo PIN
-  const resExito = await verifyPinAttempt('7890', storage, Date.now(), 'Don Lupe (Dueño)');
-  assert.equal(resExito.success, true);
-  assert.equal(resExito.authorizedBy, 'Don Lupe (Dueño)');
+  // El estado de intentos se inicializa en 0
+  const state = loadPinState(storage);
+  assert.equal(state.failedAttempts, 0);
+  assert.equal(state.lockedUntil, null);
+  assert.equal(state.lockoutCount, 0);
 });
 
-test('PIN: Persiste intentos fallidos y bloqueo (sobreviven a recargar)', async () => {
-  // Simulamos el almacenamiento del navegador que sobrevive a recargas
-  const sharedBrowserStorage = new MemoryPinStorage();
+test('PIN: Bloqueo escalado (30 s en 1er bloqueo, 5 min en posteriores) y medición de tiempo PBKDF2', async () => {
+  const storage = new MemoryPinStorage();
+  const validPin = '839201';
+  let virtualTime = 1700000000000;
 
-  await setupInitialPin('4321', sharedBrowserStorage, 100_000, 3, 30_000);
-  const t0 = 1_000_000;
+  await setupInitialPin(validPin, storage, DEFAULT_PIN_ITERATIONS);
 
-  // Intento 1 incorrecto
-  const intento1 = await verifyPinAttempt('0000', sharedBrowserStorage, t0);
-  assert.equal(intento1.success, false);
-  assert.equal(intento1.remainingAttempts, 2);
+  // Medición de tiempo de verificación real
+  const measureStart = performance.now();
+  const firstSuccess = await verifyPinAttempt(validPin, storage, virtualTime);
+  const durationMs = performance.now() - measureStart;
 
-  // SIMULACIÓN DE RECARGA DE PÁGINA (creamos una nueva instancia sobre el mismo almacenamiento)
-  const estadoTrasRecarga1 = loadPinState(sharedBrowserStorage);
-  assert.equal(
-    estadoTrasRecarga1.failedAttempts,
-    1,
-    'El intento fallido debe persistir tras recargar'
-  );
+  assert.equal(firstSuccess.success, true);
+  assert.ok(durationMs > 0, 'La verificación debe consumir tiempo de CPU');
+  console.log(`[BENCHMARK] Tiempo de verificación PBKDF2 (600,000 iteraciones): ${durationMs.toFixed(2)} ms`);
+  // Debe ser menor a 1500 ms en entornos normales
+  assert.ok(durationMs < 1500, `El tiempo de verificación no debe superar 1.5s (obtenido: ${durationMs} ms)`);
 
-  // Intento 2 incorrecto
-  const intento2 = await verifyPinAttempt('1111', sharedBrowserStorage, t0 + 2000);
-  assert.equal(intento2.remainingAttempts, 1);
+  // Ciclo 1: 3 intentos fallidos provocan el 1er bloqueo de 30 segundos
+  await verifyPinAttempt('999888', storage, virtualTime); // Intento 1
+  await verifyPinAttempt('999888', storage, virtualTime); // Intento 2
+  const lock1 = await verifyPinAttempt('999888', storage, virtualTime); // Intento 3 -> Bloqueo 1
 
-  // SIMULACIÓN DE SEGUNDA RECARGA DE PÁGINA
-  const estadoTrasRecarga2 = loadPinState(sharedBrowserStorage);
-  assert.equal(estadoTrasRecarga2.failedAttempts, 2);
+  assert.equal(lock1.isLocked, true);
+  assert.equal(lock1.remainingAttempts, 0);
+  assert.equal(lock1.lockedRemainingSeconds, 30);
+  assert.equal(lock1.nextState.lockoutCount, 1);
+  assert.equal(lock1.nextState.lockedUntil, virtualTime + FIRST_LOCKOUT_MS);
 
-  // Intento 3 incorrecto (bloquea por 30 segundos)
-  const intento3 = await verifyPinAttempt('9999', sharedBrowserStorage, t0 + 4000);
-  assert.equal(intento3.isLocked, true);
-  assert.equal(intento3.lockedRemainingSeconds, 30);
-  assert.equal(intento3.nextState.lockedUntil, (t0 + 4000) + 30_000);
+  // Intento dentro de la ventana del 1er bloqueo es rechazado
+  const duringLock1 = await verifyPinAttempt(validPin, storage, virtualTime + 10_000);
+  assert.equal(duringLock1.isLocked, true);
+  assert.equal(duringLock1.lockedRemainingSeconds, 20);
 
-  // SIMULACIÓN DE RECARGA DURANTE EL BLOQUEO (10 segundos después)
-  const intentoDuranteBloqueo = await verifyPinAttempt('4321', sharedBrowserStorage, t0 + 14_000);
-  assert.equal(
-    intentoDuranteBloqueo.isLocked,
-    true,
-    'El bloqueo de 30s debe persistir aunque el usuario recargue el navegador'
-  );
-  assert.equal(intentoDuranteBloqueo.lockedRemainingSeconds, 20);
+  // Avanzamos el tiempo después del 1er bloqueo (+31 segundos)
+  virtualTime += 31_000;
 
-  // Intento después de que expira el bloqueo (35 segundos después) con PIN correcto
-  const intentoLiberado = await verifyPinAttempt('4321', sharedBrowserStorage, t0 + 39_000);
-  assert.equal(intentoLiberado.success, true);
-  assert.equal(intentoLiberado.isLocked, false);
-  assert.equal(intentoLiberado.remainingAttempts, 3);
+  // Ciclo 2: Tras expirar el primer bloqueo, 3 nuevos fallos provocan el 2do bloqueo escalado a 5 minutos (300 s)
+  await verifyPinAttempt('999888', storage, virtualTime); // Fallo 1
+  await verifyPinAttempt('999888', storage, virtualTime); // Fallo 2
+  const lock2 = await verifyPinAttempt('999888', storage, virtualTime); // Fallo 3 -> Bloqueo 2
 
-  // Verificar que el estado guardado se limpió tras el éxito
-  const estadoLimpio = loadPinState(sharedBrowserStorage);
-  assert.equal(estadoLimpio.failedAttempts, 0);
-  assert.equal(estadoLimpio.lockedUntil, null);
+  assert.equal(lock2.isLocked, true);
+  assert.equal(lock2.remainingAttempts, 0);
+  assert.equal(lock2.lockedRemainingSeconds, 300); // 5 minutos = 300 s
+  assert.equal(lock2.nextState.lockoutCount, 2);
+  assert.equal(lock2.nextState.lockedUntil, virtualTime + SUBSEQUENT_LOCKOUT_MS);
+
+  // Avanzamos el tiempo después del 2do bloqueo (+301 segundos)
+  virtualTime += 301_000;
+
+  // Un intento correcto posterior desbloquea y reinicia el conteo de bloqueos
+  const recovery = await verifyPinAttempt(validPin, storage, virtualTime);
+  assert.equal(recovery.success, true);
+  assert.equal(recovery.nextState.failedAttempts, 0);
+  assert.equal(recovery.nextState.lockoutCount, 0);
+  assert.equal(recovery.nextState.lockedUntil, null);
 });

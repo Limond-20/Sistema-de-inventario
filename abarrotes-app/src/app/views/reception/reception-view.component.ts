@@ -9,6 +9,13 @@ import {
   parseTicketOCR,
   suggestedPrice,
 } from '../../services/mock-inventory.service';
+import {
+  parseMoney,
+  sumMoney,
+  subtractMoney,
+  multiplyMoney,
+  fromCents,
+} from '../../domain/money';
 
 type Mode = 'ocr' | 'manual';
 
@@ -289,7 +296,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
                 ? {
                     ...l,
                     qtyPurchase: l.qtyPurchase + 1,
-                    lineTotal: +((l.qtyPurchase + 1) * l.newCost * l.unitsPerPurchase).toFixed(2),
+                    lineTotal: multiplyMoney(l.newCost * l.unitsPerPurchase, l.qtyPurchase + 1),
                   }
                 : l,
             );
@@ -330,7 +337,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     this.manualSku = sku;
     this.manualSkuSig.set(sku);
     const p = this.inv.products().find((x) => x.sku === sku);
-    this.manualCost = p ? +(p.newCost * p.unitsPerPurchase).toFixed(2) : null;
+    this.manualCost = p ? multiplyMoney(p.newCost, p.unitsPerPurchase) : null;
   }
 
   changeManualQty(d: number): void {
@@ -395,7 +402,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
       purchaseUnit: newProd.purchaseUnit,
       unitsPerPurchase: 1,
       saleUnit: newProd.saleUnit,
-      lineTotal: +(qty * cost).toFixed(2),
+      lineTotal: multiplyMoney(cost, qty),
       historicCost: cost,
       newCost: cost,
       salePrice: newProd.salePrice,

@@ -10,7 +10,8 @@ export type KardexType =
   | 'AJUSTE_AUDITORIA'
   | 'BAJA_MERMA'
   | 'CONSUMO_INTERNO'
-  | 'FALTANTE_SISTEMA';
+  | 'FALTANTE_SISTEMA'
+  | 'CAMBIO_USUARIO';
 
 export interface KardexProductInfo {
   sku: string;
@@ -31,7 +32,7 @@ export interface KardexEntry {
   description?: string;
   amount?: number;
   previousHash: string; // SHA-256 de la entrada anterior (o 'GENESIS')
-  entryHash: string; // SHA-256 del previousHash + campos de esta entrada
+  entryHash: string; // SHA-256 del JSON ordenado con previousHash + campos de esta entrada
 }
 
 export interface SystemShortageAlert {
@@ -68,6 +69,49 @@ export function generateKardexId(): string {
   const rand = Math.floor(Math.random() * 0xffffffff).toString(36);
   return `K-${timestamp}-${sequenceCounter}-${rand}`;
 }
+
+/**
+ * Serializa un objeto en formato JSON canónico determinista con claves ordenadas alfabéticamente.
+ */
+export function canonicalJsonStringify(obj: Record<string, any>): string {
+  const sortedKeys = Object.keys(obj).sort();
+  const sortedObj: Record<string, any> = {};
+  for (const key of sortedKeys) {
+    sortedObj[key] = obj[key];
+  }
+  return JSON.stringify(sortedObj);
+}
+
+/**
+ * Cola serializadora (candado asíncrono FIFO) para garantizar que la creación
+ * y encadenamiento criptográfico de entradas del Kardex se ejecute estrictamente
+ * de forma secuencial, previniendo bifurcaciones de hash bajo concurrencia.
+ */
+export class KardexAsyncQueue {
+  private queue: Promise<any> = Promise.resolve();
+
+  /**
+   * Encola una tarea asíncrona o síncrona asegurando ejecución atómica secuencial.
+   */
+  enqueue<T>(task: () => Promise<T> | T): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.queue = this.queue
+        .then(async () => {
+          try {
+            const res = await task();
+            resolve(res);
+          } catch (err) {
+            reject(err);
+          }
+        })
+        .catch((err) => {
+          reject(err);
+        });
+    });
+  }
+}
+
+export const globalKardexQueue = new KardexAsyncQueue();
 
 /**
  * Algoritmo SHA-256 síncrono puro (FIPS 180-4) para encadenamiento y auditoría en cualquier entorno.
@@ -135,7 +179,8 @@ export function sha256Sync(input: string): string {
 }
 
 /**
- * Calcula el hash criptográfico SHA-256 encadenado de una entrada del Kardex.
+ * Calcula el hash criptográfico SHA-256 encadenado de una entrada del Kardex
+ * serializando los campos con JSON ordenado alfabéticamente (no con "|").
  */
 export function computeKardexHash(
   entry: Omit<KardexEntry, 'entryHash'>,
@@ -145,19 +190,20 @@ export function computeKardexHash(
     typeof entry.producto === 'string'
       ? entry.producto
       : entry.producto?.sku || 'GENERIC';
-  const payload = [
+  const canonicalPayload = {
+    amount: entry.amount ?? 0,
+    cantidad: entry.cantidad,
+    id: entry.id,
     previousHash,
-    entry.id,
-    entry.timestamp,
-    entry.type,
-    prodSku,
-    entry.cantidad,
-    entry.saldoAnterior,
-    entry.saldoResultante,
-    entry.usuario,
-    entry.referencia,
-  ].join('|');
-  return sha256Sync(payload);
+    producto: prodSku,
+    referencia: entry.referencia,
+    saldoAnterior: entry.saldoAnterior,
+    saldoResultante: entry.saldoResultante,
+    timestamp: entry.timestamp,
+    type: entry.type,
+    usuario: entry.usuario,
+  };
+  return sha256Sync(canonicalJsonStringify(canonicalPayload));
 }
 
 export interface CreateKardexEntryParams {

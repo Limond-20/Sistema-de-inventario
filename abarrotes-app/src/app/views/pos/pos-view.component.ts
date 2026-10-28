@@ -8,6 +8,15 @@ import {
   PosSaleItem,
   Product,
 } from '../../services/mock-inventory.service';
+import {
+  parseMoney,
+  parseMoneyToCents,
+  sumMoney,
+  subtractMoney,
+  multiplyMoney,
+  toCents,
+  fromCents,
+} from '../../domain/money';
 
 type BulkCalcMode = 'weight' | 'amount';
 
@@ -121,7 +130,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   // ---------- Computadas del Carrito ----------
   protected readonly cartTotal = computed(() =>
-    +this.cart().reduce((sum, item) => sum + item.subtotal, 0).toFixed(2),
+    sumMoney(this.cart().map((item) => item.subtotal)),
   );
 
   protected readonly cartItemsCount = computed(() => this.cart().length);
@@ -133,7 +142,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     if (this.bulkMode() === 'weight') {
       return Math.max(0.01, +Number(this.bulkWeightKg() || 0).toFixed(3));
     }
-    const pesos = Math.max(1, Number(this.bulkAmountPesos() || 0));
+    const pesos = Math.max(1, parseMoney(this.bulkAmountPesos() || 0));
     return +(pesos / prod.salePrice).toFixed(3);
   });
 
@@ -145,18 +154,19 @@ export class PosViewComponent implements OnInit, OnDestroy {
     const prod = this.bulkModalProduct();
     if (!prod) return 0;
     if (this.bulkMode() === 'amount') {
-      return Math.max(1, +Number(this.bulkAmountPesos() || 0).toFixed(2));
+      return Math.max(1, parseMoney(this.bulkAmountPesos() || 0));
     }
-    return +(this.calculatedBulkKg() * prod.salePrice).toFixed(2);
+    return multiplyMoney(prod.salePrice, this.calculatedBulkKg());
   });
 
   // ---------- Computadas Efectivo y Cambio ----------
-  protected readonly cashChange = computed(() =>
-    +((Number(this.cashReceived()) || 0) - this.cartTotal()).toFixed(2),
-  );
+  protected readonly cashChange = computed(() => {
+    const received = parseMoney(this.cashReceived() || 0);
+    return subtractMoney(received, this.cartTotal());
+  });
 
   protected readonly canConfirmCash = computed(
-    () => this.cart().length > 0 && (Number(this.cashReceived()) || 0) >= this.cartTotal(),
+    () => this.cart().length > 0 && parseMoney(this.cashReceived() || 0) >= this.cartTotal(),
   );
 
   // ---------- Computadas Fiado (Crédito) ----------
@@ -170,8 +180,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
     if (!customer) {
       return { allowed: false, reason: 'Selecciona un cliente de la lista.' };
     }
-    const available = +(customer.creditLimit - customer.currentBalance).toFixed(2);
-    const projectedBalance = +(customer.currentBalance + total).toFixed(2);
+    const available = subtractMoney(customer.creditLimit, customer.currentBalance);
+    const projectedBalance = sumMoney([customer.currentBalance, total]);
 
     if (customer.status === 'VENCIDO') {
       return {
@@ -327,7 +337,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       const existing = list.find((i) => i.sku === prod.sku);
       if (existing) {
         const nextQty = +(existing.qty + qtyKg).toFixed(3);
-        const nextSub = +(existing.subtotal + subtotal).toFixed(2);
+        const nextSub = sumMoney([existing.subtotal, subtotal]);
         return list.map((i) => (i.sku === prod.sku ? { ...i, qty: nextQty, subtotal: nextSub } : i));
       }
       return [
@@ -357,7 +367,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
         if (nextQty <= 0) {
           return list.filter((i) => i.sku !== product.sku);
         }
-        const nextSub = +(nextQty * existing.unitPrice).toFixed(2);
+        const nextSub = multiplyMoney(existing.unitPrice, nextQty);
         return list.map((i) => (i.sku === product.sku ? { ...i, qty: nextQty, subtotal: nextSub } : i));
       }
       if (delta <= 0) return list;
@@ -372,7 +382,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
           isBulk: product.isBulk,
           qty: delta,
           unitPrice: product.salePrice,
-          subtotal: +(delta * product.salePrice).toFixed(2),
+          subtotal: multiplyMoney(product.salePrice, delta),
         },
       ];
     });
@@ -390,7 +400,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     }
 
     this.cart.update((list) =>
-      list.map((i) => (i.sku === sku ? { ...i, qty: nextQty, subtotal: +(nextQty * i.unitPrice).toFixed(2) } : i)),
+      list.map((i) => (i.sku === sku ? { ...i, qty: nextQty, subtotal: multiplyMoney(i.unitPrice, nextQty) } : i)),
     );
   }
 
@@ -438,7 +448,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   confirmCashSale(): void {
     if (!this.canConfirmCash()) return;
-    const res = this.inv.processCashSale(this.cart(), Number(this.cashReceived()) || 0);
+    const res = this.inv.processCashSale(this.cart(), parseMoney(this.cashReceived() || 0));
     if (res.ok) {
       this.saleFeedback.set({ ok: true, text: res.message });
       this.cart.set([]);
@@ -509,7 +519,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   executeAbono(): void {
     const customerId = this.abonoCustomerId();
-    const amount = Number(this.abonoAmount());
+    const amount = parseMoney(this.abonoAmount());
     const res = this.inv.registerCreditPayment(customerId, amount);
     this.abonoFeedback.set(res.message);
   }

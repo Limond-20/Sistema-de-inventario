@@ -75,3 +75,7 @@ jobs:
       - name: Ejecutar pruebas de dominio (npm run test:domain)
         run: npm run test:domain
         working-directory: abarrotes-app
+
+      - name: Pruebas de integración del servicio (ng test con ChromeHeadless)
+        run: npm test -- --no-watch --browsers=ChromeHeadless
+        working-directory: abarrotes-app

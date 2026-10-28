@@ -24,6 +24,7 @@ import {
   resolveShortageAlertAdjustment,
   verifyKardexChain,
   verifyProductContinuity,
+  KardexAsyncQueue,
   type KardexEntry,
   type KardexType,
 } from '../domain/kardex';
@@ -1142,11 +1143,55 @@ export class MockInventoryService {
     'Administrador',
   ]);
   readonly activeUser = signal<string>('Don Lupe (Encargado)');
+  readonly kardexQueue = new KardexAsyncQueue();
 
-  setActiveUser(name: string): void {
-    if (name?.trim()) {
-      this.activeUser.set(name.trim());
+  /**
+   * Encola una operación que altera el Kardex para asegurar ejecución serializada
+   * y atómica, impidiendo bifurcaciones de hash bajo concurrencia.
+   */
+  async enqueueKardexOperation<T>(task: () => Promise<T> | T): Promise<T> {
+    return this.kardexQueue.enqueue(task);
+  }
+
+  /**
+   * Cambia el usuario activo.
+   * Cambiar a 'Administrador' exige validación de PIN de al menos 6 dígitos.
+   * Cada cambio de usuario genera una entrada auditable de tipo 'CAMBIO_USUARIO' en el Kardex.
+   */
+  async setActiveUser(name: string, pin?: string): Promise<{ success: boolean; message: string }> {
+    const target = name?.trim();
+    if (!target) return { success: false, message: 'Nombre de usuario inválido.' };
+    const prevUser = this.activeUser();
+    if (target === prevUser) return { success: true, message: 'Usuario actual sin cambios.' };
+
+    if (target === 'Administrador') {
+      const pinCheck = await this.verifyAdminPin(pin || '');
+      if (!pinCheck.success) {
+        return { success: false, message: pinCheck.message };
+      }
     }
+
+    return this.enqueueKardexOperation(() => {
+      this.activeUser.set(target);
+      const lastEntry = this.kardex()[0];
+      const prevHash = lastEntry ? lastEntry.entryHash : 'GENESIS';
+      const entry = createKardexEntry(
+        {
+          type: 'CAMBIO_USUARIO',
+          producto: { sku: 'SISTEMA', name: 'Sesión de Usuario', saleUnit: 'Sesión' },
+          cantidad: 0,
+          saldoAnterior: 0,
+          saldoResultante: 0,
+          usuario: target,
+          referencia: `Cambio de usuario activo: "${prevUser}" -> "${target}"`,
+          description: `CAMBIO DE USUARIO ACTIVO: Se transfirió la sesión de "${prevUser}" a "${target}".`,
+          amount: 0,
+        },
+        prevHash
+      );
+      this.kardex.update((prev) => appendKardexEntry(prev, entry));
+      return { success: true, message: `Usuario activo cambiado a ${target}.` };
+    });
   }
 
   constructor() {
@@ -1177,14 +1222,15 @@ export class MockInventoryService {
         }
       });
 
-      if (window.LanSync) {
-        window.LanSync.on('peers', (s) => {
-          if (s.status !== 'unavailable') {
+      const winLan = typeof window !== 'undefined' ? (window as any).LanSync : undefined;
+      if (winLan) {
+        winLan.on('peers', (s: any) => {
+          if (s && s.status !== 'unavailable') {
             this.phoneLinked.set(s.phones > 0);
           }
         });
-        if (window.LanSync.status !== 'unavailable') {
-          this.phoneLinked.set(window.LanSync.phones > 0);
+        if (winLan.status !== 'unavailable') {
+          this.phoneLinked.set(winLan.phones > 0);
         }
       }
     }
@@ -1837,31 +1883,33 @@ export class MockInventoryService {
     }
 
     const authorizer = pinResult.authorizedBy || authorizerName;
-    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
-    const { updatedProduct, kardexEntry } = resolveShortageAlertAdjustment(
-      prod,
-      realPhysicalStock,
-      authorizer,
-      alertId,
-      previousHash,
-    );
+    return this.enqueueKardexOperation(() => {
+      const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+      const { updatedProduct, kardexEntry } = resolveShortageAlertAdjustment(
+        prod,
+        realPhysicalStock,
+        authorizer,
+        alertId,
+        previousHash,
+      );
 
-    // Actualizar existencia física en catálogo
-    this.products.update((list) =>
-      list.map((p) => (p.sku === sku ? updatedProduct : p)),
-    );
+      // Actualizar existencia física en catálogo
+      this.products.update((list) =>
+        list.map((p) => (p.sku === sku ? updatedProduct : p)),
+      );
 
-    this.kardex.update((k) => [kardexEntry, ...k]);
+      this.kardex.update((k) => [kardexEntry, ...k]);
 
-    // Eliminar la alerta de morningAlerts
-    this.morningAlerts.update((alerts) =>
-      alerts.filter((a) => a.id !== alertId && !(a.id.includes(sku) && a.kind === 'por-agotarse')),
-    );
+      // Eliminar la alerta de morningAlerts
+      this.morningAlerts.update((alerts) =>
+        alerts.filter((a) => a.id !== alertId && !(a.id.includes(sku) && a.kind === 'por-agotarse')),
+      );
 
-    return {
-      ok: true,
-      message: `Alerta resuelta: inventario de ${prod.name} cuadrado a ${realPhysicalStock} ${prod.saleUnit} por ${authorizer}.`,
-    };
+      return {
+        ok: true,
+        message: `Alerta resuelta: inventario de ${prod.name} cuadrado a ${realPhysicalStock} ${prod.saleUnit} por ${authorizer}.`,
+      };
+    });
   }
 
   /**
@@ -2077,61 +2125,72 @@ export class MockInventoryService {
     authorizedBy = 'Administrador (PIN)',
     pin?: string,
     reason?: string,
-  ): { ok: boolean; message: string } {
+  ): Promise<{ ok: boolean; message: string }> {
     const record = this.shrinkRecords().find((r) => r.id === id);
-    if (!record) return { ok: false, message: 'Registro de merma no encontrado.' };
+    if (!record) return Promise.resolve({ ok: false, message: 'Registro de merma no encontrado.' });
 
     const prod = this.products().find((p) => p.sku === record.sku);
-    if (!prod) return { ok: false, message: `Producto ${record.sku} no encontrado en catálogo.` };
+    if (!prod) return Promise.resolve({ ok: false, message: `Producto ${record.sku} no encontrado en catálogo.` });
 
     const currentStock = prod.stock;
     const isExceeding = record.qty > currentStock;
 
-    if (isExceeding && (!pin || !reason?.trim())) {
+    if (isExceeding) {
+      if (!pin || !reason?.trim()) {
+        return Promise.resolve({
+          ok: false,
+          message: `Baja de merma bloqueada: la cantidad (${record.qty}) supera la existencia disponible (${currentStock}). Requiere PIN de administrador y motivo justificado.`,
+        });
+      }
+    }
+
+    return this.enqueueKardexOperation(async () => {
+      if (isExceeding && pin) {
+        const pinCheck = await this.verifyAdminPin(pin, authorizedBy);
+        if (!pinCheck.success) {
+          return { ok: false, message: pinCheck.message };
+        }
+      }
+
+      const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+      const disposal = deductStockForDisposal({
+        product: prod,
+        qtyToDeduct: record.qty,
+        type: 'BAJA_MERMA',
+        usuario: authorizedBy,
+        referencia: `Aprobación merma #${record.id}`,
+        adminPinAuthorized: isExceeding,
+        overrideReason: reason?.trim(),
+        amount: multiplyMoney(record.unitCost, record.qty),
+        description: `Baja de merma #${record.id} aprobada por ${authorizedBy}: ${record.qty} ${record.saleUnit} de ${record.name}`,
+        previousHash,
+      });
+
+      if (!disposal.ok || !disposal.updatedProduct) {
+        return { ok: false, message: disposal.message };
+      }
+
+      this.products.update((list) =>
+        list.map((p) => (p.sku === record.sku ? disposal.updatedProduct! : p)),
+      );
+
+      this.shrinkRecords.update((list) =>
+        list.map((r) =>
+          r.id === id
+            ? { ...r, reviewed: true, registeredBy: `${r.registeredBy} | Aprobó: ${authorizedBy}` }
+            : r,
+        ),
+      );
+
+      if (disposal.kardexEntries) {
+        this.kardex.update((k) => [...disposal.kardexEntries!.reverse(), ...k]);
+      }
+
       return {
-        ok: false,
-        message: `Baja de merma bloqueada: la cantidad (${record.qty}) supera la existencia disponible (${currentStock}). Requiere PIN de administrador y motivo justificado.`,
+        ok: true,
+        message: `Merma #${record.id} aprobada con éxito por ${authorizedBy}.`,
       };
-    }
-
-    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
-    const disposal = deductStockForDisposal({
-      product: prod,
-      qtyToDeduct: record.qty,
-      type: 'BAJA_MERMA',
-      usuario: authorizedBy,
-      referencia: `Aprobación merma #${record.id}`,
-      adminPinAuthorized: isExceeding,
-      overrideReason: reason?.trim(),
-      amount: multiplyMoney(record.unitCost, record.qty),
-      description: `Baja de merma #${record.id} aprobada por ${authorizedBy}: ${record.qty} ${record.saleUnit} de ${record.name}`,
-      previousHash,
     });
-
-    if (!disposal.ok || !disposal.updatedProduct) {
-      return { ok: false, message: disposal.message };
-    }
-
-    this.products.update((list) =>
-      list.map((p) => (p.sku === record.sku ? disposal.updatedProduct! : p)),
-    );
-
-    this.shrinkRecords.update((list) =>
-      list.map((r) =>
-        r.id === id
-          ? { ...r, reviewed: true, registeredBy: `${r.registeredBy} | Aprobó: ${authorizedBy}` }
-          : r,
-      ),
-    );
-
-    if (disposal.kardexEntries) {
-      this.kardex.update((k) => [...disposal.kardexEntries!.reverse(), ...k]);
-    }
-
-    return {
-      ok: true,
-      message: `Merma #${record.id} aprobada con éxito por ${authorizedBy}.`,
-    };
   }
 
   /**
@@ -2154,7 +2213,7 @@ export class MockInventoryService {
       };
     }
     const authorizer = pinResult.authorizedBy || authorizerName;
-    const res = this.markShrinkReviewed(shrinkRecordId, authorizer, pin, reason);
+    const res = await this.markShrinkReviewed(shrinkRecordId, authorizer, pin, reason);
     return {
       ok: res.ok,
       message: res.message,

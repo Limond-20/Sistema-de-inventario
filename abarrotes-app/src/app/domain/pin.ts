@@ -5,13 +5,19 @@
  * AVISO DE SEGURIDAD Y CONTROL DE AUTORIZACIÓN:
  * El PIN de administrador actúa estrictamente como un control interno de autorización operativa
  * en el flujo de trabajo de la tienda (Point of Sale / Backoffice). Su propósito es asegurar
- * que ajustes de auditoría, diferencias de inventario y bajas de merma cuenten con la aprobación
- * presencial del encargado o dueño, evitando errores u omisiones de cajeros en el mostrador.
+ * que ajustes de auditoría, diferencias de inventario, cambio al perfil Administrador y bajas
+ * de merma cuenten con la aprobación presencial del encargado o dueño, evitando errores u omisiones
+ * de cajeros en el mostrador.
  *
  * NO constituye un límite criptográfico contra alguien con acceso físico directo o privilegios
  * de administración en el sistema operativo de la computadora local (PC del negocio).
  * =====================================================================================
  */
+
+export const DEFAULT_PIN_ITERATIONS = 600_000;
+export const DEFAULT_MAX_ATTEMPTS = 3;
+export const FIRST_LOCKOUT_MS = 30_000;   // 30 segundos en el primer bloqueo
+export const SUBSEQUENT_LOCKOUT_MS = 300_000; // 5 minutos en bloqueos posteriores
 
 export interface PinAuthConfig {
   salt: string;
@@ -24,10 +30,11 @@ export interface PinAuthConfig {
 export interface PinAuthState {
   failedAttempts: number;
   lockedUntil: number | null;
+  lockoutCount: number;
 }
 
 export function createInitialPinState(): PinAuthState {
-  return { failedAttempts: 0, lockedUntil: null };
+  return { failedAttempts: 0, lockedUntil: null, lockoutCount: 0 };
 }
 
 export interface PinVerificationResult {
@@ -39,6 +46,7 @@ export interface PinVerificationResult {
   nextState: PinAuthState;
   authorizedBy?: string;
   isFirstUseRequired?: boolean;
+  verificationDurationMs?: number;
 }
 
 export interface PinStorageAdapter {
@@ -85,6 +93,79 @@ function bytesToHex(bytes: Uint8Array): string {
 }
 
 /**
+ * Valida si un PIN es trivial (ej. dígitos idénticos, consecutivos ascendentes o descendentes).
+ */
+export function isTrivialPin(pin: string): boolean {
+  const clean = pin.trim();
+  if (clean.length < 6) return true;
+
+  // 1. Todos los dígitos iguales (ej. "111111", "000000", "999999")
+  if (new Set(clean.split('')).size === 1) {
+    return true;
+  }
+
+  // 2. Secuencia ascendente continua (ej. "123456", "234567", "012345")
+  let isAscending = true;
+  for (let i = 1; i < clean.length; i++) {
+    const prev = parseInt(clean[i - 1], 10);
+    const curr = parseInt(clean[i], 10);
+    if ((prev + 1) % 10 !== curr) {
+      isAscending = false;
+      break;
+    }
+  }
+  if (isAscending) return true;
+
+  // 3. Secuencia descendente continua (ej. "654321", "543210")
+  let isDescending = true;
+  for (let i = 1; i < clean.length; i++) {
+    const prev = parseInt(clean[i - 1], 10);
+    const curr = parseInt(clean[i], 10);
+    if ((prev - 1 + 10) % 10 !== curr) {
+      isDescending = false;
+      break;
+    }
+  }
+  if (isDescending) return true;
+
+  // 4. Patrones de dos dígitos repetidos (ej. "121212", "090909")
+  if (clean.length % 2 === 0) {
+    const pair = clean.slice(0, 2);
+    if (pair.repeat(clean.length / 2) === clean) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Valida la política de seguridad del PIN: mínimo 6 dígitos numéricos y no trivial.
+ */
+export function validatePinPolicy(pin: string): { valid: boolean; error?: string } {
+  const clean = (pin ?? '').trim();
+  if (clean.length < 6) {
+    return {
+      valid: false,
+      error: 'El PIN debe contener al menos 6 dígitos numéricos.',
+    };
+  }
+  if (!/^\d{6,}$/.test(clean)) {
+    return {
+      valid: false,
+      error: 'El PIN solo debe contener números (0-9).',
+    };
+  }
+  if (isTrivialPin(clean)) {
+    return {
+      valid: false,
+      error: 'El PIN no puede ser una secuencia trivial (dígitos idénticos, consecutivos o patrones simples).',
+    };
+  }
+  return { valid: true };
+}
+
+/**
  * Genera una sal criptográfica aleatoria de 16 bytes en hexadecimal.
  */
 export function generateSalt(length = 16): string {
@@ -97,13 +178,13 @@ export function generateSalt(length = 16): string {
 }
 
 /**
- * Deriva el hash del PIN usando PBKDF2 (SHA-256, >= 100,000 iteraciones).
+ * Deriva el hash del PIN usando PBKDF2 (SHA-256, >= 600,000 iteraciones).
  * Nunca almacena el PIN en texto plano.
  */
 export async function computePinHash(
   pin: string,
   saltHex: string,
-  iterations = 100_000
+  iterations = DEFAULT_PIN_ITERATIONS
 ): Promise<string> {
   const cleanPin = pin.trim();
   const enc = new TextEncoder();
@@ -153,19 +234,21 @@ export function loadPinConfig(storage: PinStorageAdapter = getDefaultStorage()):
 
 /**
  * Obliga a crear el PIN en el primer uso (sin PIN por defecto).
+ * Exige mínimo 6 dígitos y rechaza secuencias triviales.
  */
 export async function setupInitialPin(
   newPin: string,
   storage: PinStorageAdapter = getDefaultStorage(),
-  iterations = 100_000,
-  maxAttempts = 3,
-  lockoutDurationMs = 30_000
+  iterations = DEFAULT_PIN_ITERATIONS,
+  maxAttempts = DEFAULT_MAX_ATTEMPTS,
+  lockoutDurationMs = FIRST_LOCKOUT_MS
 ): Promise<PinAuthConfig> {
-  const clean = newPin.trim();
-  if (clean.length < 4) {
-    throw new Error('El PIN debe tener al menos 4 caracteres numéricos.');
+  const policyCheck = validatePinPolicy(newPin);
+  if (!policyCheck.valid) {
+    throw new Error(policyCheck.error);
   }
 
+  const clean = newPin.trim();
   const salt = generateSalt(16);
   const pinHash = await computePinHash(clean, salt, iterations);
 
@@ -181,28 +264,29 @@ export async function setupInitialPin(
   // Resetea cualquier estado anterior
   storage.setItem(
     STORAGE_KEY_STATE,
-    JSON.stringify({ failedAttempts: 0, lockedUntil: null })
+    JSON.stringify(createInitialPinState())
   );
 
   return config;
 }
 
 /**
- * Lee el estado persistido de intentos y bloqueo (sobrevive a recargas).
+ * Lee el estado persistido de intentos, bloqueo y conteo de bloqueos previos (sobrevive a recargas).
  */
 export function loadPinState(storage: PinStorageAdapter = getDefaultStorage()): PinAuthState {
   const raw = storage.getItem(STORAGE_KEY_STATE);
   if (!raw) {
-    return { failedAttempts: 0, lockedUntil: null };
+    return createInitialPinState();
   }
   try {
     const parsed = JSON.parse(raw);
     return {
       failedAttempts: typeof parsed.failedAttempts === 'number' ? parsed.failedAttempts : 0,
       lockedUntil: typeof parsed.lockedUntil === 'number' ? parsed.lockedUntil : null,
+      lockoutCount: typeof parsed.lockoutCount === 'number' ? parsed.lockoutCount : 0,
     };
   } catch {
-    return { failedAttempts: 0, lockedUntil: null };
+    return createInitialPinState();
   }
 }
 
@@ -217,7 +301,8 @@ export function savePinState(
 }
 
 /**
- * Verifica un intento de PIN considerando persistencia de intentos, bloqueo y obligatoriedad de primer uso.
+ * Verifica un intento de PIN considerando persistencia de intentos, bloqueo escalado
+ * (30 s en primer bloqueo, 5 min en posteriores) e iteraciones PBKDF2 (>= 600,000).
  */
 export async function verifyPinAttempt(
   pin: string,
@@ -225,6 +310,7 @@ export async function verifyPinAttempt(
   now: number = Date.now(),
   authorizerName = 'Administrador'
 ): Promise<PinVerificationResult> {
+  const startTime = typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
   const config = loadPinConfig(storage);
   if (!config) {
     return {
@@ -233,14 +319,14 @@ export async function verifyPinAttempt(
       remainingAttempts: 0,
       isLocked: false,
       lockedRemainingSeconds: 0,
-      nextState: { failedAttempts: 0, lockedUntil: null },
+      nextState: createInitialPinState(),
       isFirstUseRequired: true,
     };
   }
 
   const currentState = loadPinState(storage);
 
-  // 1. Verificar si está en ventana de bloqueo
+  // 1. Verificar si está actualmente en ventana de bloqueo
   if (currentState.lockedUntil !== null) {
     if (now < currentState.lockedUntil) {
       const remainingSeconds = Math.max(1, Math.ceil((currentState.lockedUntil - now) / 1000));
@@ -255,18 +341,21 @@ export async function verifyPinAttempt(
     }
   }
 
-  // Si el bloqueo expiró, reseteamos el conteo de fallos
+  // Si el bloqueo expiró, reseteamos el conteo de fallos del ciclo actual manteniendo el lockoutCount
   const effectiveAttempts =
     currentState.lockedUntil !== null && now >= currentState.lockedUntil
       ? 0
       : currentState.failedAttempts;
 
-  // 2. Verificar PBKDF2 hash
+  // 2. Verificar PBKDF2 hash (>= 600,000 iteraciones)
   const attemptHash = await computePinHash(pin, config.salt, config.iterations);
+  const endTime = typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
+  const durationMs = Math.round((endTime - startTime) * 100) / 100;
   const isValid = attemptHash === config.pinHash;
 
   if (isValid) {
-    const nextState: PinAuthState = { failedAttempts: 0, lockedUntil: null };
+    // Al autenticar correctamente, se reinician todos los contadores de bloqueo
+    const nextState: PinAuthState = { failedAttempts: 0, lockedUntil: null, lockoutCount: 0 };
     savePinState(nextState, storage);
     return {
       success: true,
@@ -276,26 +365,35 @@ export async function verifyPinAttempt(
       lockedRemainingSeconds: 0,
       nextState,
       authorizedBy: authorizerName,
+      verificationDurationMs: durationMs,
     };
   }
 
-  // 3. Fallo: incrementar y persistir
+  // 3. Fallo: incrementar y evaluar si requiere bloqueo escalado
   const newFailedAttempts = effectiveAttempts + 1;
   if (newFailedAttempts >= config.maxAttempts) {
-    const lockedUntil = now + config.lockoutDurationMs;
-    const lockSeconds = Math.ceil(config.lockoutDurationMs / 1000);
+    const newLockoutCount = (currentState.lockoutCount || 0) + 1;
+    // Bloqueo escalado: 1er bloqueo -> 30s (30,000 ms), posteriores -> 5 min (300,000 ms)
+    const lockoutDurationMs = newLockoutCount === 1 ? FIRST_LOCKOUT_MS : SUBSEQUENT_LOCKOUT_MS;
+    const lockedUntil = now + lockoutDurationMs;
+    const lockSeconds = Math.ceil(lockoutDurationMs / 1000);
+
     const nextState: PinAuthState = {
       failedAttempts: newFailedAttempts,
       lockedUntil,
+      lockoutCount: newLockoutCount,
     };
     savePinState(nextState, storage);
+
+    const lockDurationText = newLockoutCount === 1 ? '30 segundos' : '5 minutos';
     return {
       success: false,
-      message: `PIN incorrecto. Límite de ${config.maxAttempts} intentos alcanzado. Bloqueado por ${lockSeconds} segundos.`,
+      message: `PIN incorrecto. Límite de ${config.maxAttempts} intentos alcanzado. Bloqueado por ${lockDurationText}.`,
       remainingAttempts: 0,
       isLocked: true,
       lockedRemainingSeconds: lockSeconds,
       nextState,
+      verificationDurationMs: durationMs,
     };
   }
 
@@ -303,6 +401,7 @@ export async function verifyPinAttempt(
   const nextState: PinAuthState = {
     failedAttempts: newFailedAttempts,
     lockedUntil: null,
+    lockoutCount: currentState.lockoutCount || 0,
   };
   savePinState(nextState, storage);
 
@@ -313,5 +412,6 @@ export async function verifyPinAttempt(
     isLocked: false,
     lockedRemainingSeconds: 0,
     nextState,
+    verificationDurationMs: durationMs,
   };
 }

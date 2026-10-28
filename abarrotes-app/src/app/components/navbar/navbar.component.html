@@ -48,7 +48,7 @@
       <select
         id="active-user-select"
         [value]="inv.activeUser()"
-        (change)="inv.setActiveUser($any($event.target).value)"
+        (change)="onUserChange($any($event.target).value, $any($event.target))"
         class="w-full bg-brand-900 border border-white/25 rounded-lg px-2.5 py-1.5 text-xs text-white font-semibold focus:outline-none focus:ring-1 focus:ring-amber-400">
         @for (user of inv.availableUsers(); track user) {
           <option [value]="user" class="text-slate-900 bg-white">{{ user }}</option>

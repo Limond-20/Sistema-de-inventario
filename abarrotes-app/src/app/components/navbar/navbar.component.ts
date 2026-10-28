@@ -195,6 +195,25 @@ export class NavbarComponent implements OnInit, OnDestroy {
   }
  
 
+  async onUserChange(targetUser: string, selectEl?: HTMLSelectElement): Promise<void> {
+    if (!targetUser || targetUser === this.inv.activeUser()) return;
+    if (targetUser === 'Administrador') {
+      const pin = window.prompt('Ingrese el PIN de Administrador (mínimo 6 dígitos):');
+      if (!pin) {
+        if (selectEl) selectEl.value = this.inv.activeUser();
+        return;
+      }
+      const res = await this.inv.setActiveUser('Administrador', pin);
+      if (!res.success) {
+        alert(res.message);
+        if (selectEl) selectEl.value = this.inv.activeUser();
+        return;
+      }
+    } else {
+      await this.inv.setActiveUser(targetUser);
+    }
+  }
+
   openCloseShift(): void {
     this.shiftClosedSuccess.set(false);
     this.closeShiftModalOpen.set(true);
