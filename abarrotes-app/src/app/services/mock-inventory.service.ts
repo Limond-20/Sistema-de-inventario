@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, effect, signal } from '@angular/core';
 import { addShrinkRecordIdempotent } from '../domain/shrink';
 import {
   toCents,
@@ -38,6 +38,17 @@ import {
   type PinAuthState,
   type PinVerificationResult,
 } from '../domain/pin';
+import {
+  CURRENT_SCHEMA_VERSION,
+  STATE_STORAGE_KEY,
+  DEFAULT_DEBOUNCE_MS,
+  validateStoredState,
+  migrateState,
+  DebouncedStorageSaver,
+  StateStorageAdapter,
+  getDefaultStorageAdapter,
+  type PersistedAppState,
+} from '../domain/persistence';
 import {
   AbcResult,
   ClassificationDiscrepancy,
@@ -1190,12 +1201,181 @@ export class MockInventoryService {
         prevHash
       );
       this.kardex.update((prev) => appendKardexEntry(prev, entry));
+      this.scheduleSave();
       return { success: true, message: `Usuario activo cambiado a ${target}.` };
     });
   }
 
+  // ---------- Persistencia de Estado en IndexedDB (Bloque D) ----------
+  storageAdapter: StateStorageAdapter = getDefaultStorageAdapter();
+  private readonly storageSaver = new DebouncedStorageSaver(DEFAULT_DEBOUNCE_MS);
+  readonly corruptedDataWarning = signal<string | null>(null);
+  readonly isHydrated = signal<boolean>(false);
+
   constructor() {
     this.initLanSyncListener();
+    this.initPersistence();
+  }
+
+  private initPersistence(): void {
+    try {
+      effect(() => {
+        // Trackeamos reactivamente las señales principales
+        const _p = this.products();
+        const _c = this.creditCustomers();
+        const _s = this.cashShift();
+        const _r = this.cashRegister();
+        const _k = this.kardex();
+        const _sr = this.shrinkRecords();
+        const _al = this.auditLines();
+        const _ic = this.internalConsumptionRecords();
+        const _u = this.activeUser();
+        const _ma = this.morningAlerts();
+
+        if (this.isHydrated()) {
+          this.scheduleSave();
+        }
+      });
+    } catch {
+      // Ignorar si se inicializa fuera de un contexto de inyección de Angular
+    }
+
+    this.restorePersistedState().catch((err) => {
+      console.warn('[MockInventoryService] Error en restauración de estado:', err);
+    });
+  }
+
+  getPersistedStateSnapshot(): PersistedAppState {
+    return {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      timestamp: new Date().toISOString(),
+      activeUser: this.activeUser(),
+      products: this.products(),
+      creditCustomers: this.creditCustomers(),
+      cashShift: this.cashShift(),
+      cashRegister: this.cashRegister(),
+      kardex: this.kardex(),
+      shrinkRecords: this.shrinkRecords(),
+      auditLines: this.auditLines(),
+      internalConsumptionRecords: this.internalConsumptionRecords(),
+      morningAlerts: this.morningAlerts(),
+    };
+  }
+
+  scheduleSave(): void {
+    if (!this.isHydrated()) return;
+    this.storageSaver.schedule(async () => {
+      try {
+        await this.storageAdapter.save(STATE_STORAGE_KEY, this.getPersistedStateSnapshot());
+      } catch (err) {
+        console.warn('[MockInventoryService] Error guardando estado en almacenamiento diferido:', err);
+      }
+    });
+  }
+
+  async flushSave(): Promise<void> {
+    await this.storageSaver.flush(async () => {
+      try {
+        await this.storageAdapter.save(STATE_STORAGE_KEY, this.getPersistedStateSnapshot());
+      } catch (err) {
+        console.warn('[MockInventoryService] Error en flushSave de almacenamiento:', err);
+      }
+    });
+  }
+
+  async restorePersistedState(): Promise<{ success: boolean; corrupted?: boolean; reason?: string }> {
+    try {
+      const raw = await this.storageAdapter.load(STATE_STORAGE_KEY);
+      if (!raw) {
+        this.isHydrated.set(true);
+        return { success: true };
+      }
+
+      // 1. Migración de versión si procede
+      const migration = migrateState(raw);
+      const stateToValidate = migration.state;
+
+      // 2. Validación de integridad estructural y de cadena Kardex
+      const validation = validateStoredState(stateToValidate, (k) =>
+        verifyKardexChain(k, 'newest-first')
+      );
+      if (!validation.valid) {
+        const warnMsg = `Los datos guardados en el navegador estaban dañados (${validation.reason}). Se restauraron los datos iniciales de demostración.`;
+        this.corruptedDataWarning.set(warnMsg);
+        this.morningAlerts.update((prev) => [
+          {
+            id: 'ALERT-DATA-CORRUPT',
+            kind: 'auditoria',
+            icon: '⚠️',
+            title: 'Datos restaurados a modo demostración',
+            detail: warnMsg,
+            actionLabel: 'Descartar aviso',
+            route: '/',
+          },
+          ...prev.filter((a) => a.id !== 'ALERT-DATA-CORRUPT'),
+        ]);
+        this.isHydrated.set(true);
+        await this.flushSave();
+        return { success: false, corrupted: true, reason: validation.reason };
+      }
+
+      // 3. Hidratación del estado validado
+      this.products.set(stateToValidate.products);
+      this.creditCustomers.set(stateToValidate.creditCustomers);
+      if (stateToValidate.cashShift) this.cashShift.set(stateToValidate.cashShift);
+      if (stateToValidate.cashRegister) this.cashRegister.set(stateToValidate.cashRegister);
+      if (stateToValidate.internalConsumptionRecords) {
+        this.internalConsumptionRecords.set(stateToValidate.internalConsumptionRecords);
+      }
+      this.kardex.set(stateToValidate.kardex);
+      this.shrinkRecords.set(stateToValidate.shrinkRecords);
+      this.auditLines.set(stateToValidate.auditLines);
+      if (stateToValidate.morningAlerts) this.morningAlerts.set(stateToValidate.morningAlerts);
+      if (stateToValidate.activeUser) this.activeUser.set(stateToValidate.activeUser);
+
+      this.isHydrated.set(true);
+
+      if (migration.migrated) {
+        await this.flushSave();
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      const errMsg = `Error al leer almacenamiento local: ${err?.message || err}. Se usan datos de demostración.`;
+      this.corruptedDataWarning.set(errMsg);
+      this.isHydrated.set(true);
+      return { success: false, corrupted: true, reason: errMsg };
+    }
+  }
+
+  async resetToDemoData(): Promise<void> {
+    this.storageSaver.cancel();
+    await this.storageAdapter.clear();
+    this.products.set(structuredClone(PRODUCTS));
+    this.creditCustomers.set(structuredClone(CREDIT_CUSTOMERS));
+    this.cashShift.set({
+      openingCash: 500.0,
+      cashSalesTotal: 0.0,
+      creditPaymentsReceived: 0.0,
+      creditSalesTotal: 0.0,
+      internalConsumptionTotalCost: 0.0,
+      shrinkTotalCost: 0.0,
+    });
+    this.cashRegister.set({
+      openingFloat: 500.0,
+      cashSalesTotal: 0.0,
+      creditSalesTotal: 0.0,
+      creditPaymentsReceived: 0.0,
+    });
+    this.internalConsumptionRecords.set([]);
+    this.kardex.set(buildInitialKardex());
+    this.morningAlerts.set(structuredClone(MORNING_ALERTS));
+    this.auditLines.set(structuredClone(AUDIT_LINES));
+    this.shrinkRecords.set(structuredClone(SHRINK_RECORDS));
+    this.activeUser.set('Don Lupe (Encargado)');
+    this.corruptedDataWarning.set(null);
+    this.isHydrated.set(true);
+    await this.flushSave();
   }
 
   private initLanSyncListener(): void {
@@ -1619,6 +1799,8 @@ export class MockInventoryService {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
+    this.scheduleSave();
+
     return {
       ok: true,
       message: `Venta cobrada con éxito. Cambio: $${change.toFixed(2)}`,
@@ -1707,6 +1889,8 @@ export class MockInventoryService {
     if (shortageAlerts.length > 0) {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
+
+    this.scheduleSave();
 
     return {
       ok: true,
@@ -1848,6 +2032,8 @@ export class MockInventoryService {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
+    this.scheduleSave();
+
     return {
       ok: true,
       message: `Consumo interno registrado a cargo de ${authorizer} por un costo contable de $${totalCost.toFixed(2)}. Existencias descontadas sin entrada al cajón.`,
@@ -1904,6 +2090,8 @@ export class MockInventoryService {
       this.morningAlerts.update((alerts) =>
         alerts.filter((a) => a.id !== alertId && !(a.id.includes(sku) && a.kind === 'por-agotarse')),
       );
+
+      this.scheduleSave();
 
       return {
         ok: true,
@@ -1980,6 +2168,8 @@ export class MockInventoryService {
     }, previousHash);
 
     this.kardex.update((entries) => [entry, ...entries]);
+
+    this.scheduleSave();
 
     return {
       ok: true,
@@ -2081,6 +2271,7 @@ export class MockInventoryService {
       this.morningAlerts.update((a) => a.filter((x) => x.kind !== 'margen'));
     }
     this.lastSavedNote.set(folio);
+    this.scheduleSave();
   }
 
   // ---------- Auditoría ----------
@@ -2094,6 +2285,7 @@ export class MockInventoryService {
     if (this.pendingAuditCount() === 0) {
       this.morningAlerts.update((a) => a.filter((x) => x.kind !== 'auditoria'));
     }
+    this.scheduleSave();
   }
 
   // ---------- Mermas ----------
@@ -2114,6 +2306,7 @@ export class MockInventoryService {
       ...s,
       shrinkTotalCost: sumMoney([s.shrinkTotalCost, multiplyMoney(record.unitCost, record.qty)]),
     }));
+    this.scheduleSave();
   }
 
   /**
@@ -2185,6 +2378,8 @@ export class MockInventoryService {
       if (disposal.kardexEntries) {
         this.kardex.update((k) => [...disposal.kardexEntries!.reverse(), ...k]);
       }
+
+      this.scheduleSave();
 
       return {
         ok: true,
@@ -2342,6 +2537,8 @@ export class MockInventoryService {
         ...s,
         shrinkTotalCost: sumMoney([s.shrinkTotalCost, totalLoss]),
       }));
+
+      this.scheduleSave();
 
       return {
         ok: true,
@@ -2565,6 +2762,8 @@ export class MockInventoryService {
         ...list,
       ]);
     }
+
+    this.scheduleSave();
 
     return {
       ok: true,

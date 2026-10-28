@@ -37,6 +37,19 @@ Archivo independiente (monolítico en HTML + Tailwind CDN + Vanilla JS) ejecutab
 
 ---
 
+## 💾 Persistencia y Arquitectura de Datos (Bloque D)
+
+> **Nota para el equipo:** esto es una solución de prototipo; la base definitiva será SQLite en local-server, con la PC como fuente de verdad.
+
+En esta fase de prototipo:
+- El estado operativo completo (catálogo de productos, libreta de fiado vecinal, arqueos de caja, mermas, auditorías y Kardex criptográfico append-only) se resguarda en **IndexedDB** del navegador de la PC local con guardado diferido (`debounce ~500 ms`) para evitar saturación de I/O.
+- Incluye **versión de esquema y migración automática**.
+- Si el dato almacenado estuviera dañado o la cadena del Kardex fuese alterada, el sistema arranca con los datos de demostración limpios y despliega una alerta visible.
+- Cuenta con un botón **"Restablecer datos de demostración"** con diálogo de confirmación para reiniciar pruebas en cualquier momento.
+- **Seguridad:** El PIN de administrador **NUNCA** se almacena en texto plano; su autenticación se realiza mediante derivación PBKDF2 (>= 600,000 iteraciones + sal criptográfica).
+
+---
+
 ## 🏃 Cómo Ejecutar el Proyecto
 
 ### 1. Iniciar la Aplicación de Escritorio (PC):

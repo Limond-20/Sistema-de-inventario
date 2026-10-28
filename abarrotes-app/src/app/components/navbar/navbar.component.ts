@@ -224,4 +224,26 @@ export class NavbarComponent implements OnInit, OnDestroy {
   confirmCloseShift(): void {
     this.shiftClosedSuccess.set(true);
   }
+
+  // ---------- Restablecer Datos de Demostración (Bloque D) ----------
+  protected readonly resetDemoModalOpen = signal<boolean>(false);
+  protected readonly resetDemoSuccess = signal<boolean>(false);
+
+  openResetDemoModal(): void {
+    this.resetDemoSuccess.set(false);
+    this.resetDemoModalOpen.set(true);
+  }
+
+  closeResetDemoModal(): void {
+    this.resetDemoModalOpen.set(false);
+    this.resetDemoSuccess.set(false);
+  }
+
+  async confirmResetDemo(): Promise<void> {
+    await this.inv.resetToDemoData();
+    this.resetDemoSuccess.set(true);
+    setTimeout(() => {
+      this.closeResetDemoModal();
+    }, 1200);
+  }
 }

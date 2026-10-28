@@ -78,6 +78,23 @@
       <app-icon name="power" [size]="18" />
       Cerrar Turno
     </button>
+
+    @if (inv.corruptedDataWarning()) {
+      <div class="rounded-xl border border-amber-400/60 bg-amber-950/70 p-2.5 text-xs text-amber-200">
+        <span class="font-bold flex items-center gap-1.5">
+          <span>⚠️</span> Datos restaurados a demo
+        </span>
+        <span class="block text-[11px] text-amber-300/80 mt-1 line-clamp-2">
+          {{ inv.corruptedDataWarning() }}
+        </span>
+      </div>
+    }
+
+    <button type="button" (click)="openResetDemoModal()"
+      class="flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-400/40 bg-amber-500/10 text-xs font-semibold text-amber-200 hover:bg-amber-500/20 hover:text-amber-100">
+      <app-icon name="refresh" [size]="16" />
+      Restablecer datos de demostración
+    </button>
     
   </div>
 </aside>
@@ -278,6 +295,49 @@
             </button>
             <button type="button" (click)="confirmCloseShift()" class="h-11 rounded-xl bg-red-600 px-6 text-sm font-semibold text-white hover:bg-red-700">
               Confirmar y Cerrar Turno
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== MODAL RESTABLECER DATOS DEMO ===================== -->
+@if (resetDemoModalOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true">
+    <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <app-icon name="refresh" [size]="20" class="text-amber-600" />
+          Restablecer Datos de Demostración
+        </h2>
+        <button type="button" (click)="closeResetDemoModal()" class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
+          <app-icon name="close" [size]="18" />
+        </button>
+      </div>
+
+      <div class="p-6">
+        @if (resetDemoSuccess()) {
+          <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-center text-emerald-800">
+            <span class="text-2xl">✅</span>
+            <p class="mt-2 font-bold text-base">¡Datos de demostración restablecidos!</p>
+            <p class="mt-1 text-xs text-emerald-700">El catálogo, libreta de fiado, caja y Kardex han vuelto a los valores iniciales limpios.</p>
+          </div>
+        } @else {
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+            <p class="font-semibold text-sm">¿Deseas restablecer todos los datos del sistema?</p>
+            <p class="mt-2 text-xs text-amber-800 leading-relaxed">
+              Esta acción borrará los cambios locales guardados en IndexedDB de este navegador y restablecerá los 5 productos base, libreta de fiado, turnos de caja, mermas y el Kardex a sus valores iniciales de demostración.
+            </p>
+          </div>
+
+          <div class="mt-6 flex justify-end gap-3">
+            <button type="button" (click)="closeResetDemoModal()" class="h-10 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Cancelar
+            </button>
+            <button type="button" (click)="confirmResetDemo()" class="h-10 rounded-xl bg-amber-600 px-5 text-sm font-semibold text-white hover:bg-amber-700">
+              Sí, restablecer datos
             </button>
           </div>
         }

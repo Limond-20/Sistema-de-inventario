@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { MockInventoryService, ShrinkRecord, ReceptionLine } from './mock-inventory.service';
 import { verifyKardexChain } from '../domain/kardex';
+import {
+  CURRENT_SCHEMA_VERSION,
+  STATE_STORAGE_KEY,
+  MemoryStateStorageAdapter,
+} from '../domain/persistence';
 
 describe('MockInventoryService Integración (Bloque C)', () => {
   let service: MockInventoryService;
@@ -258,5 +263,129 @@ describe('MockInventoryService Integración (Bloque C)', () => {
     expect(integrity.valid).toBeTrue();
     expect(integrity.error).toBeUndefined();
     expect(service.kardex().length).toBeGreaterThan(3);
+  });
+
+  it('6. Persistencia (Bloque D): Guardar estado, recargar y recuperar intacto', async () => {
+    const memoryAdapter = new MemoryStateStorageAdapter();
+    service.storageAdapter = memoryAdapter;
+
+    // Mutamos estado: venta de 2 piezas de Coca-Cola
+    const prod = service.products().find((p) => p.sku === 'REF-COC-600')!;
+    service.processCashSale(
+      [
+        {
+          sku: 'REF-COC-600',
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 2,
+          unitPrice: prod.salePrice,
+          subtotal: 2 * prod.salePrice,
+        },
+      ],
+      100
+    );
+
+    // Guardamos estado
+    await service.flushSave();
+
+    // Verificamos que el adaptador contenga el estado guardado
+    const savedState = await memoryAdapter.load(STATE_STORAGE_KEY);
+    expect(savedState).toBeTruthy();
+    expect(savedState.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+
+    // Creamos o simulamos un segundo servicio / recarga
+    const restoredService = TestBed.inject(MockInventoryService);
+    restoredService.storageAdapter = memoryAdapter;
+    const restoreResult = await restoredService.restorePersistedState();
+    expect(restoreResult.success).toBeTrue();
+
+    // Verificamos que el producto REF-COC-600 se recuperó con el stock reducido
+    const restoredProd = restoredService.products().find((p) => p.sku === 'REF-COC-600')!;
+    expect(restoredProd.stock).toBe(prod.stock - 2);
+    expect(restoredService.cashShift().cashSalesTotal).toBe(2 * prod.salePrice);
+  });
+
+  it('7. Persistencia (Bloque D): Datos dañados arrancan con datos de demostración y emiten alerta visible', async () => {
+    const memoryAdapter = new MemoryStateStorageAdapter();
+    service.storageAdapter = memoryAdapter;
+
+    // Guardamos datos corruptos (colección no arreglo y kardex alterado)
+    await memoryAdapter.save(STATE_STORAGE_KEY, {
+      schemaVersion: 1,
+      products: 'productos-corruptos-no-array',
+      kardex: [],
+    });
+
+    const restoreResult = await service.restorePersistedState();
+    expect(restoreResult.success).toBeFalse();
+    expect(restoreResult.corrupted).toBeTrue();
+
+    // Comprobamos que el aviso de corrupción está activo
+    expect(service.corruptedDataWarning()).toContain('dañados');
+
+    // Comprobamos que los productos arrancaron con los datos iniciales de demostración
+    expect(service.products().length).toBeGreaterThan(0);
+    const prod = service.products().find((p) => p.sku === 'REF-COC-600');
+    expect(prod).toBeDefined();
+
+    // Comprobamos que se emitió una alerta visible en el tablero
+    const alert = service.morningAlerts().find((a) => a.id === 'ALERT-DATA-CORRUPT');
+    expect(alert).toBeDefined();
+    expect(alert!.title).toContain('demostración');
+  });
+
+  it('8. Persistencia (Bloque D): Migración simple de versión anterior (v0 -> v1)', async () => {
+    const memoryAdapter = new MemoryStateStorageAdapter();
+    service.storageAdapter = memoryAdapter;
+
+    // Guardamos estado versión 0 (datos antiguos sin schemaVersion explícito)
+    await memoryAdapter.save(STATE_STORAGE_KEY, {
+      timestamp: '2026-10-20T00:00:00.000Z',
+      activeUser: 'Don Lupe (Encargado)',
+      products: [
+        {
+          sku: 'LAC-LAL-1L',
+          name: 'Leche Lala Entera 1L',
+          stock: 25,
+          salePrice: 28,
+        },
+      ],
+      creditCustomers: [],
+      kardex: [],
+      shrinkRecords: [],
+      auditLines: [],
+    });
+
+    const restoreResult = await service.restorePersistedState();
+    expect(restoreResult.success).toBeTrue();
+
+    // Verificamos que el estado ahora tiene versión 1 y colecciones inicializadas
+    const snapshot = service.getPersistedStateSnapshot();
+    expect(snapshot.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(service.products().length).toBe(1);
+    expect(service.products()[0].sku).toBe('LAC-LAL-1L');
+    expect(service.products()[0].stock).toBe(25);
+  });
+
+  it('9. Persistencia (Bloque D): Botón "Restablecer datos de demostración" limpia almacenamiento y restaura valores de fábrica', async () => {
+    const memoryAdapter = new MemoryStateStorageAdapter();
+    service.storageAdapter = memoryAdapter;
+
+    // Modificamos datos
+    service.products.update((list) => list.slice(0, 1));
+    expect(service.products().length).toBe(1);
+
+    await service.flushSave();
+
+    // Ejecutamos resetToDemoData
+    await service.resetToDemoData();
+
+    // Verificamos que se restauraron los 5+ productos base de catálogo
+    expect(service.products().length).toBeGreaterThan(3);
+    expect(service.creditCustomers().length).toBeGreaterThan(1);
+    expect(service.corruptedDataWarning()).toBeNull();
   });
 });
