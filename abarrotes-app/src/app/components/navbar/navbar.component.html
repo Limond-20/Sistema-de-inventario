@@ -80,14 +80,15 @@
     </button>
 
     @if (inv.corruptedDataWarning()) {
-      <div class="rounded-xl border border-amber-400/60 bg-amber-950/70 p-2.5 text-xs text-amber-200">
+      <button type="button" (click)="inv.corruptedModalOpen.set(true)"
+        class="rounded-xl border border-amber-400/60 bg-amber-950/70 p-2.5 text-left text-xs text-amber-200 hover:bg-amber-950">
         <span class="font-bold flex items-center gap-1.5">
-          <span>⚠️</span> Datos restaurados a demo
+          <span>⚠️</span> Datos dañados (Autoguardado bloqueado)
         </span>
         <span class="block text-[11px] text-amber-300/80 mt-1 line-clamp-2">
           {{ inv.corruptedDataWarning() }}
         </span>
-      </div>
+      </button>
     }
 
     <button type="button" (click)="openResetDemoModal()"

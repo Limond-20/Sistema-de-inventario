@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, effect, signal } from '@angular/core';
 import { addShrinkRecordIdempotent } from '../domain/shrink';
 import {
   toCents,
@@ -41,9 +41,12 @@ import {
 import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  CORRUPT_STATE_KEY_PREFIX,
+  WRITER_LOCK_NAME,
   DEFAULT_DEBOUNCE_MS,
   validateStoredState,
   migrateState,
+  backupCorruptedState,
   DebouncedStorageSaver,
   StateStorageAdapter,
   getDefaultStorageAdapter,
@@ -1100,51 +1103,90 @@ export const PERISHABLE_BATCHES: PerishableBatch[] = [
 // =====================================================================
 
 function buildInitialKardex(): KardexEntry[] {
-  // Cadena criptográfica semilla (orden cronológico ascendente)
-  const e1 = createKardexEntry({
-    type: 'VENTA_EFECTIVO',
-    producto: { sku: 'VAR-01', name: 'Leche Lala, Bolillos, Queso' },
-    cantidad: -3,
-    saldoAnterior: 10,
-    saldoResultante: 7,
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Ticket #0101',
-    amount: 112.0,
-    description: 'Venta de mostrador en efectivo (Leche Lala, Bolillos, Queso)',
-  }, 'GENESIS');
+  // Cadena criptográfica semilla (orden cronológico ascendente):
+  // Incluye entradas iniciales para cada producto del catálogo base para garantizar
+  // que verifyProductContinuity(productos, kardex) valide cada SKU desde el arranque.
+  const chronoEntries: KardexEntry[] = [];
+  let prevHash = 'GENESIS';
 
-  const e2 = createKardexEntry({
-    type: 'VENTA_FIADO',
-    producto: { sku: 'CLI-04', name: 'Don Roberto Hernández' },
-    cantidad: -3,
-    saldoAnterior: 0,
-    saldoResultante: 145.0,
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Libreta Fiado #102',
-    amount: 145.0,
-    description: 'Venta anotada en libreta a Don Roberto Hernández (3 art.)',
-  }, e1.entryHash);
+  for (const p of PRODUCTS) {
+    const initEntry = createKardexEntry(
+      {
+        type: 'ENTRADA_COMPRA',
+        producto: { sku: p.sku, name: p.name, saleUnit: p.saleUnit },
+        cantidad: p.stock,
+        saldoAnterior: 0,
+        saldoResultante: p.stock,
+        usuario: 'Don Lupe (Encargado)',
+        referencia: `Inventario inicial (${p.sku})`,
+        amount: multiplyMoney(p.historicCost, p.stock),
+        description: `Existencia inicial de catálogo: ${p.stock} ${p.saleUnit} de ${p.name}`,
+      },
+      prevHash
+    );
+    chronoEntries.push(initEntry);
+    prevHash = initEntry.entryHash;
+  }
 
-  const e3 = createKardexEntry({
-    type: 'ABONO_FIADO',
-    producto: { sku: 'CLI-03', name: 'Doña María López - Casa Azul' },
-    cantidad: 0,
-    saldoAnterior: 150.0,
-    saldoResultante: 0,
-    usuario: 'Don Lupe (Encargado)',
-    referencia: 'Abono Doña María López',
-    amount: 150.0,
-    description: 'Abono en efectivo de Doña María López - Casa Azul',
-  }, e2.entryHash);
+  const e1 = createKardexEntry(
+    {
+      type: 'VENTA_EFECTIVO',
+      producto: { sku: 'VAR-01', name: 'Leche Lala, Bolillos, Queso' },
+      cantidad: -3,
+      saldoAnterior: 10,
+      saldoResultante: 7,
+      usuario: 'Don Lupe (Encargado)',
+      referencia: 'Ticket #0101',
+      amount: 112.0,
+      description: 'Venta de mostrador en efectivo (Leche Lala, Bolillos, Queso)',
+    },
+    prevHash
+  );
+  chronoEntries.push(e1);
 
-  // Se retorna newest-first: [e3, e2, e1]
-  return [e3, e2, e1];
+  const e2 = createKardexEntry(
+    {
+      type: 'VENTA_FIADO',
+      producto: { sku: 'CLI-04', name: 'Don Roberto Hernández' },
+      cantidad: -3,
+      saldoAnterior: 0,
+      saldoResultante: 145.0,
+      usuario: 'Don Lupe (Encargado)',
+      referencia: 'Libreta Fiado #102',
+      amount: 145.0,
+      description: 'Venta anotada en libreta a Don Roberto Hernández (3 art.)',
+    },
+    e1.entryHash
+  );
+  chronoEntries.push(e2);
+
+  const e3 = createKardexEntry(
+    {
+      type: 'ABONO_FIADO',
+      producto: { sku: 'CLI-03', name: 'Doña María López - Casa Azul' },
+      cantidad: 0,
+      saldoAnterior: 150.0,
+      saldoResultante: 0,
+      usuario: 'Don Lupe (Encargado)',
+      referencia: 'Abono Doña María López',
+      amount: 150.0,
+      description: 'Abono en efectivo de Doña María López - Casa Azul',
+    },
+    e2.entryHash
+  );
+  chronoEntries.push(e3);
+
+  // Se retorna newest-first
+  return chronoEntries.reverse();
 }
 
 @Injectable({ providedIn: 'root' })
-export class MockInventoryService {
+export class MockInventoryService implements OnDestroy {
   readonly storeName = 'Abarrotes Doña Lupe';
   readonly today = 'Jueves 22 de octubre de 2026';
+  readonly instanceId = generateKardexId();
+
+  private static activeWriterInstanceId: string | null = null;
 
   /** Selector de cajero/usuario actual en la app (no valor fijo) */
   readonly availableUsers = signal<string[]>([
@@ -1170,6 +1212,9 @@ export class MockInventoryService {
    * Cada cambio de usuario genera una entrada auditable de tipo 'CAMBIO_USUARIO' en el Kardex.
    */
   async setActiveUser(name: string, pin?: string): Promise<{ success: boolean; message: string }> {
+    if (this.isReadOnlyMode()) {
+      return { success: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     const target = name?.trim();
     if (!target) return { success: false, message: 'Nombre de usuario inválido.' };
     const prevUser = this.activeUser();
@@ -1182,7 +1227,7 @@ export class MockInventoryService {
       }
     }
 
-    return this.enqueueKardexOperation(() => {
+    return this.enqueueKardexOperation(async () => {
       this.activeUser.set(target);
       const lastEntry = this.kardex()[0];
       const prevHash = lastEntry ? lastEntry.entryHash : 'GENESIS';
@@ -1201,26 +1246,276 @@ export class MockInventoryService {
         prevHash
       );
       this.kardex.update((prev) => appendKardexEntry(prev, entry));
-      this.scheduleSave();
+      await this.flushSave();
       return { success: true, message: `Usuario activo cambiado a ${target}.` };
     });
   }
 
-  // ---------- Persistencia de Estado en IndexedDB (Bloque D) ----------
+  // ---------- Persistencia de Estado en IndexedDB, Bloqueo de Escritura e Hidratación (Bloque D) ----------
   storageAdapter: StateStorageAdapter = getDefaultStorageAdapter();
   private readonly storageSaver = new DebouncedStorageSaver(DEFAULT_DEBOUNCE_MS);
-  readonly corruptedDataWarning = signal<string | null>(null);
+
   readonly isHydrated = signal<boolean>(false);
+  readonly autoSaveBlocked = signal<boolean>(false);
+
+  // Estado de corrupción y modal de recuperación
+  readonly corruptedDataWarning = signal<string | null>(null);
+  readonly corruptedRawData = signal<any>(null);
+  readonly corruptedBackupKey = signal<string | null>(null);
+  readonly corruptedAffectedSkus = signal<string[]>([]);
+  readonly corruptedModalOpen = signal<boolean>(false);
+  readonly corruptedConfirmOverwrite = signal<boolean>(false);
+
+  // Control de pestaña única de escritura (Web Locks / BroadcastChannel fallback)
+  readonly isReadOnlyMode = signal<boolean>(false);
+  readonly readOnlyWarning = signal<string | null>(null);
+  private releaseLockResolver: (() => void) | null = null;
+  private lockHeldPromise: Promise<any> | null = null;
+  private lockAcquisitionPromise: Promise<boolean> | null = null;
+  private lockFallbackChannel: BroadcastChannel | null = null;
+  private lanSyncChannel: BroadcastChannel | null = null;
+
+  // Cola de mensajes LAN recibidos antes de terminar la hidratación
+  private pendingLanMessages: any[] = [];
+  readonly lastScannedBarcode = signal<string | null>(null);
+  readonly scannedBarcodesHistory = signal<string[]>([]);
+
+  private readonly boundPageHide = (): void => {
+    this.handlePageHide();
+  };
+
+  private readonly boundVisibilityChange = (): void => {
+    this.handleVisibilityChange();
+  };
+
+  private readonly boundStorageEvent = (ev: StorageEvent): void => {
+    if (ev.key === 'abarrotes_lan_last_event' && ev.newValue) {
+      try {
+        const data = JSON.parse(ev.newValue);
+        this.handleIncomingLanMessage(data);
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   constructor() {
+    this.initWriterLock();
     this.initLanSyncListener();
     this.initPersistence();
   }
 
+  ngOnDestroy(): void {
+    this.storageSaver.cancel();
+    void this.releaseWriterLock();
+    if (this.lanSyncChannel) {
+      try {
+        this.lanSyncChannel.close();
+      } catch {
+        // ignore
+      }
+      this.lanSyncChannel = null;
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', this.boundPageHide);
+      window.removeEventListener('storage', this.boundStorageEvent);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.boundVisibilityChange);
+    }
+  }
+
+  private enableReadOnlyMode(message = 'Esta app ya está abierta en otra ventana'): void {
+    this.isReadOnlyMode.set(true);
+    this.readOnlyWarning.set(message);
+    this.storageSaver.cancel();
+  }
+
+  private initWriterLock(): void {
+    if (
+      MockInventoryService.activeWriterInstanceId &&
+      MockInventoryService.activeWriterInstanceId !== this.instanceId
+    ) {
+      this.enableReadOnlyMode('Esta app ya está abierta en otra ventana');
+    } else {
+      MockInventoryService.activeWriterInstanceId = this.instanceId;
+    }
+    void this.acquireWriterLock();
+  }
+
+  /**
+   * Solicita el bloqueo exclusivo de escritura usando Web Locks API:
+   * navigator.locks.request('binnitech_pos_writer', { ifAvailable: true }).
+   * Si no se obtiene el bloqueo, entra en modo solo lectura con el aviso
+   * "Esta app ya está abierta en otra ventana".
+   * Si Web Locks no existe, utiliza un respaldo con BroadcastChannel.
+   */
+  async acquireWriterLock(): Promise<boolean> {
+    if (this.lockAcquisitionPromise) {
+      return this.lockAcquisitionPromise;
+    }
+
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.locks &&
+      typeof navigator.locks.request === 'function'
+    ) {
+      this.lockAcquisitionPromise = new Promise<boolean>((resolve) => {
+        const p = navigator.locks.request(
+          WRITER_LOCK_NAME,
+          { ifAvailable: true },
+          (lock) => {
+            if (!lock) {
+              this.enableReadOnlyMode('Esta app ya está abierta en otra ventana');
+              resolve(false);
+              return;
+            }
+            if (
+              MockInventoryService.activeWriterInstanceId &&
+              MockInventoryService.activeWriterInstanceId !== this.instanceId
+            ) {
+              this.enableReadOnlyMode('Esta app ya está abierta en otra ventana');
+              resolve(false);
+              return;
+            }
+            MockInventoryService.activeWriterInstanceId = this.instanceId;
+            this.isReadOnlyMode.set(false);
+            this.readOnlyWarning.set(null);
+            resolve(true);
+            return new Promise<void>((release) => {
+              this.releaseLockResolver = release;
+            });
+          }
+        );
+        this.lockHeldPromise = p;
+      });
+      return this.lockAcquisitionPromise;
+    }
+
+    this.lockAcquisitionPromise = this.acquireBroadcastChannelFallbackLock();
+    return this.lockAcquisitionPromise;
+  }
+
+  private async acquireBroadcastChannelFallbackLock(): Promise<boolean> {
+    if (
+      MockInventoryService.activeWriterInstanceId &&
+      MockInventoryService.activeWriterInstanceId !== this.instanceId
+    ) {
+      this.enableReadOnlyMode('Esta app ya está abierta en otra ventana');
+      return false;
+    }
+
+    if (typeof BroadcastChannel === 'undefined') {
+      MockInventoryService.activeWriterInstanceId = this.instanceId;
+      this.isReadOnlyMode.set(false);
+      this.readOnlyWarning.set(null);
+      return true;
+    }
+
+    if (this.lockFallbackChannel) {
+      try {
+        this.lockFallbackChannel.close();
+      } catch {
+        // ignore
+      }
+    }
+
+    const channel = new BroadcastChannel(`${WRITER_LOCK_NAME}_channel`);
+    this.lockFallbackChannel = channel;
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+
+      channel.onmessage = (event) => {
+        const msg = event.data;
+        if (!msg || typeof msg !== 'object') return;
+
+        if (msg.type === 'WHO_IS_WRITER' && msg.requesterId !== this.instanceId) {
+          if (!this.isReadOnlyMode()) {
+            channel.postMessage({
+              type: 'WRITER_ACTIVE',
+              ownerId: this.instanceId,
+              requesterId: msg.requesterId,
+            });
+          }
+        } else if (
+          (msg.type === 'WRITER_ACTIVE' || msg.type === 'WRITER_CLAIM') &&
+          msg.ownerId !== this.instanceId
+        ) {
+          if (!settled) {
+            settled = true;
+            this.enableReadOnlyMode('Esta app ya está abierta en otra ventana');
+            resolve(false);
+          }
+        }
+      };
+
+      channel.postMessage({ type: 'WHO_IS_WRITER', requesterId: this.instanceId });
+
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          if (
+            MockInventoryService.activeWriterInstanceId &&
+            MockInventoryService.activeWriterInstanceId !== this.instanceId
+          ) {
+            this.enableReadOnlyMode('Esta app ya está abierta en otra ventana');
+            resolve(false);
+          } else {
+            MockInventoryService.activeWriterInstanceId = this.instanceId;
+            this.isReadOnlyMode.set(false);
+            this.readOnlyWarning.set(null);
+            channel.postMessage({ type: 'WRITER_CLAIM', ownerId: this.instanceId });
+            resolve(true);
+          }
+        }
+      }, 20);
+    });
+  }
+
+  async releaseWriterLock(): Promise<void> {
+    this.lockAcquisitionPromise = null;
+    if (MockInventoryService.activeWriterInstanceId === this.instanceId) {
+      MockInventoryService.activeWriterInstanceId = null;
+    }
+    if (this.releaseLockResolver) {
+      const release = this.releaseLockResolver;
+      this.releaseLockResolver = null;
+      release();
+    }
+    if (this.lockHeldPromise) {
+      try {
+        await this.lockHeldPromise;
+      } catch {
+        // ignore
+      }
+      this.lockHeldPromise = null;
+    }
+    if (this.lockFallbackChannel) {
+      try {
+        this.lockFallbackChannel.close();
+      } catch {
+        // ignore
+      }
+      this.lockFallbackChannel = null;
+    }
+  }
+
+  private canWriteToStorage(): boolean {
+    return this.isHydrated() && !this.autoSaveBlocked() && !this.isReadOnlyMode();
+  }
+
   private initPersistence(): void {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', this.boundPageHide);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.boundVisibilityChange);
+    }
+
     try {
       effect(() => {
-        // Trackeamos reactivamente las señales principales
+        // Trackeamos reactivamente cambios menores en señales
         const _p = this.products();
         const _c = this.creditCustomers();
         const _s = this.cashShift();
@@ -1232,7 +1527,7 @@ export class MockInventoryService {
         const _u = this.activeUser();
         const _ma = this.morningAlerts();
 
-        if (this.isHydrated()) {
+        if (this.canWriteToStorage()) {
           this.scheduleSave();
         }
       });
@@ -1243,6 +1538,20 @@ export class MockInventoryService {
     this.restorePersistedState().catch((err) => {
       console.warn('[MockInventoryService] Error en restauración de estado:', err);
     });
+  }
+
+  handlePageHide(): void {
+    if (this.canWriteToStorage()) {
+      void this.flushSave();
+    }
+  }
+
+  handleVisibilityChange(): void {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      if (this.canWriteToStorage()) {
+        void this.flushSave();
+      }
+    }
   }
 
   getPersistedStateSnapshot(): PersistedAppState {
@@ -1262,9 +1571,14 @@ export class MockInventoryService {
     };
   }
 
+  /**
+   * Planifica un guardado diferido (~500 ms) únicamente para cambios menores.
+   * No escribe si el autoguardado está bloqueado por corrupción o si la pestaña está en modo solo lectura.
+   */
   scheduleSave(): void {
-    if (!this.isHydrated()) return;
+    if (!this.canWriteToStorage()) return;
     this.storageSaver.schedule(async () => {
+      if (!this.canWriteToStorage()) return;
       try {
         await this.storageAdapter.save(STATE_STORAGE_KEY, this.getPersistedStateSnapshot());
       } catch (err) {
@@ -1273,8 +1587,17 @@ export class MockInventoryService {
     });
   }
 
+  /**
+   * Ejecuta el guardado inmediato (flush) cancelando cualquier debounce pendiente.
+   * Llamado tras cada operación con dinero o stock, así como en pagehide y visibilitychange (hidden).
+   */
   async flushSave(): Promise<void> {
+    if (!this.canWriteToStorage()) {
+      this.storageSaver.cancel();
+      return;
+    }
     await this.storageSaver.flush(async () => {
+      if (!this.canWriteToStorage()) return;
       try {
         await this.storageAdapter.save(STATE_STORAGE_KEY, this.getPersistedStateSnapshot());
       } catch (err) {
@@ -1283,11 +1606,18 @@ export class MockInventoryService {
     });
   }
 
-  async restorePersistedState(): Promise<{ success: boolean; corrupted?: boolean; reason?: string }> {
+  async restorePersistedState(): Promise<{
+    success: boolean;
+    corrupted?: boolean;
+    reason?: string;
+    backupKey?: string;
+    affectedSkus?: string[];
+  }> {
     try {
       const raw = await this.storageAdapter.load(STATE_STORAGE_KEY);
       if (!raw) {
         this.isHydrated.set(true);
+        this.drainPendingLanMessages();
         return { success: true };
       }
 
@@ -1295,31 +1625,63 @@ export class MockInventoryService {
       const migration = migrateState(raw);
       const stateToValidate = migration.state;
 
-      // 2. Validación de integridad estructural y de cadena Kardex
-      const validation = validateStoredState(stateToValidate, (k) =>
-        verifyKardexChain(k, 'newest-first')
+      // 2. Validación de integridad estructural, cadena criptográfica Kardex y verifyProductContinuity(productos, kardex)
+      const validation = validateStoredState(
+        stateToValidate,
+        (k) => verifyKardexChain(k, 'newest-first'),
+        (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
       );
+
       if (!validation.valid) {
-        const warnMsg = `Los datos guardados en el navegador estaban dañados (${validation.reason}). Se restauraron los datos iniciales de demostración.`;
+        // REGLA BLOQUE D: NO sobrescribir STATE_STORAGE_KEY.
+        // Copiar el dato crudo a 'binnitech_pos_state_corrupt_<ISO>' (conservar las 3 más recientes).
+        this.storageSaver.cancel();
+        this.autoSaveBlocked.set(true);
+
+        const backupKey = await backupCorruptedState(this.storageAdapter, raw);
+        const skus = validation.affectedSkus || [];
+        const skuDetail = skus.length > 0 ? ` SKUs afectados: ${skus.join(', ')}.` : '';
+        const warnMsg = `Los datos guardados presentan daño o alteración (${validation.reason}).${skuDetail} Se conservó copia en ${backupKey} y se bloqueó el autoguardado.`;
+
+        this.corruptedRawData.set(raw);
+        this.corruptedBackupKey.set(backupKey);
+        this.corruptedAffectedSkus.set(skus);
         this.corruptedDataWarning.set(warnMsg);
+        this.corruptedConfirmOverwrite.set(false);
+        this.corruptedModalOpen.set(true);
+
         this.morningAlerts.update((prev) => [
           {
             id: 'ALERT-DATA-CORRUPT',
             kind: 'auditoria',
             icon: '⚠️',
-            title: 'Datos restaurados a modo demostración',
+            title: 'Datos dañados detectados (Autoguardado bloqueado)',
             detail: warnMsg,
-            actionLabel: 'Descartar aviso',
+            actionLabel: 'Revisar opciones',
             route: '/',
           },
           ...prev.filter((a) => a.id !== 'ALERT-DATA-CORRUPT'),
         ]);
+
         this.isHydrated.set(true);
-        await this.flushSave();
-        return { success: false, corrupted: true, reason: validation.reason };
+        this.drainPendingLanMessages();
+        return {
+          success: false,
+          corrupted: true,
+          reason: validation.reason,
+          backupKey,
+          affectedSkus: skus,
+        };
       }
 
       // 3. Hidratación del estado validado
+      this.autoSaveBlocked.set(false);
+      this.corruptedDataWarning.set(null);
+      this.corruptedRawData.set(null);
+      this.corruptedAffectedSkus.set([]);
+      this.corruptedModalOpen.set(false);
+      this.corruptedConfirmOverwrite.set(false);
+
       this.products.set(stateToValidate.products);
       this.creditCustomers.set(stateToValidate.creditCustomers);
       if (stateToValidate.cashShift) this.cashShift.set(stateToValidate.cashShift);
@@ -1334,6 +1696,7 @@ export class MockInventoryService {
       if (stateToValidate.activeUser) this.activeUser.set(stateToValidate.activeUser);
 
       this.isHydrated.set(true);
+      this.drainPendingLanMessages();
 
       if (migration.migrated) {
         await this.flushSave();
@@ -1341,16 +1704,85 @@ export class MockInventoryService {
 
       return { success: true };
     } catch (err: any) {
-      const errMsg = `Error al leer almacenamiento local: ${err?.message || err}. Se usan datos de demostración.`;
+      this.storageSaver.cancel();
+      this.autoSaveBlocked.set(true);
+      const errMsg = `Error al leer almacenamiento local: ${err?.message || err}. Autoguardado bloqueado.`;
       this.corruptedDataWarning.set(errMsg);
+      this.corruptedModalOpen.set(true);
       this.isHydrated.set(true);
+      this.drainPendingLanMessages();
       return { success: false, corrupted: true, reason: errMsg };
     }
   }
 
+  /**
+   * Opción 1 del modal de datos dañados: "Descargar datos dañados (JSON)".
+   * No sobrescribe ni desbloquea el almacenamiento.
+   */
+  downloadCorruptedDataJson(): string {
+    const raw = this.corruptedRawData();
+    const json = JSON.stringify(raw ?? {}, null, 2);
+    if (typeof document !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
+      try {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const keyName = this.corruptedBackupKey() || `binnitech_pos_state_corrupt_${new Date().toISOString()}`;
+        a.href = url;
+        a.download = `${keyName.replace(/[:]/g, '-')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignorar en entornos de prueba sin soporte de descarga DOM
+      }
+    }
+    return json;
+  }
+
+  /**
+   * Solicita confirmación para la Opción 2 del modal: "Empezar con datos de demostración".
+   */
+  requestStartWithDemoDataConfirmation(): void {
+    this.corruptedConfirmOverwrite.set(true);
+  }
+
+  cancelStartWithDemoDataConfirmation(): void {
+    this.corruptedConfirmOverwrite.set(false);
+  }
+
+  /**
+   * Opción 2 del modal (con confirmación): "Empezar con datos de demostración".
+   * Única opción que desbloquea el autoguardado y sobrescribe STATE_STORAGE_KEY
+   * (conservando las copias de respaldo 'binnitech_pos_state_corrupt_<ISO>').
+   */
+  async confirmStartWithDemoData(): Promise<void> {
+    await this.resetToDemoData();
+  }
+
+  /**
+   * Opción 3 del modal de datos dañados: "Reintentar".
+   */
+  async retryRestorePersistedState(): Promise<{
+    success: boolean;
+    corrupted?: boolean;
+    reason?: string;
+  }> {
+    return this.restorePersistedState();
+  }
+
+  /**
+   * Restablece los datos operativos a los valores de demostración y sobrescribe STATE_STORAGE_KEY,
+   * conservando intactas las copias 'binnitech_pos_state_corrupt_<ISO>'.
+   */
   async resetToDemoData(): Promise<void> {
     this.storageSaver.cancel();
-    await this.storageAdapter.clear();
+    this.autoSaveBlocked.set(false);
+    this.corruptedDataWarning.set(null);
+    this.corruptedRawData.set(null);
+    this.corruptedAffectedSkus.set([]);
+    this.corruptedModalOpen.set(false);
+    this.corruptedConfirmOverwrite.set(false);
+
     this.products.set(structuredClone(PRODUCTS));
     this.creditCustomers.set(structuredClone(CREDIT_CUSTOMERS));
     this.cashShift.set({
@@ -1373,7 +1805,6 @@ export class MockInventoryService {
     this.auditLines.set(structuredClone(AUDIT_LINES));
     this.shrinkRecords.set(structuredClone(SHRINK_RECORDS));
     this.activeUser.set('Don Lupe (Encargado)');
-    this.corruptedDataWarning.set(null);
     this.isHydrated.set(true);
     await this.flushSave();
   }
@@ -1381,8 +1812,8 @@ export class MockInventoryService {
   private initLanSyncListener(): void {
     if (typeof BroadcastChannel !== 'undefined') {
       try {
-        const channel = new BroadcastChannel('abarrotes_lan_sync');
-        channel.onmessage = (event) => {
+        this.lanSyncChannel = new BroadcastChannel('abarrotes_lan_sync');
+        this.lanSyncChannel.onmessage = (event) => {
           this.handleIncomingLanMessage(event.data);
         };
       } catch (err) {
@@ -1391,16 +1822,7 @@ export class MockInventoryService {
     }
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('storage', (ev: StorageEvent) => {
-        if (ev.key === 'abarrotes_lan_last_event' && ev.newValue) {
-          try {
-            const data = JSON.parse(ev.newValue);
-            this.handleIncomingLanMessage(data);
-          } catch {
-            // ignore
-          }
-        }
-      });
+      window.addEventListener('storage', this.boundStorageEvent);
 
       const winLan = typeof window !== 'undefined' ? (window as any).LanSync : undefined;
       if (winLan) {
@@ -1416,10 +1838,41 @@ export class MockInventoryService {
     }
   }
 
-  private handleIncomingLanMessage(data: any): void {
+  /**
+   * Recibe un mensaje LAN (MERMA_SUBMIT, BARCODE_SCANNED, AUDIT_SUBMIT, OCR_TICKET_PARSED).
+   * Si la aplicación aún no ha terminado de hidratarse (!isHydrated), encola el mensaje
+   * y lo aplica en estricto orden FIFO inmediatamente después de hidratar.
+   */
+  handleIncomingLanMessage(data: any): void {
     if (!data || typeof data !== 'object') return;
+    if (!this.isHydrated()) {
+      this.pendingLanMessages.push(structuredClone(data));
+      return;
+    }
+    this.applyLanMessage(data);
+  }
+
+  private drainPendingLanMessages(): void {
+    while (this.pendingLanMessages.length > 0) {
+      const msg = this.pendingLanMessages.shift();
+      this.applyLanMessage(msg);
+    }
+  }
+
+  private applyLanMessage(data: any): void {
+    if (!data || typeof data !== 'object') return;
+    this.phoneLinked.set(true);
+
     if (data.type === 'MERMA_SUBMIT' && data.record) {
       this.addShrinkRecord(data.record);
+    } else if (data.type === 'BARCODE_SCANNED' && data.barcode) {
+      const code = String(data.barcode).trim();
+      this.lastScannedBarcode.set(code);
+      this.scannedBarcodesHistory.update((list) => [...list, code]);
+    } else if (data.type === 'AUDIT_SUBMIT' && Array.isArray(data.counts)) {
+      this.submitBlindAuditResults(data.counts);
+    } else if (data.type === 'OCR_TICKET_PARSED' && Array.isArray(data.lines) && data.lines.length > 0) {
+      this.setCustomOcrNote(data.lines, data.folio || 'OCR-MOVIL', 'Celular en Vivo');
     }
   }
 
@@ -1736,6 +2189,9 @@ export class MockInventoryService {
    * - Registra en Kardex como 'VENTA_EFECTIVO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
   processCashSale(items: CartItem[], cashReceived: number): SaleResult {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0, change: 0 };
+    }
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0, change: 0 };
     }
@@ -1799,7 +2255,7 @@ export class MockInventoryService {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
-    this.scheduleSave();
+    void this.flushSave();
 
     return {
       ok: true,
@@ -1818,6 +2274,9 @@ export class MockInventoryService {
    * - Registra en Kardex como 'VENTA_FIADO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
   processCreditSale(items: CartItem[], customerId: string): CreditResult {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0 };
+    }
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0 };
     }
@@ -1890,7 +2349,7 @@ export class MockInventoryService {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
-    this.scheduleSave();
+    void this.flushSave();
 
     return {
       ok: true,
@@ -1915,6 +2374,9 @@ export class MockInventoryService {
     pin?: string,
     reason?: string,
   ): Promise<{ ok: boolean; message: string; totalCost: number; remainingAttempts?: number; isLocked?: boolean }> {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', totalCost: 0 };
+    }
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', totalCost: 0 };
     }
@@ -2032,7 +2494,7 @@ export class MockInventoryService {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
-    this.scheduleSave();
+    await this.flushSave();
 
     return {
       ok: true,
@@ -2053,6 +2515,9 @@ export class MockInventoryService {
     authorizerName = 'Administrador',
     reason = 'Ajuste físico de stock para resolver alerta de faltante',
   ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     const pinResult = await this.verifyAdminPin(pin, authorizerName);
     if (!pinResult.success) {
       return {
@@ -2069,7 +2534,7 @@ export class MockInventoryService {
     }
 
     const authorizer = pinResult.authorizedBy || authorizerName;
-    return this.enqueueKardexOperation(() => {
+    return this.enqueueKardexOperation(async () => {
       const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
       const { updatedProduct, kardexEntry } = resolveShortageAlertAdjustment(
         prod,
@@ -2091,7 +2556,7 @@ export class MockInventoryService {
         alerts.filter((a) => a.id !== alertId && !(a.id.includes(sku) && a.kind === 'por-agotarse')),
       );
 
-      this.scheduleSave();
+      await this.flushSave();
 
       return {
         ok: true,
@@ -2126,6 +2591,9 @@ export class MockInventoryService {
    * - Registra entrada en Kardex encadenada.
    */
   registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string } {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     if (isNaN(amount) || amount <= 0) {
       return { ok: false, message: 'Ingresa un monto de abono mayor a $0.00.' };
     }
@@ -2169,7 +2637,7 @@ export class MockInventoryService {
 
     this.kardex.update((entries) => [entry, ...entries]);
 
-    this.scheduleSave();
+    void this.flushSave();
 
     return {
       ok: true,
@@ -2214,6 +2682,7 @@ export class MockInventoryService {
 
   /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado, actualiza reposición y genera Kardex encadenado. */
   saveReception(lines: ReceptionLine[], folio: string): void {
+    if (this.isReadOnlyMode()) return;
     const newKardexEntries: KardexEntry[] = [];
     const nowIso = new Date().toISOString();
     let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
@@ -2271,26 +2740,47 @@ export class MockInventoryService {
       this.morningAlerts.update((a) => a.filter((x) => x.kind !== 'margen'));
     }
     this.lastSavedNote.set(folio);
-    this.scheduleSave();
+    void this.flushSave();
   }
 
   // ---------- Auditoría ----------
 
   setAuditStatus(sku: string, status: AuditStatus): void {
+    if (this.isReadOnlyMode()) return;
     this.auditLines.update((list) => list.map((l) => (l.sku === sku ? { ...l, status } : l)));
     if (status === 'autorizado') {
-      const line = this.auditLines().find((l) => l.sku === sku)!;
-      this.products.update((list) => list.map((p) => (p.sku === sku ? { ...p, stock: line.countedQty } : p)));
+      const line = this.auditLines().find((l) => l.sku === sku);
+      const prod = this.products().find((p) => p.sku === sku);
+      if (line && prod) {
+        const diffQty = Math.round((line.countedQty - prod.stock) * 1000) / 1000;
+        this.products.update((list) => list.map((p) => (p.sku === sku ? { ...p, stock: line.countedQty } : p)));
+        if (Math.abs(diffQty) > 0.0005) {
+          const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+          const entry = createKardexEntry({
+            type: 'AJUSTE_AUDITORIA',
+            producto: { sku: prod.sku, name: prod.name, saleUnit: prod.saleUnit },
+            cantidad: diffQty,
+            saldoAnterior: prod.stock,
+            saldoResultante: line.countedQty,
+            usuario: this.activeUser(),
+            referencia: `Auditoría autorizada - ${prod.sku}`,
+            amount: Math.abs(multiplyMoney(line.unitCost, diffQty)),
+            description: `Ajuste de auditoría autorizado: ${prod.name}`,
+          }, previousHash);
+          this.kardex.update((k) => [entry, ...k]);
+        }
+      }
     }
     if (this.pendingAuditCount() === 0) {
       this.morningAlerts.update((a) => a.filter((x) => x.kind !== 'auditoria'));
     }
-    this.scheduleSave();
+    void this.flushSave();
   }
 
   // ---------- Mermas ----------
 
   addShrinkRecord(record: ShrinkRecord): void {
+    if (this.isReadOnlyMode()) return;
     if (!record || !record.id) return;
     const cleanRecord: ShrinkRecord = {
       ...record,
@@ -2306,7 +2796,7 @@ export class MockInventoryService {
       ...s,
       shrinkTotalCost: sumMoney([s.shrinkTotalCost, multiplyMoney(record.unitCost, record.qty)]),
     }));
-    this.scheduleSave();
+    void this.flushSave();
   }
 
   /**
@@ -2319,6 +2809,9 @@ export class MockInventoryService {
     pin?: string,
     reason?: string,
   ): Promise<{ ok: boolean; message: string }> {
+    if (this.isReadOnlyMode()) {
+      return Promise.resolve({ ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' });
+    }
     const record = this.shrinkRecords().find((r) => r.id === id);
     if (!record) return Promise.resolve({ ok: false, message: 'Registro de merma no encontrado.' });
 
@@ -2379,7 +2872,7 @@ export class MockInventoryService {
         this.kardex.update((k) => [...disposal.kardexEntries!.reverse(), ...k]);
       }
 
-      this.scheduleSave();
+      await this.flushSave();
 
       return {
         ok: true,
@@ -2398,6 +2891,9 @@ export class MockInventoryService {
     authorizerName = 'Administrador',
     reason = 'Autorización de baja por merma',
   ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     const pinResult = await this.verifyAdminPin(pin, authorizerName);
     if (!pinResult.success) {
       return {
@@ -2454,6 +2950,9 @@ export class MockInventoryService {
     pin?: string,
     reason?: string,
   ): { ok: boolean; message: string } {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     const batch = this.perishableBatches().find((b) => b.batchId === batchId);
     if (!batch) return { ok: false, message: 'Lote no encontrado' };
 
@@ -2538,7 +3037,7 @@ export class MockInventoryService {
         shrinkTotalCost: sumMoney([s.shrinkTotalCost, totalLoss]),
       }));
 
-      this.scheduleSave();
+      void this.flushSave();
 
       return {
         ok: true,
@@ -2609,7 +3108,21 @@ export class MockInventoryService {
       supplier: 'Proveedor General',
     };
 
+    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const entry = createKardexEntry({
+      type: 'ENTRADA_COMPRA',
+      producto: { sku: newProd.sku, name: newProd.name, saleUnit: newProd.saleUnit },
+      cantidad: 0,
+      saldoAnterior: 0,
+      saldoResultante: 0,
+      usuario: this.activeUser(),
+      referencia: `Alta rápida ${newProd.sku}`,
+      amount: 0,
+      description: `Alta rápida de producto: ${newProd.name}`,
+    }, previousHash);
+
     this.products.update((list) => [newProd, ...list]);
+    this.kardex.update((k) => [entry, ...k]);
     return newProd;
   }
 
@@ -2653,6 +3166,7 @@ export class MockInventoryService {
    * Compara el conteo físico vs el stock teórico y calcula la diferencia en piezas y pesos ($).
    */
   submitBlindAuditResults(counts: { sku: string; countedQty: number }[]): void {
+    if (this.isReadOnlyMode()) return;
     const newAuditLines: AuditLine[] = counts.map((c) => {
       const p = this.products().find((x) => x.sku === c.sku);
       const systemQty = p ? p.stock : 0;
@@ -2698,10 +3212,15 @@ export class MockInventoryService {
     type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO',
     authorizedBy = 'Administrador (PIN)',
   ): { ok: boolean; message: string } {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     const line = this.auditLines().find((l) => l.sku === productId);
     if (!line) return { ok: false, message: 'Producto no encontrado en auditoría' };
 
-    const diffQty = Math.round((line.countedQty - line.systemQty) * 1000) / 1000;
+    const prod = this.products().find((p) => p.sku === productId);
+    const actualPreviousStock = prod ? prod.stock : line.systemQty;
+    const diffQty = Math.round((line.countedQty - actualPreviousStock) * 1000) / 1000;
     const diffMoney = multiplyMoney(line.unitCost, diffQty);
 
     // 1. Cuadrar stock en catálogo
@@ -2726,7 +3245,7 @@ export class MockInventoryService {
         type: 'AJUSTE_AUDITORIA',
         producto: { sku: line.sku, name: line.name, saleUnit: line.saleUnit },
         cantidad: diffQty,
-        saldoAnterior: line.systemQty,
+        saldoAnterior: actualPreviousStock,
         saldoResultante: line.countedQty,
         usuario: authorizedBy,
         referencia: `Auditoría Ciega [${typeLabel}] - ${line.sku}`,
@@ -2763,7 +3282,7 @@ export class MockInventoryService {
       ]);
     }
 
-    this.scheduleSave();
+    void this.flushSave();
 
     return {
       ok: true,
@@ -2781,6 +3300,9 @@ export class MockInventoryService {
     pin: string,
     authorizerName = 'Administrador',
   ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
+    if (this.isReadOnlyMode()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     const pinResult = await this.verifyAdminPin(pin, authorizerName);
     if (!pinResult.success) {
       return {
@@ -2792,6 +3314,7 @@ export class MockInventoryService {
     }
     const authorizer = pinResult.authorizedBy || authorizerName;
     const res = this.applySquareAdjustment(productId, type, authorizer);
+    await this.flushSave();
     return {
       ok: true,
       message: res.message,

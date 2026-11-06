@@ -17,9 +17,16 @@
  */
 
 export type KardexChainVerifier = (entries: any[]) => { valid: boolean; error?: string };
+export type ProductContinuityVerifier = (
+  products: any[],
+  entries: any[]
+) => { valid: boolean; error?: string; affectedSkus: string[] };
 
 export const CURRENT_SCHEMA_VERSION = 1;
 export const STATE_STORAGE_KEY = 'binnitech_pos_state_v1';
+export const CORRUPT_STATE_KEY_PREFIX = 'binnitech_pos_state_corrupt_';
+export const MAX_CORRUPT_BACKUPS = 3;
+export const WRITER_LOCK_NAME = 'binnitech_pos_writer';
 export const DEFAULT_DEBOUNCE_MS = 500;
 
 export interface PersistedAppState {
@@ -40,15 +47,17 @@ export interface PersistedAppState {
 export interface ValidationResult {
   valid: boolean;
   reason?: string;
+  affectedSkus?: string[];
 }
 
 /**
- * Valida la integridad estructural y criptográfica del estado almacenado.
- * Detecta datos dañados, campos ausentes, tipos incorrectos o cadenas de Kardex alteradas.
+ * Valida la integridad estructural, criptográfica (cadena Kardex) y de continuidad de stock por producto.
+ * Detecta datos dañados, campos ausentes, tipos incorrectos, cadenas de Kardex alteradas o stock manipulado.
  */
 export function validateStoredState(
   data: any,
-  kardexVerifier?: KardexChainVerifier
+  kardexVerifier?: KardexChainVerifier,
+  continuityVerifier?: ProductContinuityVerifier
 ): ValidationResult {
   if (!data || typeof data !== 'object') {
     return { valid: false, reason: 'El dato almacenado está vacío o no es un objeto válido.' };
@@ -79,7 +88,7 @@ export function validateStoredState(
   // 3. Validar consistencia básica de productos
   for (let i = 0; i < data.products.length; i++) {
     const p = data.products[i];
-    if (!p || typeof p.sku !== 'string' || typeof p.stock !== 'number') {
+    if (!p || typeof p.sku !== 'string' || typeof p.stock !== 'number' || Number.isNaN(p.stock)) {
       return { valid: false, reason: `Producto dañado en índice ${i} (SKU o stock no numérico).` };
     }
   }
@@ -105,7 +114,19 @@ export function validateStoredState(
     }
   }
 
-  return { valid: true };
+  // 5. Validar continuidad de stock por producto frente al Kardex
+  if (continuityVerifier && data.kardex.length > 0) {
+    const contCheck = continuityVerifier(data.products, data.kardex);
+    if (!contCheck.valid) {
+      return {
+        valid: false,
+        reason: contCheck.error || `Discrepancia de continuidad de stock en SKU(s): ${contCheck.affectedSkus.join(', ')}`,
+        affectedSkus: contCheck.affectedSkus,
+      };
+    }
+  }
+
+  return { valid: true, affectedSkus: [] };
 }
 
 export interface MigrationResult {
@@ -175,23 +196,33 @@ export function migrateState(data: any): MigrationResult {
 }
 
 /**
- * Administrador de guardado diferido (debounce) para no saturar I/O de disco o IndexedDB.
+ * Administrador de guardado diferido (debounce) para cambios menores, con soporte de flush inmediato.
  */
 export class DebouncedStorageSaver {
   private timer: any = null;
+  private pendingTask: (() => Promise<void> | void) | null = null;
   public readonly delayMs: number;
 
   constructor(delayMs = DEFAULT_DEBOUNCE_MS) {
     this.delayMs = delayMs;
   }
 
+  hasPending(): boolean {
+    return this.timer !== null;
+  }
+
   schedule(task: () => Promise<void> | void): void {
+    this.pendingTask = task;
     if (this.timer) {
       clearTimeout(this.timer);
     }
     this.timer = setTimeout(() => {
       this.timer = null;
-      task();
+      const toRun = this.pendingTask;
+      this.pendingTask = null;
+      if (toRun) {
+        toRun();
+      }
     }, this.delayMs);
   }
 
@@ -200,11 +231,15 @@ export class DebouncedStorageSaver {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.pendingTask = null;
   }
 
-  async flush(task: () => Promise<void> | void): Promise<void> {
+  async flush(task?: () => Promise<void> | void): Promise<void> {
+    const toRun = task || this.pendingTask;
     this.cancel();
-    await task();
+    if (toRun) {
+      await toRun();
+    }
   }
 }
 
@@ -214,6 +249,8 @@ export class DebouncedStorageSaver {
 export interface StateStorageAdapter {
   save(key: string, value: any): Promise<void>;
   load(key: string): Promise<any>;
+  delete?(key: string): Promise<void>;
+  listKeys?(prefix?: string): Promise<string[]>;
   clear(): Promise<void>;
 }
 
@@ -232,6 +269,15 @@ export class MemoryStateStorageAdapter implements StateStorageAdapter {
     return raw ? JSON.parse(raw) : null;
   }
 
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  async listKeys(prefix?: string): Promise<string[]> {
+    const keys = Array.from(this.store.keys());
+    return prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
+  }
+
   async clear(): Promise<void> {
     this.store.clear();
   }
@@ -239,6 +285,7 @@ export class MemoryStateStorageAdapter implements StateStorageAdapter {
 
 /**
  * Adaptador de almacenamiento nativo en IndexedDB del navegador de la PC (cero dependencias externas).
+ * Resuelve la promesa en tx.oncomplete y rechaza en tx.onerror / tx.onabort.
  */
 export class IndexedDbStateStorageAdapter implements StateStorageAdapter {
   private dbName: string;
@@ -277,10 +324,21 @@ export class IndexedDbStateStorageAdapter implements StateStorageAdapter {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readwrite');
       const store = tx.objectStore(this.storeName);
-      const req = store.put(value, key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
+      store.put(value, key);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        const err = tx.error;
+        db.close();
+        reject(err || new Error('Error en transacción IndexedDB al guardar.'));
+      };
+      tx.onabort = () => {
+        const err = tx.error;
+        db.close();
+        reject(err || new Error('Transacción IndexedDB abortada al guardar.'));
+      };
     });
   }
 
@@ -290,9 +348,75 @@ export class IndexedDbStateStorageAdapter implements StateStorageAdapter {
       const tx = db.transaction(this.storeName, 'readonly');
       const store = tx.objectStore(this.storeName);
       const req = store.get(key);
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
+      let result: any = null;
+      req.onsuccess = () => {
+        result = req.result ?? null;
+      };
+      tx.oncomplete = () => {
+        db.close();
+        resolve(result);
+      };
+      tx.onerror = () => {
+        const err = tx.error || req.error;
+        db.close();
+        reject(err || new Error('Error en transacción IndexedDB al cargar.'));
+      };
+      tx.onabort = () => {
+        const err = tx.error || req.error;
+        db.close();
+        reject(err || new Error('Transacción IndexedDB abortada al cargar.'));
+      };
+    });
+  }
+
+  async delete(key: string): Promise<void> {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, 'readwrite');
+      const store = tx.objectStore(this.storeName);
+      store.delete(key);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        const err = tx.error;
+        db.close();
+        reject(err || new Error('Error en transacción IndexedDB al eliminar.'));
+      };
+      tx.onabort = () => {
+        const err = tx.error;
+        db.close();
+        reject(err || new Error('Transacción IndexedDB abortada al eliminar.'));
+      };
+    });
+  }
+
+  async listKeys(prefix?: string): Promise<string[]> {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.storeName, 'readonly');
+      const store = tx.objectStore(this.storeName);
+      const req = store.getAllKeys();
+      let keys: string[] = [];
+      req.onsuccess = () => {
+        const rawKeys = Array.isArray(req.result) ? req.result.map((k) => String(k)) : [];
+        keys = prefix ? rawKeys.filter((k) => k.startsWith(prefix)) : rawKeys;
+      };
+      tx.oncomplete = () => {
+        db.close();
+        resolve(keys);
+      };
+      tx.onerror = () => {
+        const err = tx.error || req.error;
+        db.close();
+        reject(err || new Error('Error en transacción IndexedDB al listar claves.'));
+      };
+      tx.onabort = () => {
+        const err = tx.error || req.error;
+        db.close();
+        reject(err || new Error('Transacción IndexedDB abortada al listar claves.'));
+      };
     });
   }
 
@@ -301,12 +425,54 @@ export class IndexedDbStateStorageAdapter implements StateStorageAdapter {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readwrite');
       const store = tx.objectStore(this.storeName);
-      const req = store.clear();
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
+      store.clear();
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        const err = tx.error;
+        db.close();
+        reject(err || new Error('Error en transacción IndexedDB al limpiar.'));
+      };
+      tx.onabort = () => {
+        const err = tx.error;
+        db.close();
+        reject(err || new Error('Transacción IndexedDB abortada al limpiar.'));
+      };
     });
   }
+}
+
+/**
+ * Copia el dato crudo dañado a la clave 'binnitech_pos_state_corrupt_<ISO>' sin sobrescribir
+ * la clave original y conserva únicamente las 3 copias más recientes.
+ */
+export async function backupCorruptedState(
+  adapter: StateStorageAdapter,
+  rawData: any,
+  nowIso: string = new Date().toISOString()
+): Promise<string> {
+  let backupKey = `${CORRUPT_STATE_KEY_PREFIX}${nowIso}`;
+  if (adapter.listKeys) {
+    const existing = await adapter.listKeys(CORRUPT_STATE_KEY_PREFIX);
+    if (existing.includes(backupKey)) {
+      backupKey = `${CORRUPT_STATE_KEY_PREFIX}${nowIso}_${Math.random().toString(36).slice(2, 6)}`;
+    }
+  }
+
+  await adapter.save(backupKey, rawData);
+
+  if (adapter.listKeys && adapter.delete) {
+    const allCorruptKeys = await adapter.listKeys(CORRUPT_STATE_KEY_PREFIX);
+    allCorruptKeys.sort();
+    while (allCorruptKeys.length > MAX_CORRUPT_BACKUPS) {
+      const oldest = allCorruptKeys.shift()!;
+      await adapter.delete(oldest);
+    }
+  }
+
+  return backupKey;
 }
 
 /**

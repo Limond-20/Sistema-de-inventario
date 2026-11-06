@@ -307,17 +307,19 @@ export function verifyKardexChain(
   return { valid: true };
 }
 
-/**
- * Verifica la continuidad de inventario por producto:
- * Para todas las entradas cronológicas del producto:
- * saldoResultante[i] == saldoAnterior[i+1] y stock actual == último saldoResultante.
- */
-export function verifyProductContinuity(
+export interface ProductContinuityResult {
+  valid: boolean;
+  error?: string;
+  discrepantIndex?: number;
+  affectedSkus: string[];
+}
+
+function verifySingleProductContinuity(
   sku: string,
   entries: readonly KardexEntry[],
   currentStock: number,
   order: 'chronological' | 'newest-first' = 'newest-first'
-): { valid: boolean; error?: string; discrepantIndex?: number } {
+): ProductContinuityResult {
   const chrono = order === 'newest-first' ? [...entries].reverse() : [...entries];
   const prodEntries = chrono.filter((e) => {
     const prodSku = typeof e.producto === 'string' ? e.producto : e.producto?.sku;
@@ -325,7 +327,7 @@ export function verifyProductContinuity(
   });
 
   if (prodEntries.length === 0) {
-    return { valid: true };
+    return { valid: true, affectedSkus: [] };
   }
 
   for (let i = 0; i < prodEntries.length - 1; i++) {
@@ -336,6 +338,7 @@ export function verifyProductContinuity(
         valid: false,
         error: `Discontinuidad en producto ${sku} entre entradas #${current.id} (resultante: ${current.saldoResultante}) y #${next.id} (anterior: ${next.saldoAnterior})`,
         discrepantIndex: i,
+        affectedSkus: [sku],
       };
     }
   }
@@ -344,11 +347,58 @@ export function verifyProductContinuity(
   if (lastEntry.saldoResultante !== currentStock) {
     return {
       valid: false,
-      error: `Discontinuidad final: el stock actual (${currentStock}) no coincide con el último saldoResultante (${lastEntry.saldoResultante}) de la entrada #${lastEntry.id}`,
+      error: `Discontinuidad final en ${sku}: el stock actual (${currentStock}) no coincide con el último saldoResultante (${lastEntry.saldoResultante}) de la entrada #${lastEntry.id}`,
+      affectedSkus: [sku],
     };
   }
 
-  return { valid: true };
+  return { valid: true, affectedSkus: [] };
+}
+
+/**
+ * Verifica la continuidad de inventario por producto o para todo el catálogo:
+ * - Si el primer argumento es un SKU (string): verifica ese producto contra `currentStock`.
+ * - Si el primer argumento es el arreglo `productos`: verifica cada producto contra el Kardex y lista todos los `affectedSkus`.
+ * Para todas las entradas cronológicas del producto:
+ * saldoResultante[i] == saldoAnterior[i+1] y stock actual == último saldoResultante.
+ */
+export function verifyProductContinuity(
+  skuOrProducts: string | readonly { sku: string; stock: number }[],
+  entries: readonly KardexEntry[],
+  currentStockOrOrder?: number | 'chronological' | 'newest-first',
+  order: 'chronological' | 'newest-first' = 'newest-first'
+): ProductContinuityResult {
+  if (Array.isArray(skuOrProducts)) {
+    const products = skuOrProducts as readonly { sku: string; stock: number }[];
+    const resolvedOrder: 'chronological' | 'newest-first' =
+      currentStockOrOrder === 'chronological' || currentStockOrOrder === 'newest-first'
+        ? currentStockOrOrder
+        : order;
+    const affectedSkus: string[] = [];
+    const errors: string[] = [];
+
+    for (const prod of products) {
+      if (!prod || typeof prod.sku !== 'string') continue;
+      const res = verifySingleProductContinuity(prod.sku, entries, prod.stock, resolvedOrder);
+      if (!res.valid) {
+        affectedSkus.push(prod.sku);
+        if (res.error) errors.push(res.error);
+      }
+    }
+
+    if (affectedSkus.length > 0) {
+      return {
+        valid: false,
+        affectedSkus,
+        error: `Discrepancia de continuidad de stock en SKU(s) [${affectedSkus.join(', ')}]: ${errors.join(' | ')}`,
+      };
+    }
+    return { valid: true, affectedSkus: [] };
+  }
+
+  const sku = skuOrProducts as string;
+  const currentStock = typeof currentStockOrOrder === 'number' ? currentStockOrOrder : 0;
+  return verifySingleProductContinuity(sku, entries, currentStock, order);
 }
 
 export interface StockDeductionResult<T extends StockItemLike> {

@@ -42,10 +42,11 @@ Archivo independiente (monolítico en HTML + Tailwind CDN + Vanilla JS) ejecutab
 > **Nota para el equipo:** esto es una solución de prototipo; la base definitiva será SQLite en local-server, con la PC como fuente de verdad.
 
 En esta fase de prototipo:
-- El estado operativo completo (catálogo de productos, libreta de fiado vecinal, arqueos de caja, mermas, auditorías y Kardex criptográfico append-only) se resguarda en **IndexedDB** del navegador de la PC local con guardado diferido (`debounce ~500 ms`) para evitar saturación de I/O.
-- Incluye **versión de esquema y migración automática**.
-- Si el dato almacenado estuviera dañado o la cadena del Kardex fuese alterada, el sistema arranca con los datos de demostración limpios y despliega una alerta visible.
-- Cuenta con un botón **"Restablecer datos de demostración"** con diálogo de confirmación para reiniciar pruebas en cualquier momento.
+- El estado operativo completo (catálogo de productos, libreta de fiado vecinal, arqueos de caja, mermas, auditorías y Kardex criptográfico append-only) se resguarda en **IndexedDB** del navegador de la PC local (`tx.oncomplete` / `tx.onerror` / `tx.onabort`), ejecutando `flushSave()` inmediato tras cada operación con dinero o stock y en los eventos `pagehide` y `visibilitychange` (`hidden`), dejando el `debounce (~500 ms)` solo para cambios menores.
+- Incluye **versión de esquema y migración automática**, así como verificación en el arranque de la cadena criptográfica (`verifyKardexChain`) y continuidad por producto (`verifyProductContinuity(productos, kardex)`).
+- **Resguardo ante datos dañados (sin sobrescritura automática):** Si el dato almacenado presenta daño o discrepancia de continuidad, **NO se sobrescribe**; se copia el dato crudo a `'binnitech_pos_state_corrupt_<ISO>'` (conservando las 3 copias más recientes), se bloquea el autoguardado y se presenta un modal con 3 opciones: *"Descargar datos dañados (JSON)"*, *"Empezar con datos de demostración"* (con confirmación explícita) y *"Reintentar"*.
+- **Hidratación y Cola LAN:** Muestra pantalla de carga hasta completar `isHydrated`, encolando los mensajes de la LAN recibidos antes de hidratar para aplicarlos en estricto orden FIFO al terminar.
+- **Exclusión mutua de escritura:** Utiliza `navigator.locks.request('binnitech_pos_writer', { ifAvailable: true })` (con respaldo `BroadcastChannel`) para asegurar que una sola pestaña escriba; cualquier pestaña adicional entra en modo solo lectura con el aviso *"Esta app ya está abierta en otra ventana"*.
 - **Seguridad:** El PIN de administrador **NUNCA** se almacena en texto plano; su autenticación se realiza mediante derivación PBKDF2 (>= 600,000 iteraciones + sal criptográfica).
 
 ---

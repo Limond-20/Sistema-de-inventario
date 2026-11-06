@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  CORRUPT_STATE_KEY_PREFIX,
   validateStoredState,
   migrateState,
+  backupCorruptedState,
   DebouncedStorageSaver,
   MemoryStateStorageAdapter,
   type PersistedAppState,
 } from './persistence.ts';
-import { createKardexEntry, verifyKardexChain, type KardexEntry } from './kardex.ts';
+import { createKardexEntry, verifyKardexChain, verifyProductContinuity, type KardexEntry } from './kardex.ts';
 
 test('Persistencia: Guardar, recargar y recuperar estado intacto', async () => {
   const adapter = new MemoryStateStorageAdapter();
@@ -216,4 +218,60 @@ test('Persistencia: DebouncedStorageSaver retrasa la ejecución y procesa últim
     flushed = true;
   });
   assert.equal(flushed, true, 'flush debe ejecutar de inmediato');
+});
+
+test('Persistencia: Detección de stock alterado mediante verifyProductContinuity y listado de SKUs afectados', () => {
+  const kEntry = createKardexEntry({
+    type: 'VENTA_EFECTIVO',
+    producto: { sku: 'PAN-BIM-680', name: 'Pan Blanco Bimbo 680g' },
+    cantidad: -2,
+    saldoAnterior: 10,
+    saldoResultante: 8,
+    usuario: 'Don Lupe',
+    referencia: 'TK-10',
+    previousHash: 'GENESIS',
+  });
+
+  // Estado donde el hash del Kardex es válido, pero el stock del producto fue alterado de 8 a 99
+  const stateWithAlteredStock = {
+    schemaVersion: 1,
+    products: [
+      { sku: 'PAN-BIM-680', name: 'Pan Blanco Bimbo 680g', stock: 99 },
+      { sku: 'REF-COC-600', name: 'Coca-Cola 600ml', stock: 24 },
+    ],
+    creditCustomers: [],
+    kardex: [kEntry],
+    shrinkRecords: [],
+    auditLines: [],
+  };
+
+  const validation = validateStoredState(
+    stateWithAlteredStock,
+    (k) => verifyKardexChain(k, 'newest-first'),
+    (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
+  );
+
+  assert.equal(validation.valid, false, 'Debe rechazar el estado por discrepancia de continuidad de stock');
+  assert.deepEqual(validation.affectedSkus, ['PAN-BIM-680']);
+  assert.match(validation.reason || '', /PAN-BIM-680/);
+});
+
+test('Persistencia: backupCorruptedState conserva las 3 copias más recientes sin sobrescribir la clave principal', async () => {
+  const adapter = new MemoryStateStorageAdapter();
+  const originalCorrupt = { schemaVersion: 1, products: 'corrupto' };
+  await adapter.save(STATE_STORAGE_KEY, originalCorrupt);
+
+  const k1 = await backupCorruptedState(adapter, { v: 1 }, '2026-10-28T10:00:00.000Z');
+  const k2 = await backupCorruptedState(adapter, { v: 2 }, '2026-10-28T10:01:00.000Z');
+  const k3 = await backupCorruptedState(adapter, { v: 3 }, '2026-10-28T10:02:00.000Z');
+  const k4 = await backupCorruptedState(adapter, { v: 4 }, '2026-10-28T10:03:00.000Z');
+
+  assert.ok(k1.startsWith(CORRUPT_STATE_KEY_PREFIX));
+  const corruptKeys = await adapter.listKeys(CORRUPT_STATE_KEY_PREFIX);
+  assert.equal(corruptKeys.length, 3, 'Solo deben conservarse las 3 copias más recientes');
+  assert.deepEqual(corruptKeys.sort(), [k2, k3, k4]);
+
+  // Verificar que la clave principal no fue sobrescrita ni eliminada
+  const stillOriginal = await adapter.load(STATE_STORAGE_KEY);
+  assert.deepEqual(stillOriginal, originalCorrupt);
 });
