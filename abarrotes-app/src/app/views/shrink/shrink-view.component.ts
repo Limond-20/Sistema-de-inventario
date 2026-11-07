@@ -19,20 +19,15 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
-        <a routerLink="/fefo"
-          class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition-colors">
-          <span>Cambios Físicos FEFO</span>
-          @if (inv.getUrgentFefoCount() > 0) {
-            <span class="px-1.5 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-bold font-mono">
-              {{ inv.getUrgentFefoCount() }}
-            </span>
-          }
-        </a>
-        <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3.5 py-2 shadow-2xs text-xs font-semibold text-slate-600">
-          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+      <div class="flex items-center gap-5">
+        <div class="flex items-center gap-2 text-sm text-slate-600">
+          <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
           <span>Sincronización móvil activa</span>
         </div>
+        <a routerLink="/fefo"
+          class="flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 shadow-2xs transition-colors hover:bg-slate-50">
+          Cambios Físicos FEFO@if (inv.getUrgentFefoCount() > 0) { ({{ inv.getUrgentFefoCount() }}) }
+        </a>
       </div>
     </section>
 
@@ -72,16 +67,16 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
                    class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
                    alt="Evidencia #{{ r.id }}"
                    title="Clic para ver en grande" />
-              <div class="absolute bottom-1 right-1 bg-slate-900/70 text-white text-[9px] px-1 py-0.5 rounded backdrop-blur-xs pointer-events-none">
-                🔍 Ver
+              <div class="absolute bottom-1 right-1 bg-slate-900/75 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded pointer-events-none">
+                Ver foto
               </div>
             } @else {
-              <div class="flex flex-col items-center justify-center p-2 text-slate-400">
-                <svg class="w-6 h-6 mb-1 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="flex flex-col items-center justify-center p-2 text-slate-500">
+                <svg class="w-6 h-6 mb-1 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span class="text-[10px] font-bold uppercase tracking-tight">Sin foto</span>
+                <span class="text-[10px] font-bold text-slate-600 uppercase tracking-tight">Foto Evidencia</span>
               </div>
             }
           </div>
@@ -139,19 +134,19 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
 
     <!-- Modal / Visor de Evidencia en Grande -->
     @if (selectedEvidenceUrl()) {
-      <div class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+      <div class="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-6"
            (click)="closeLightbox()">
-        <div class="relative bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+        <div class="relative bg-white rounded-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
              (click)="$event.stopPropagation()">
-          <div class="p-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-            <span class="text-xs font-bold text-slate-700">Evidencia Fotográfica de Merma</span>
+          <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white">
+            <h2 class="text-base font-bold text-slate-900">Evidencia Fotográfica de Merma</h2>
             <button type="button" (click)="closeLightbox()"
-                    class="h-8 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition-colors">
-              ✕ Cerrar
+                    class="h-9 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors">
+              Cerrar
             </button>
           </div>
-          <div class="p-4 flex items-center justify-center bg-slate-900 overflow-auto">
-            <img [src]="selectedEvidenceUrl()" class="max-h-[70vh] w-auto object-contain rounded-lg shadow-md" alt="Evidencia en grande" />
+          <div class="p-6 flex items-center justify-center bg-slate-100 overflow-auto">
+            <img [src]="selectedEvidenceUrl()" class="max-h-[70vh] w-auto object-contain rounded-xl border border-slate-200 shadow-xs" alt="Evidencia en grande" />
           </div>
         </div>
       </div>

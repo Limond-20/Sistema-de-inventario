@@ -40,16 +40,16 @@
     </div>
 
     <!-- Selector de Usuario/Cajero Activo (Auditoría en Kardex) -->
-    <div class="flex flex-col gap-1.5 rounded-xl bg-brand-800/80 border border-white/15 px-3 py-2">
-      <label for="active-user-select" class="text-[11px] text-brand-200 font-bold uppercase tracking-wider flex items-center gap-1.5">
-        <app-icon name="user" [size]="14" />
+    <div class="flex flex-col gap-1.5 rounded-xl bg-brand-800 px-3.5 py-2.5">
+      <label for="active-user-select" class="text-xs font-semibold text-brand-200 flex items-center gap-1.5">
+        <app-icon name="user" [size]="15" />
         <span>Usuario Activo:</span>
       </label>
       <select
         id="active-user-select"
         [value]="inv.activeUser()"
         (change)="onUserChange($any($event.target).value, $any($event.target))"
-        class="w-full bg-brand-900 border border-white/25 rounded-lg px-2.5 py-1.5 text-xs text-white font-semibold focus:outline-none focus:ring-1 focus:ring-amber-400">
+        class="h-9 w-full rounded-lg border border-white/20 bg-brand-900 px-2.5 text-xs font-semibold text-white focus:outline-none">
         @for (user of inv.availableUsers(); track user) {
           <option [value]="user" class="text-slate-900 bg-white">{{ user }}</option>
         }
@@ -73,7 +73,7 @@
       <span class="font-display text-lg font-bold tabular-nums">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
     </div>
 
-        <button type="button" (click)="openCloseShift()"
+    <button type="button" (click)="openCloseShift()"
       class="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/25 text-sm font-semibold text-brand-100 hover:border-rose-200/60 hover:bg-rose-300/15 hover:text-white">
       <app-icon name="power" [size]="18" />
       Cerrar Turno
@@ -81,19 +81,20 @@
 
     @if (inv.corruptedDataWarning()) {
       <button type="button" (click)="inv.corruptedModalOpen.set(true)"
-        class="rounded-xl border border-amber-400/60 bg-amber-950/70 p-2.5 text-left text-xs text-amber-200 hover:bg-amber-950">
+        class="rounded-xl border border-amber-400/60 bg-brand-800 p-2.5 text-left text-xs text-amber-200 hover:bg-brand-900">
         <span class="font-bold flex items-center gap-1.5">
-          <span>⚠️</span> Datos dañados (Autoguardado bloqueado)
+          <app-icon name="alert" [size]="15" />
+          <span>Datos dañados (Autoguardado bloqueado)</span>
         </span>
-        <span class="block text-[11px] text-amber-300/80 mt-1 line-clamp-2">
+        <span class="block text-[11px] text-brand-200 mt-1 line-clamp-2">
           {{ inv.corruptedDataWarning() }}
         </span>
       </button>
     }
 
     <button type="button" (click)="openResetDemoModal()"
-      class="flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-400/40 bg-amber-500/10 text-xs font-semibold text-amber-200 hover:bg-amber-500/20 hover:text-amber-100">
-      <app-icon name="refresh" [size]="16" />
+      class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 text-xs font-semibold text-brand-200 hover:bg-white/10 hover:text-white">
+      <app-icon name="refresh" [size]="15" />
       Restablecer datos de demostración
     </button>
     
@@ -149,12 +150,14 @@
         <!-- Modo Real contra local-server -->
         @if (forbiddenAccess()) {
           <div class="p-8 text-center">
-            <div class="mx-auto max-w-md rounded-2xl border-2 border-rose-200 bg-rose-50 p-6 text-rose-900 shadow-sm">
-              <div class="mb-2 text-2xl">🔒</div>
-              <p class="text-[15px] font-bold leading-snug">
+            <div class="mx-auto max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-6 text-slate-900 shadow-xs">
+              <div class="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-xl bg-white text-[#a33f3f] border border-rose-200">
+                <app-icon name="lock" [size]="20" />
+              </div>
+              <p class="text-[15px] font-bold leading-snug text-slate-900">
                 Abre esta app desde la PC de la tienda en https://localhost:8443 para vincular el celular
               </p>
-              <p class="mt-2 text-xs text-rose-700">
+              <p class="mt-2 text-xs text-slate-600">
                 Por seguridad, la generación y visualización de códigos de vinculación solo está permitida desde la propia computadora principal.
               </p>
             </div>
@@ -294,7 +297,7 @@
             <button type="button" (click)="closeCloseShiftModal()" class="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Cancelar
             </button>
-            <button type="button" (click)="confirmCloseShift()" class="h-11 rounded-xl bg-red-600 px-6 text-sm font-semibold text-white hover:bg-red-700">
+            <button type="button" (click)="confirmCloseShift()" class="h-11 rounded-xl bg-[#a33f3f] px-6 text-sm font-semibold text-white hover:bg-[#8c3434]">
               Confirmar y Cerrar Turno
             </button>
           </div>
@@ -307,37 +310,38 @@
 <!-- ===================== MODAL RESTABLECER DATOS DEMO ===================== -->
 @if (resetDemoModalOpen()) {
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true">
-    <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-          <app-icon name="refresh" [size]="20" class="text-amber-600" />
-          Restablecer Datos de Demostración
-        </h2>
-        <button type="button" (click)="closeResetDemoModal()" class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
-          <app-icon name="close" [size]="18" />
+    <div class="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5">
+        <h2 class="text-xl font-bold text-slate-900">Restablecer Datos de Demostración</h2>
+        <button type="button" (click)="closeResetDemoModal()" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
+          <app-icon name="close" [size]="20" />
         </button>
       </div>
 
-      <div class="p-6">
+      <div class="p-7">
         @if (resetDemoSuccess()) {
-          <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-center text-emerald-800">
-            <span class="text-2xl">✅</span>
-            <p class="mt-2 font-bold text-base">¡Datos de demostración restablecidos!</p>
-            <p class="mt-1 text-xs text-emerald-700">El catálogo, libreta de fiado, caja y Kardex han vuelto a los valores iniciales limpios.</p>
+          <div class="flex flex-col items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-7 text-center">
+            <span class="grid h-11 w-11 place-items-center rounded-xl bg-brand-700 text-white">
+              <app-icon name="check" [size]="20" />
+            </span>
+            <h3 class="text-xl font-bold text-slate-900">Datos de demostración restablecidos</h3>
+            <p class="text-[15px] text-slate-700">
+              El catálogo, libreta de fiado, caja y Kardex han vuelto a los valores iniciales limpios.
+            </p>
           </div>
         } @else {
-          <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-            <p class="font-semibold text-sm">¿Deseas restablecer todos los datos del sistema?</p>
-            <p class="mt-2 text-xs text-amber-800 leading-relaxed">
-              Esta acción borrará los cambios locales guardados en IndexedDB de este navegador y restablecerá los 5 productos base, libreta de fiado, turnos de caja, mermas y el Kardex a sus valores iniciales de demostración.
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-800">
+            <p class="font-semibold text-[15px] text-slate-900">¿Deseas restablecer todos los datos del sistema?</p>
+            <p class="mt-2 text-sm text-slate-600 leading-relaxed">
+              Esta acción borrará los cambios locales guardados en IndexedDB de este navegador y restablecerá el catálogo de productos, libreta de fiado, turnos de caja, mermas y el Kardex a sus valores iniciales de demostración.
             </p>
           </div>
 
           <div class="mt-6 flex justify-end gap-3">
-            <button type="button" (click)="closeResetDemoModal()" class="h-10 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <button type="button" (click)="closeResetDemoModal()" class="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Cancelar
             </button>
-            <button type="button" (click)="confirmResetDemo()" class="h-10 rounded-xl bg-amber-600 px-5 text-sm font-semibold text-white hover:bg-amber-700">
+            <button type="button" (click)="confirmResetDemo()" class="h-11 rounded-xl bg-[#a33f3f] px-6 text-sm font-semibold text-white hover:bg-[#8c3434]">
               Sí, restablecer datos
             </button>
           </div>

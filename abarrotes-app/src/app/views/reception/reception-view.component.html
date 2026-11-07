@@ -10,27 +10,31 @@
     </p>
   </div>
 
-  <!-- Indicadores rápidos de la nota activa -->
-  @if (lines().length > 0) {
-    <div class="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-3.5 py-2 shadow-2xs">
-      <div class="text-right pr-3 border-r border-slate-200">
-        <span class="block text-[10px] font-bold uppercase text-slate-400">Renglones</span>
-        <span class="text-lg font-bold text-slate-900 font-mono">{{ lines().length }}</span>
-      </div>
-      <div class="text-right pr-3 border-r border-slate-200">
-        <span class="block text-[10px] font-bold uppercase text-slate-400">Alertas Margen</span>
-        <span class="text-lg font-black font-mono" [class]="pendingCount() > 0 ? 'text-red-700' : 'text-emerald-700'">
-          {{ pendingCount() }}
-        </span>
-      </div>
-      <div class="text-right">
-        <span class="block text-[10px] font-bold uppercase text-slate-400">Total Nota</span>
-        <span class="text-lg font-black text-slate-900 font-mono">{{ total() | currency:'MXN':'symbol-narrow' }}</span>
-      </div>
-    </div>
-  }
+
+  
 </section>
 
+<!-- ===================== INDICADORES DE LA NOTA ACTIVA ===================== -->
+@if (lines().length > 0) {
+  <section class="mb-5 grid gap-3 sm:grid-cols-3">
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+      <span class="text-sm font-semibold text-slate-600">Renglones</span>
+      <p class="mt-0.5 text-2xl font-bold text-slate-900 tabular-nums">{{ lines().length }}</p>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+      <span class="text-sm font-semibold text-slate-600">Alertas Margen</span>
+      <p class="mt-0.5 text-2xl font-bold tabular-nums" [class]="pendingCount() > 0 ? 'text-red-700' : 'text-emerald-700'">
+        {{ pendingCount() }}
+      </p>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+      <span class="text-sm font-semibold text-slate-600">Total Nota</span>
+      <p class="mt-0.5 text-2xl font-bold text-slate-900 tabular-nums">{{ total() | currency:'MXN':'symbol-narrow' }}</p>
+    </div>
+  </section>
+}
 
 <!-- ===================== SELECTOR DE MODO Y ACCIONES ===================== -->
 <div class="flex flex-col sm:flex-row gap-3 mb-5 items-stretch">
@@ -281,25 +285,27 @@
       </table>
     </section>
 
-    <!-- ===================== BARRA INFERIOR DE GUARDADO BLINDADO ===================== -->
-    <section class="rounded-xl border p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs"
-      [class]="canSave() ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70'">
-      <div>
-        @if (canSave()) {
-          <p class="text-base font-bold text-emerald-950">Listo para registrar entrada</p>
-          <p class="text-sm text-slate-700">
-            {{ lines().length }} productos verificados · Total: <b>{{ total() | currency:'MXN':'symbol-narrow' }}</b> · Todos los márgenes están protegidos.
-          </p>
-        } @else {
-          <p class="text-base font-bold text-amber-950">Entrada pausada por alza de costos</p>
-          <p class="text-sm text-slate-700">
-            Tienes <b>{{ pendingCount() }} producto(s) con margen insuficiente</b>. Ajusta los precios sugeridos para guardar.
-          </p>
-        }
+        <!-- ===================== BARRA INFERIOR DE GUARDADO BLINDADO ===================== -->
+    <section class="flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-2xs sm:flex-row">
+      <div class="flex items-start gap-3">
+        <span class="mt-2 h-2.5 w-2.5 shrink-0 rounded-full" [class]="canSave() ? 'bg-emerald-500' : 'bg-slate-400'"></span>
+        <div>
+          @if (canSave()) {
+            <p class="text-base font-bold text-slate-900">Listo para registrar entrada</p>
+            <p class="text-sm text-slate-600">
+              {{ lines().length }} productos verificados · Total: <b class="text-slate-900">{{ total() | currency:'MXN':'symbol-narrow' }}</b> · Todos los márgenes están protegidos.
+            </p>
+          } @else {
+            <p class="text-base font-bold text-slate-900">Entrada pausada por alza de costos</p>
+            <p class="text-sm text-slate-600">
+              Tienes <b class="text-slate-900">{{ pendingCount() }} producto(s) con margen insuficiente</b>. Ajusta los precios sugeridos para guardar.
+            </p>
+          }
+        </div>
       </div>
 
       <button type="button" (click)="save()" [disabled]="!canSave()"
-        class="h-12 w-full sm:w-auto px-7 rounded-xl font-bold text-sm shadow-2xs transition-colors shrink-0"
+        class="h-12 w-full shrink-0 rounded-xl px-7 text-sm font-bold shadow-2xs transition-colors sm:w-auto"
         [class]="canSave()
           ? 'bg-brand-700 hover:bg-brand-800 text-white'
           : 'bg-slate-300 text-slate-700 cursor-not-allowed'">
