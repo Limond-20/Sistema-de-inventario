@@ -22,7 +22,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import segno
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -30,6 +30,15 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import StaticFiles
 
+from .backup import (
+    BACKUP_FILENAME_RE,
+    BackupDecryptionError,
+    BackupError,
+    BackupInvalidFilenameError,
+    BackupNotFoundError,
+    BackupPassphraseError,
+    BackupStore,
+)
 from .netinfo import is_loopback, lan_ips
 from .pairing import PairingStore
 
@@ -169,6 +178,9 @@ def create_app(
     st.evidencias_dir = st.data_dir / "evidencias"
     st.evidencias_dir.mkdir(parents=True, exist_ok=True)
     cleanup_stale_temp_evidencias(st.evidencias_dir, max_age_seconds=3600.0)
+    st.respaldos_dir = st.data_dir / "respaldos"
+    st.respaldos_dir.mkdir(parents=True, exist_ok=True)
+    st.backups = BackupStore(st.respaldos_dir)
 
     def trusted(host: str | None) -> bool:
         return is_loopback(host) or (host in st.trusted_hosts)
@@ -356,6 +368,104 @@ def create_app(
             headers={
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control": "private",
+            },
+        )
+
+    # ---------------------------- Respaldos Cifrados (Bloque E) ----------------------------
+    def _extract_backup_passphrase(request: Request) -> str | None:
+        raw = (
+            request.headers.get("x-backup-passphrase")
+            or request.headers.get("x-frase-respaldo")
+            or request.headers.get("x-passphrase")
+        )
+        if not raw:
+            return None
+        try:
+            return unquote(raw)
+        except Exception:
+            return raw
+
+    @app.post("/api/respaldo", dependencies=[Depends(require_local)])
+    async def create_respaldo(request: Request) -> dict:
+        passphrase = _extract_backup_passphrase(request)
+        if not passphrase or len(passphrase) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail="La frase de respaldo debe tener al menos 8 caracteres.",
+            )
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Cuerpo JSON inválido.") from exc
+
+        if payload is None or not isinstance(payload, (dict, list)):
+            raise HTTPException(status_code=400, detail="El estado a respaldar debe ser un objeto JSON.")
+
+        try:
+            return st.backups.create(payload, passphrase)
+        except BackupPassphraseError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except BackupError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/respaldo", dependencies=[Depends(require_local)])
+    async def list_respaldos() -> list[dict]:
+        return st.backups.list_all()
+
+    @app.post("/api/respaldo/restaurar", dependencies=[Depends(require_local)])
+    async def restore_respaldo(
+        request: Request,
+        nombre: str | None = None,
+        name: str | None = None,
+    ) -> Response:
+        passphrase = _extract_backup_passphrase(request)
+        if not passphrase or len(passphrase) < 8:
+            raise HTTPException(status_code=403, detail="No autorizado")
+
+        target_name = nombre or name
+        if not target_name:
+            try:
+                raw_body = await request.body()
+                if raw_body and raw_body.strip():
+                    body_json = json.loads(raw_body)
+                    if isinstance(body_json, dict):
+                        target_name = (
+                            body_json.get("nombre")
+                            or body_json.get("name")
+                            or body_json.get("filename")
+                        )
+            except ValueError:
+                pass
+
+        try:
+            restored = st.backups.restore(passphrase, target_name)
+        except BackupInvalidFilenameError as exc:
+            raise HTTPException(status_code=400, detail="Nombre de respaldo inválido") from exc
+        except BackupNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Respaldo no encontrado") from exc
+        except (BackupDecryptionError, BackupPassphraseError) as exc:
+            raise HTTPException(status_code=403, detail="No autorizado") from exc
+
+        return JSONResponse(content=restored)
+
+    @app.get("/api/respaldo/{nombre:path}", dependencies=[Depends(require_local)])
+    async def download_respaldo_bak(nombre: str) -> Response:
+        if not BACKUP_FILENAME_RE.match(nombre):
+            raise HTTPException(status_code=400, detail="Nombre de respaldo inválido")
+        try:
+            raw_bytes = st.backups.read_raw(nombre)
+        except BackupInvalidFilenameError as exc:
+            raise HTTPException(status_code=400, detail="Nombre de respaldo inválido") from exc
+        except BackupNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Respaldo no encontrado") from exc
+
+        return Response(
+            content=raw_bytes,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{nombre}"',
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
             },
         )
 

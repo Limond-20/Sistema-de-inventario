@@ -53,6 +53,24 @@ import {
   type PersistedAppState,
 } from '../domain/persistence';
 import {
+  MIN_BACKUP_PASSPHRASE_LENGTH,
+  HOURLY_BACKUP_INTERVAL_MS,
+  PRERESTORE_STATE_KEY_PREFIX,
+  validateBackupPassphrase,
+  formatRelativeBackupTime,
+  isBackupOlderThan24h,
+  decryptBackupBytes,
+  copyBackupToUsb,
+  HttpBackupTransportAdapter,
+  BackupUnauthorizedError,
+  type BackupEntryMeta,
+  type BackupOperationResult,
+  type RestoreOperationResult,
+  type UsbCopyResult,
+  type BackupTransportAdapter,
+  type SaveIndicatorStatus,
+} from '../domain/backup';
+import {
   AbcResult,
   ClassificationDiscrepancy,
   GuidedAnswer,
@@ -1212,7 +1230,7 @@ export class MockInventoryService implements OnDestroy {
    * Cada cambio de usuario genera una entrada auditable de tipo 'CAMBIO_USUARIO' en el Kardex.
    */
   async setActiveUser(name: string, pin?: string): Promise<{ success: boolean; message: string }> {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { success: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
     const target = name?.trim();
@@ -1257,6 +1275,45 @@ export class MockInventoryService implements OnDestroy {
 
   readonly isHydrated = signal<boolean>(false);
   readonly autoSaveBlocked = signal<boolean>(false);
+  readonly lastSaveError = signal<string | null>(null);
+  private suppressEffectSchedule = false;
+
+  // Indicadores de guardado visibles (Bloque E): 'saved' ("Guardado"), 'saving' ("Guardando…"), 'error' ("No se pudo guardar")
+  readonly indexedDbSaveStatus = signal<SaveIndicatorStatus>('saved');
+  readonly indexedDbSaveLabel = computed(() => {
+    const s = this.indexedDbSaveStatus();
+    if (s === 'saving') return 'Guardando…';
+    if (s === 'error') return 'No se pudo guardar';
+    return 'Guardado';
+  });
+
+  readonly backupSaveStatus = signal<SaveIndicatorStatus>('saved');
+  readonly backupSaveLabel = computed(() => {
+    const s = this.backupSaveStatus();
+    if (s === 'saving') return 'Guardando…';
+    if (s === 'error') return 'No se pudo guardar';
+    return 'Guardado';
+  });
+
+  // ---------- Respaldo Cifrado AES-GCM y Copia a USB (Bloque E) ----------
+  backupAdapter: BackupTransportAdapter = new HttpBackupTransportAdapter();
+  /** Frase de respaldo mantenida ÚNICAMENTE en memoria de la sesión actual (jamás se persiste en disco/storage). */
+  private sessionBackupPassphrase: string | null = null;
+  readonly sessionPassphraseActive = signal<boolean>(false);
+  private hourlyBackupTimer: ReturnType<typeof setInterval> | null = null;
+
+  readonly backupList = signal<BackupEntryMeta[]>([]);
+  readonly lastBackupIso = signal<string | null>(null);
+  readonly hasChangesSinceLastBackup = signal<boolean>(false);
+
+  /** Clave 'binnitech_pos_state_prerestore_<ISO>' para ofrecer "Deshacer restauración". */
+  readonly lastPreRestoreKey = signal<string | null>(null);
+  readonly canUndoRestore = computed<boolean>(() => this.lastPreRestoreKey() !== null);
+
+  /** Aviso permanente cuando no hay frase de respaldo en memoria de la sesión. */
+  readonly autoBackupStoppedWarning = computed<string | null>(() =>
+    this.sessionPassphraseActive() ? null : 'Respaldo automático detenido: ingresa la frase'
+  );
 
   // Estado de corrupción y modal de recuperación
   readonly corruptedDataWarning = signal<string | null>(null);
@@ -1303,10 +1360,15 @@ export class MockInventoryService implements OnDestroy {
     this.initWriterLock();
     this.initLanSyncListener();
     this.initPersistence();
+    this.initBackupAutomation();
   }
 
   ngOnDestroy(): void {
     this.storageSaver.cancel();
+    if (this.hourlyBackupTimer) {
+      clearInterval(this.hourlyBackupTimer);
+      this.hourlyBackupTimer = null;
+    }
     void this.releaseWriterLock();
     if (this.lanSyncChannel) {
       try {
@@ -1501,8 +1563,16 @@ export class MockInventoryService implements OnDestroy {
     }
   }
 
+  /**
+   * Guarda central usada por TODOS los métodos que modifican el estado del servicio.
+   * Devuelve false si la aplicación se encuentra en modo solo lectura ("Esta app ya está abierta en otra ventana").
+   */
+  assertWritable(): boolean {
+    return !this.isReadOnlyMode();
+  }
+
   private canWriteToStorage(): boolean {
-    return this.isHydrated() && !this.autoSaveBlocked() && !this.isReadOnlyMode();
+    return this.isHydrated() && !this.autoSaveBlocked() && this.assertWritable();
   }
 
   private initPersistence(): void {
@@ -1527,7 +1597,7 @@ export class MockInventoryService implements OnDestroy {
         const _u = this.activeUser();
         const _ma = this.morningAlerts();
 
-        if (this.canWriteToStorage()) {
+        if (this.canWriteToStorage() && !this.suppressEffectSchedule) {
           this.scheduleSave();
         }
       });
@@ -1577,11 +1647,20 @@ export class MockInventoryService implements OnDestroy {
    */
   scheduleSave(): void {
     if (!this.canWriteToStorage()) return;
+    this.hasChangesSinceLastBackup.set(true);
+    if (this.indexedDbSaveStatus() !== 'error') {
+      this.indexedDbSaveStatus.set('saving');
+    }
     this.storageSaver.schedule(async () => {
       if (!this.canWriteToStorage()) return;
+      this.indexedDbSaveStatus.set('saving');
       try {
         await this.storageAdapter.save(STATE_STORAGE_KEY, this.getPersistedStateSnapshot());
-      } catch (err) {
+        this.lastSaveError.set(null);
+        this.indexedDbSaveStatus.set('saved');
+      } catch (err: any) {
+        this.lastSaveError.set(err?.message || String(err));
+        this.indexedDbSaveStatus.set('error');
         console.warn('[MockInventoryService] Error guardando estado en almacenamiento diferido:', err);
       }
     });
@@ -1590,20 +1669,417 @@ export class MockInventoryService implements OnDestroy {
   /**
    * Ejecuta el guardado inmediato (flush) cancelando cualquier debounce pendiente.
    * Llamado tras cada operación con dinero o stock, así como en pagehide y visibilitychange (hidden).
+   * Si el adaptador lanza un error, NO lo traga silenciosamente: expone lastSaveError y fija el estado
+   * visible a 'error' ("No se pudo guardar").
    */
   async flushSave(): Promise<void> {
     if (!this.canWriteToStorage()) {
       this.storageSaver.cancel();
       return;
     }
-    await this.storageSaver.flush(async () => {
-      if (!this.canWriteToStorage()) return;
-      try {
-        await this.storageAdapter.save(STATE_STORAGE_KEY, this.getPersistedStateSnapshot());
-      } catch (err) {
-        console.warn('[MockInventoryService] Error en flushSave de almacenamiento:', err);
-      }
+    this.suppressEffectSchedule = true;
+    queueMicrotask(() => {
+      this.suppressEffectSchedule = false;
     });
+    this.hasChangesSinceLastBackup.set(true);
+    this.indexedDbSaveStatus.set('saving');
+    try {
+      await this.storageSaver.flush(async () => {
+        if (!this.canWriteToStorage()) return;
+        this.indexedDbSaveStatus.set('saving');
+        await this.storageAdapter.save(STATE_STORAGE_KEY, this.getPersistedStateSnapshot());
+        this.lastSaveError.set(null);
+        this.indexedDbSaveStatus.set('saved');
+      });
+    } catch (err: any) {
+      this.lastSaveError.set(err?.message || String(err));
+      this.indexedDbSaveStatus.set('error');
+      console.warn('[MockInventoryService] Error en flushSave de almacenamiento:', err);
+    }
+  }
+
+  // ---------- Operaciones de Respaldo Cifrado (Bloque E) ----------
+
+  private initBackupAutomation(): void {
+    void this.refreshBackupList();
+    if (typeof window !== 'undefined') {
+      this.hourlyBackupTimer = setInterval(() => {
+        void this.runHourlyAutoBackupIfChanged();
+      }, HOURLY_BACKUP_INTERVAL_MS);
+    }
+  }
+
+  hasSessionBackupPassphrase(): boolean {
+    return (
+      typeof this.sessionBackupPassphrase === 'string' &&
+      this.sessionBackupPassphrase.length >= MIN_BACKUP_PASSPHRASE_LENGTH
+    );
+  }
+
+  setSessionBackupPassphrase(passphrase: string): { valid: boolean; message?: string } {
+    const check = validateBackupPassphrase(passphrase);
+    if (!check.valid) {
+      return check;
+    }
+    this.sessionBackupPassphrase = passphrase;
+    this.sessionPassphraseActive.set(true);
+    return { valid: true };
+  }
+
+  clearSessionBackupPassphrase(): void {
+    this.sessionBackupPassphrase = null;
+    this.sessionPassphraseActive.set(false);
+  }
+
+  getRelativeLastBackupLabel(nowMs: number = Date.now()): string {
+    return formatRelativeBackupTime(this.lastBackupIso(), nowMs);
+  }
+
+  /**
+   * Devuelve true si el último respaldo tiene más de 24 horas o no se ha realizado aún.
+   */
+  isBackupOlderThan24h(nowMs: number = Date.now()): boolean {
+    return isBackupOlderThan24h(this.lastBackupIso(), nowMs);
+  }
+
+  async refreshBackupList(): Promise<BackupEntryMeta[]> {
+    try {
+      const list = await this.backupAdapter.listBackups();
+      this.backupList.set(list);
+      if (list.length > 0 && !this.lastBackupIso()) {
+        this.lastBackupIso.set(list[0].fecha);
+      }
+      return list;
+    } catch {
+      return this.backupList();
+    }
+  }
+
+  /**
+   * Crea un respaldo cifrado inmediatamente ("Respaldar ahora" o respaldo automático).
+   * La frase de respaldo (mínimo 8 caracteres) nunca se guarda en disco ni en localStorage/IndexedDB.
+   */
+  async backupNow(explicitPassphrase?: string): Promise<BackupOperationResult> {
+    const phrase = explicitPassphrase ?? this.sessionBackupPassphrase ?? '';
+    const check = validateBackupPassphrase(phrase);
+    if (!check.valid) {
+      this.backupSaveStatus.set('error');
+      return {
+        ok: false,
+        status: 400,
+        message: check.message || 'La frase de respaldo debe tener al menos 8 caracteres.',
+      };
+    }
+
+    this.sessionBackupPassphrase = phrase;
+    this.sessionPassphraseActive.set(true);
+    this.backupSaveStatus.set('saving');
+
+    try {
+      await this.flushSave();
+      const snapshot = this.getPersistedStateSnapshot();
+      const entry = await this.backupAdapter.createBackup(snapshot, phrase);
+      this.lastBackupIso.set(entry.fecha);
+      this.hasChangesSinceLastBackup.set(false);
+      this.backupSaveStatus.set('saved');
+      await this.refreshBackupList();
+      return {
+        ok: true,
+        status: 200,
+        message: `Respaldo cifrado ${entry.nombre} creado correctamente.`,
+        entry,
+      };
+    } catch (err: any) {
+      this.backupSaveStatus.set('error');
+      return {
+        ok: false,
+        status: err?.status || 500,
+        message: err?.message || 'No se pudo guardar el respaldo cifrado.',
+      };
+    }
+  }
+
+  /**
+   * Ejecuta respaldo automático cada hora únicamente si hubo cambios desde el último respaldo
+   * y el usuario ya proporcionó la frase en la sesión actual.
+   */
+  async runHourlyAutoBackupIfChanged(): Promise<BackupOperationResult | null> {
+    if (!this.hasChangesSinceLastBackup() || !this.hasSessionBackupPassphrase()) {
+      return null;
+    }
+    return this.backupNow();
+  }
+
+  /**
+   * Cierra el turno de caja exigiendo primero la frase de respaldo si no está en memoria,
+   * y dispara el respaldo cifrado antes de cerrar el turno.
+   */
+  async closeShiftWithAutoBackup(explicitPassphrase?: string): Promise<BackupOperationResult> {
+    await this.flushSave();
+    const phrase = explicitPassphrase ?? this.sessionBackupPassphrase ?? '';
+    const check = validateBackupPassphrase(phrase);
+    if (!check.valid) {
+      return {
+        ok: false,
+        status: 400,
+        message: 'Ingresa la frase de respaldo (mínimo 8 caracteres) antes de cerrar el turno.',
+      };
+    }
+    return this.backupNow(phrase);
+  }
+
+  private applyValidatedStateToSignals(stateToValidate: PersistedAppState): void {
+    this.products.set(structuredClone(stateToValidate.products));
+    this.creditCustomers.set(structuredClone(stateToValidate.creditCustomers));
+    if (stateToValidate.cashShift) this.cashShift.set(structuredClone(stateToValidate.cashShift));
+    if (stateToValidate.cashRegister) this.cashRegister.set(structuredClone(stateToValidate.cashRegister));
+    if (stateToValidate.internalConsumptionRecords) {
+      this.internalConsumptionRecords.set(structuredClone(stateToValidate.internalConsumptionRecords));
+    }
+    this.kardex.set(structuredClone(stateToValidate.kardex));
+    this.shrinkRecords.set(structuredClone(stateToValidate.shrinkRecords));
+    this.auditLines.set(structuredClone(stateToValidate.auditLines));
+    if (stateToValidate.morningAlerts) this.morningAlerts.set(structuredClone(stateToValidate.morningAlerts));
+    if (stateToValidate.activeUser) this.activeUser.set(stateToValidate.activeUser);
+  }
+
+  private async savePreRestoreSnapshot(): Promise<string> {
+    const preRestoreKey = `${PRERESTORE_STATE_KEY_PREFIX}${new Date().toISOString()}`;
+    const currentSnapshot = structuredClone(this.getPersistedStateSnapshot());
+    await this.storageAdapter.save(preRestoreKey, currentSnapshot);
+    this.lastPreRestoreKey.set(preRestoreKey);
+    return preRestoreKey;
+  }
+
+  /**
+   * Descifra y restaura un respaldo previo.
+   * 1. Verifica que la instancia sea escribible (assertWritable).
+   * 2. Si la frase es incorrecta o el archivo fue manipulado (403), NO altera ningún dato actual.
+   * 3. Valida con validateStoredState (cadena Kardex y continuidad de stock) antes de aplicar.
+   * 4. Guarda el estado actual como 'binnitech_pos_state_prerestore_<ISO>' y ofrece "Deshacer restauración".
+   */
+  async restoreFromBackup(passphrase: string, filename?: string): Promise<RestoreOperationResult> {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        status: 403,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+      };
+    }
+    const check = validateBackupPassphrase(passphrase);
+    if (!check.valid) {
+      return {
+        ok: false,
+        status: 403,
+        message: 'No autorizado: la frase de respaldo es inválida o incorrecta.',
+      };
+    }
+
+    this.backupSaveStatus.set('saving');
+    try {
+      const rawState = await this.backupAdapter.restoreBackup(passphrase, filename);
+      const migration = migrateState(rawState);
+      const stateToValidate = migration.state;
+
+      const validation = validateStoredState(
+        stateToValidate,
+        (k) => verifyKardexChain(k, 'newest-first'),
+        (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
+      );
+
+      if (!validation.valid) {
+        this.backupSaveStatus.set('error');
+        return {
+          ok: false,
+          status: 422,
+          message: `El respaldo descifrado presenta daño de integridad (${validation.reason}) y no se aplicó.`,
+        };
+      }
+
+      const preRestoreKey = await this.savePreRestoreSnapshot();
+      this.applyValidatedStateToSignals(stateToValidate);
+
+      this.sessionBackupPassphrase = passphrase;
+      this.sessionPassphraseActive.set(true);
+      await this.flushSave();
+      this.hasChangesSinceLastBackup.set(false);
+      this.backupSaveStatus.set('saved');
+
+      return {
+        ok: true,
+        status: 200,
+        message: `Respaldo ${filename || ''} restaurado exitosamente con Kardex íntegro.`.trim(),
+        state: stateToValidate,
+        preRestoreKey,
+      };
+    } catch (err: any) {
+      this.backupSaveStatus.set('error');
+      const isForbidden = err instanceof BackupUnauthorizedError || err?.status === 403;
+      return {
+        ok: false,
+        status: isForbidden ? 403 : err?.status || 500,
+        message: isForbidden
+          ? 'No autorizado (403): Frase de respaldo incorrecta o archivo alterado. Los datos actuales no fueron modificados.'
+          : err?.message || 'Error al restaurar el respaldo.',
+      };
+    }
+  }
+
+  /**
+   * Importa un archivo .bak cifrado desde disco o memoria USB (ej. para restaurar en otra PC),
+   * lo descifra con PBKDF2-HMAC-SHA256 (600,000 iteraciones) + AES-256-GCM verificando su AAD,
+   * valida cadena y continuidad con validateStoredState, guarda 'binnitech_pos_state_prerestore_<ISO>'
+   * y aplica el estado restaurado.
+   */
+  async importAndRestoreFromBakBytes(
+    bakBytes: Uint8Array,
+    passphrase: string,
+    sourceFilename = 'importado.bak'
+  ): Promise<RestoreOperationResult> {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        status: 403,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+      };
+    }
+    const check = validateBackupPassphrase(passphrase);
+    if (!check.valid) {
+      return {
+        ok: false,
+        status: 403,
+        message: 'No autorizado: la frase de respaldo es inválida o incorrecta.',
+      };
+    }
+
+    this.backupSaveStatus.set('saving');
+    try {
+      const plainBytes = await decryptBackupBytes(bakBytes, passphrase);
+      const rawState = JSON.parse(new TextDecoder().decode(plainBytes));
+      const migration = migrateState(rawState);
+      const stateToValidate = migration.state;
+
+      const validation = validateStoredState(
+        stateToValidate,
+        (k) => verifyKardexChain(k, 'newest-first'),
+        (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
+      );
+
+      if (!validation.valid) {
+        this.backupSaveStatus.set('error');
+        return {
+          ok: false,
+          status: 422,
+          message: `El archivo .bak importado presenta daño de integridad (${validation.reason}) y no se aplicó.`,
+        };
+      }
+
+      const preRestoreKey = await this.savePreRestoreSnapshot();
+      this.applyValidatedStateToSignals(stateToValidate);
+
+      this.sessionBackupPassphrase = passphrase;
+      this.sessionPassphraseActive.set(true);
+      await this.flushSave();
+      this.hasChangesSinceLastBackup.set(false);
+      this.backupSaveStatus.set('saved');
+
+      return {
+        ok: true,
+        status: 200,
+        message: `Archivo ${sourceFilename} importado y restaurado exitosamente.`,
+        state: stateToValidate,
+        preRestoreKey,
+      };
+    } catch (err: any) {
+      this.backupSaveStatus.set('error');
+      const isForbidden = err instanceof BackupUnauthorizedError || err?.status === 403;
+      return {
+        ok: false,
+        status: isForbidden ? 403 : err?.status || 500,
+        message: isForbidden
+          ? 'No autorizado (403): Frase de respaldo incorrecta o archivo .bak alterado. Los datos actuales no fueron modificados.'
+          : err?.message || 'Error al importar el archivo .bak.',
+      };
+    }
+  }
+
+  /**
+   * "Deshacer restauración": restaura la copia guardada en 'binnitech_pos_state_prerestore_<ISO>'
+   * previa a la última restauración.
+   */
+  async undoLastRestore(): Promise<RestoreOperationResult> {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        status: 403,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+      };
+    }
+    const preKey = this.lastPreRestoreKey();
+    if (!preKey) {
+      return {
+        ok: false,
+        status: 404,
+        message: 'No hay una restauración previa para deshacer.',
+      };
+    }
+
+    try {
+      const rawState = await this.storageAdapter.load(preKey);
+      if (!rawState) {
+        return {
+          ok: false,
+          status: 404,
+          message: `No se encontró el estado previo (${preKey}).`,
+        };
+      }
+
+      const migration = migrateState(rawState);
+      const stateToValidate = migration.state;
+      const validation = validateStoredState(
+        stateToValidate,
+        (k) => verifyKardexChain(k, 'newest-first'),
+        (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
+      );
+
+      if (!validation.valid) {
+        return {
+          ok: false,
+          status: 422,
+          message: `El estado previo no superó la validación (${validation.reason}).`,
+        };
+      }
+
+      this.applyValidatedStateToSignals(stateToValidate);
+      this.lastPreRestoreKey.set(null);
+      await this.flushSave();
+
+      return {
+        ok: true,
+        status: 200,
+        message: 'Restauración deshecha: se recuperó el estado anterior.',
+        state: stateToValidate,
+        preRestoreKey: preKey,
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        status: 500,
+        message: err?.message || 'Error al deshacer la restauración.',
+      };
+    }
+  }
+
+  /**
+   * Copia el archivo .bak cifrado a una memoria USB (File System Access API o descarga directa .bak).
+   */
+  async copyBackupToUsbDrive(filename?: string): Promise<UsbCopyResult> {
+    const targetName = filename || this.backupList()[0]?.nombre;
+    if (!targetName) {
+      throw new Error('Primero crea un respaldo cifrado antes de copiarlo a la memoria USB.');
+    }
+    const rawBytes = await this.backupAdapter.getBackupRawBytes(targetName);
+    return copyBackupToUsb(targetName, rawBytes);
   }
 
   async restorePersistedState(): Promise<{
@@ -1743,10 +2219,12 @@ export class MockInventoryService implements OnDestroy {
    * Solicita confirmación para la Opción 2 del modal: "Empezar con datos de demostración".
    */
   requestStartWithDemoDataConfirmation(): void {
+    if (!this.assertWritable()) return;
     this.corruptedConfirmOverwrite.set(true);
   }
 
   cancelStartWithDemoDataConfirmation(): void {
+    if (!this.assertWritable()) return;
     this.corruptedConfirmOverwrite.set(false);
   }
 
@@ -1756,6 +2234,7 @@ export class MockInventoryService implements OnDestroy {
    * (conservando las copias de respaldo 'binnitech_pos_state_corrupt_<ISO>').
    */
   async confirmStartWithDemoData(): Promise<void> {
+    if (!this.assertWritable()) return;
     await this.resetToDemoData();
   }
 
@@ -1775,6 +2254,7 @@ export class MockInventoryService implements OnDestroy {
    * conservando intactas las copias 'binnitech_pos_state_corrupt_<ISO>'.
    */
   async resetToDemoData(): Promise<void> {
+    if (!this.assertWritable()) return;
     this.storageSaver.cancel();
     this.autoSaveBlocked.set(false);
     this.corruptedDataWarning.set(null);
@@ -1845,6 +2325,7 @@ export class MockInventoryService implements OnDestroy {
    */
   handleIncomingLanMessage(data: any): void {
     if (!data || typeof data !== 'object') return;
+    if (!this.assertWritable()) return;
     if (!this.isHydrated()) {
       this.pendingLanMessages.push(structuredClone(data));
       return;
@@ -1861,6 +2342,7 @@ export class MockInventoryService implements OnDestroy {
 
   private applyLanMessage(data: any): void {
     if (!data || typeof data !== 'object') return;
+    if (!this.assertWritable()) return;
     this.phoneLinked.set(true);
 
     if (data.type === 'MERMA_SUBMIT' && data.record) {
@@ -1917,6 +2399,9 @@ export class MockInventoryService implements OnDestroy {
 
   /** Establece el PIN de administrador por primera vez (obligatorio en primer uso). */
   async setupInitialPin(newPin: string): Promise<{ success: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { success: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
     try {
       await setupInitialPin(newPin);
       this.isPinSetupRequired.set(false);
@@ -1929,6 +2414,7 @@ export class MockInventoryService implements OnDestroy {
 
   /** Reconfigura el PIN de administrador. */
   async configureAdminPin(newPin: string): Promise<void> {
+    if (!this.assertWritable()) return;
     await this.setupInitialPin(newPin);
   }
 
@@ -1981,12 +2467,15 @@ export class MockInventoryService implements OnDestroy {
   readonly abcPinned = signal<Record<string, AbcClass>>({});
 
   toggleTrafficDriver(sku: string): void {
+    if (!this.assertWritable()) return;
     this.products.update((list) =>
       list.map((p) => (p.sku === sku ? { ...p, isTrafficDriver: !p.isTrafficDriver } : p)),
     );
+    this.scheduleSave();
   }
 
   pinAbc(sku: string, value: AbcClass | null): void {
+    if (!this.assertWritable()) return;
     this.abcPinned.update((m) => {
       const copy = { ...m };
       if (!value) delete copy[sku];
@@ -2032,6 +2521,7 @@ export class MockInventoryService implements OnDestroy {
   );
 
   applyAbcResults(results: AbcResult[], skus?: string[]): number {
+    if (!this.assertWritable()) return 0;
     const targetSkus = new Set(skus ?? results.filter((r) => r.changed).map((r) => r.sku));
     let count = 0;
     this.products.update((list) =>
@@ -2046,6 +2536,7 @@ export class MockInventoryService implements OnDestroy {
       }),
     );
     this.lastAbcRun.set(new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long' }));
+    this.scheduleSave();
     return count;
   }
 
@@ -2085,12 +2576,15 @@ export class MockInventoryService implements OnDestroy {
 
   /** Aplica los cambios de clasificación aceptados por el usuario. */
   confirmClassificationChanges(accepted: ClassificationDiscrepancy[]): void {
+    if (!this.assertWritable()) return;
     this.products.update((list) => confirmClassificationChanges(list, accepted));
     this.abcProposalDismissed.set(false);
+    this.scheduleSave();
   }
 
   /** Pospone la revisión de reclasificación para fin de mes. */
   dismissAbcProposal(): void {
+    if (!this.assertWritable()) return;
     this.abcProposalDismissed.set(true);
   }
 
@@ -2108,16 +2602,19 @@ export class MockInventoryService implements OnDestroy {
   readonly dismissedQuickAccessSuggestions = signal<string[]>([]);
 
   pinProductQuickAccess(sku: string): void {
+    if (!this.assertWritable()) return;
     if (!this.pinnedQuickAccessSkus().includes(sku)) {
       this.pinnedQuickAccessSkus.update((list) => [...list, sku]);
     }
   }
 
   unpinProductQuickAccess(sku: string): void {
+    if (!this.assertWritable()) return;
     this.pinnedQuickAccessSkus.update((list) => list.filter((s) => s !== sku));
   }
 
   dismissQuickAccessSuggestion(sku: string): void {
+    if (!this.assertWritable()) return;
     if (!this.dismissedQuickAccessSuggestions().includes(sku)) {
       this.dismissedQuickAccessSuggestions.update((list) => [...list, sku]);
     }
@@ -2189,7 +2686,7 @@ export class MockInventoryService implements OnDestroy {
    * - Registra en Kardex como 'VENTA_EFECTIVO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
   processCashSale(items: CartItem[], cashReceived: number): SaleResult {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0, change: 0 };
     }
     if (!items.length) {
@@ -2274,7 +2771,7 @@ export class MockInventoryService implements OnDestroy {
    * - Registra en Kardex como 'VENTA_FIADO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
   processCreditSale(items: CartItem[], customerId: string): CreditResult {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0 };
     }
     if (!items.length) {
@@ -2374,7 +2871,7 @@ export class MockInventoryService implements OnDestroy {
     pin?: string,
     reason?: string,
   ): Promise<{ ok: boolean; message: string; totalCost: number; remainingAttempts?: number; isLocked?: boolean }> {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', totalCost: 0 };
     }
     if (!items.length) {
@@ -2515,7 +3012,7 @@ export class MockInventoryService implements OnDestroy {
     authorizerName = 'Administrador',
     reason = 'Ajuste físico de stock para resolver alerta de faltante',
   ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
     const pinResult = await this.verifyAdminPin(pin, authorizerName);
@@ -2573,6 +3070,9 @@ export class MockInventoryService implements OnDestroy {
     paymentType: 'EFECTIVO' | 'FIADO',
     customerId?: string,
   ): { ok: boolean; message: string; total: number } {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0 };
+    }
     if (paymentType === 'FIADO') {
       const res = this.processCreditSale(items, customerId || '');
       return { ok: res.ok, message: res.message, total: res.total };
@@ -2591,7 +3091,7 @@ export class MockInventoryService implements OnDestroy {
    * - Registra entrada en Kardex encadenada.
    */
   registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string } {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
     if (isNaN(amount) || amount <= 0) {
@@ -2649,11 +3149,13 @@ export class MockInventoryService implements OnDestroy {
 
   /** Nota nueva (simula volver a recibirla desde el celular). */
   reloadOcrNote(): void {
+    if (!this.assertWritable()) return;
     this.ocrNote.set(buildOcrNote());
   }
 
   /** Actualiza la nota OCR activa con líneas obtenidas del laboratorio OCR o BroadcastChannel. */
   setCustomOcrNote(lines: ReceptionLine[], folio = 'OCR-LAB', receivedFrom = 'Laboratorio OCR / Celular'): void {
+    if (!this.assertWritable()) return;
     this.ocrNote.set({
       folio,
       supplier: 'Proveedor Validado por OCR',
@@ -2682,7 +3184,7 @@ export class MockInventoryService implements OnDestroy {
 
   /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado, actualiza reposición y genera Kardex encadenado. */
   saveReception(lines: ReceptionLine[], folio: string): void {
-    if (this.isReadOnlyMode()) return;
+    if (!this.assertWritable()) return;
     const newKardexEntries: KardexEntry[] = [];
     const nowIso = new Date().toISOString();
     let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
@@ -2746,7 +3248,7 @@ export class MockInventoryService implements OnDestroy {
   // ---------- Auditoría ----------
 
   setAuditStatus(sku: string, status: AuditStatus): void {
-    if (this.isReadOnlyMode()) return;
+    if (!this.assertWritable()) return;
     this.auditLines.update((list) => list.map((l) => (l.sku === sku ? { ...l, status } : l)));
     if (status === 'autorizado') {
       const line = this.auditLines().find((l) => l.sku === sku);
@@ -2780,7 +3282,7 @@ export class MockInventoryService implements OnDestroy {
   // ---------- Mermas ----------
 
   addShrinkRecord(record: ShrinkRecord): void {
-    if (this.isReadOnlyMode()) return;
+    if (!this.assertWritable()) return;
     if (!record || !record.id) return;
     const cleanRecord: ShrinkRecord = {
       ...record,
@@ -2809,7 +3311,7 @@ export class MockInventoryService implements OnDestroy {
     pin?: string,
     reason?: string,
   ): Promise<{ ok: boolean; message: string }> {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return Promise.resolve({ ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' });
     }
     const record = this.shrinkRecords().find((r) => r.id === id);
@@ -2891,7 +3393,7 @@ export class MockInventoryService implements OnDestroy {
     authorizerName = 'Administrador',
     reason = 'Autorización de baja por merma',
   ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
     const pinResult = await this.verifyAdminPin(pin, authorizerName);
@@ -2950,7 +3452,7 @@ export class MockInventoryService implements OnDestroy {
     pin?: string,
     reason?: string,
   ): { ok: boolean; message: string } {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
     const batch = this.perishableBatches().find((b) => b.batchId === batchId);
@@ -3108,6 +3610,10 @@ export class MockInventoryService implements OnDestroy {
       supplier: 'Proveedor General',
     };
 
+    if (!this.assertWritable()) {
+      return newProd;
+    }
+
     const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
     const entry = createKardexEntry({
       type: 'ENTRADA_COMPRA',
@@ -3123,6 +3629,7 @@ export class MockInventoryService implements OnDestroy {
 
     this.products.update((list) => [newProd, ...list]);
     this.kardex.update((k) => [entry, ...k]);
+    void this.flushSave();
     return newProd;
   }
 
@@ -3166,7 +3673,7 @@ export class MockInventoryService implements OnDestroy {
    * Compara el conteo físico vs el stock teórico y calcula la diferencia en piezas y pesos ($).
    */
   submitBlindAuditResults(counts: { sku: string; countedQty: number }[]): void {
-    if (this.isReadOnlyMode()) return;
+    if (!this.assertWritable()) return;
     const newAuditLines: AuditLine[] = counts.map((c) => {
       const p = this.products().find((x) => x.sku === c.sku);
       const systemQty = p ? p.stock : 0;
@@ -3212,7 +3719,7 @@ export class MockInventoryService implements OnDestroy {
     type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO',
     authorizedBy = 'Administrador (PIN)',
   ): { ok: boolean; message: string } {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
     const line = this.auditLines().find((l) => l.sku === productId);
@@ -3300,7 +3807,7 @@ export class MockInventoryService implements OnDestroy {
     pin: string,
     authorizerName = 'Administrador',
   ): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
-    if (this.isReadOnlyMode()) {
+    if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
     const pinResult = await this.verifyAdminPin(pin, authorizerName);

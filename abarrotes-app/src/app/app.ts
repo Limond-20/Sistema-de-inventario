@@ -34,6 +34,16 @@ import { MockInventoryService } from './services/mock-inventory.service';
             </div>
           }
 
+          @if (inv.isBackupOlderThan24h()) {
+            <div class="border-b border-amber-200 bg-amber-50/80 text-slate-900 px-10 py-2.5 text-xs font-semibold flex items-center justify-between shrink-0" role="status" data-testid="stale-backup-banner">
+              <div class="flex items-center gap-2 text-amber-900">
+                <app-icon name="alert" [size]="16" />
+                <span>El último respaldo cifrado tiene más de 24 horas (o aún no se ha realizado). Ingresa tu frase de respaldo para proteger la tienda.</span>
+              </div>
+              <span class="text-amber-800 tabular-nums">{{ inv.getRelativeLastBackupLabel() }}</span>
+            </div>
+          }
+
           <div class="px-10 py-8 max-w-[1440px] w-full mx-auto flex-1">
             <router-outlet />
           </div>

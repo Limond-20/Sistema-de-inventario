@@ -1,11 +1,13 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterModule } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 import { MockInventoryService } from '../../services/mock-inventory.service';
 import { LanSyncService } from '../../services/lan-sync.service';
 import { IconComponent, IconName } from '../icon/icon.component';
+import { MIN_BACKUP_PASSPHRASE_LENGTH } from '../../domain/backup';
 
 /** Genera una matriz tipo QR (simulada) con los 3 cuadros de posición reales. */
 function buildFakeQr(size = 29, seed = 20931): boolean[][] {
@@ -34,7 +36,7 @@ function buildFakeQr(size = 29, seed = 20931): boolean[][] {
 
 @Component({
   selector: 'app-navbar',
-  imports: [CommonModule, CurrencyPipe, DatePipe, RouterModule, RouterLink, IconComponent],
+  imports: [CommonModule, CurrencyPipe, DatePipe, FormsModule, RouterModule, RouterLink, IconComponent],
   templateUrl: './navbar.component.html',
 })
 export class NavbarComponent implements OnInit, OnDestroy {
@@ -216,13 +218,201 @@ export class NavbarComponent implements OnInit, OnDestroy {
 
   openCloseShift(): void {
     this.shiftClosedSuccess.set(false);
+    this.shiftBackupMessage.set(null);
     this.closeShiftModalOpen.set(true);
   }
   closeCloseShiftModal(): void {
     this.closeShiftModalOpen.set(false);
   }
-  confirmCloseShift(): void {
+  async confirmCloseShift(): Promise<void> {
+    const phrase = this.closeShiftPassphrase().trim();
+    if (!this.inv.hasSessionBackupPassphrase() && phrase.length < MIN_BACKUP_PASSPHRASE_LENGTH) {
+      this.shiftBackupMessage.set('Ingresa tu frase de respaldo (mínimo 8 caracteres) antes de cerrar el turno.');
+      return;
+    }
+    const backupRes = await this.inv.closeShiftWithAutoBackup(phrase || undefined);
+    if (!backupRes.ok) {
+      this.shiftBackupMessage.set(backupRes.message);
+      return;
+    }
+    this.closeShiftPassphrase.set('');
+    if (backupRes.entry) {
+      this.shiftBackupMessage.set(`Respaldo cifrado automático generado: ${backupRes.entry.nombre}`);
+    }
     this.shiftClosedSuccess.set(true);
+  }
+
+  // ---------- Respaldos Cifrados AES-GCM y Copia a USB (Bloque E) ----------
+  protected readonly backupModalOpen = signal<boolean>(false);
+  protected readonly backupPassphraseInput = signal<string>('');
+  protected readonly backupFeedback = signal<{ ok: boolean; text: string } | null>(null);
+  protected readonly backupBusy = signal<boolean>(false);
+  protected readonly pendingRestoreFilename = signal<string | null>(null);
+  protected readonly restorePassphraseInput = signal<string>('');
+  protected readonly closeShiftPassphrase = signal<string>('');
+  protected readonly shiftBackupMessage = signal<string | null>(null);
+  protected readonly selectedImportFile = signal<File | null>(null);
+  protected readonly importPassphraseInput = signal<string>('');
+
+  protected readonly relativeBackupLabel = computed(() => {
+    const currentMs = this.now().getTime();
+    return this.inv.getRelativeLastBackupLabel(currentMs);
+  });
+
+  openBackupModal(): void {
+    this.backupFeedback.set(null);
+    this.pendingRestoreFilename.set(null);
+    this.restorePassphraseInput.set('');
+    this.backupModalOpen.set(true);
+    void this.inv.refreshBackupList();
+  }
+
+  closeBackupModal(): void {
+    this.backupModalOpen.set(false);
+    this.pendingRestoreFilename.set(null);
+    this.restorePassphraseInput.set('');
+    this.backupPassphraseInput.set('');
+  }
+
+  async handleQuickBackupNow(): Promise<void> {
+    if (this.inv.hasSessionBackupPassphrase()) {
+      this.backupBusy.set(true);
+      try {
+        const res = await this.inv.backupNow();
+        this.backupFeedback.set({ ok: res.ok, text: res.message });
+      } finally {
+        this.backupBusy.set(false);
+      }
+      this.openBackupModal();
+      return;
+    }
+    this.openBackupModal();
+  }
+
+  async submitBackupNow(): Promise<void> {
+    const typed = this.backupPassphraseInput().trim();
+    const resCheck = !this.inv.hasSessionBackupPassphrase()
+      ? this.inv.setSessionBackupPassphrase(typed)
+      : typed
+        ? this.inv.setSessionBackupPassphrase(typed)
+        : { valid: true };
+
+    if (!resCheck.valid) {
+      this.backupFeedback.set({
+        ok: false,
+        text: resCheck.message || 'La frase de respaldo debe tener al menos 8 caracteres.',
+      });
+      return;
+    }
+
+    this.backupBusy.set(true);
+    try {
+      const res = await this.inv.backupNow(typed || undefined);
+      this.backupPassphraseInput.set('');
+      this.backupFeedback.set({ ok: res.ok, text: res.message });
+    } finally {
+      this.backupBusy.set(false);
+    }
+  }
+
+  requestRestoreConfirmation(filename: string): void {
+    this.pendingRestoreFilename.set(filename);
+    this.restorePassphraseInput.set('');
+    this.backupFeedback.set(null);
+  }
+
+  cancelRestoreConfirmation(): void {
+    this.pendingRestoreFilename.set(null);
+    this.restorePassphraseInput.set('');
+  }
+
+  async confirmRestoreBackup(): Promise<void> {
+    const filename = this.pendingRestoreFilename();
+    if (!filename) return;
+    const phrase = this.restorePassphraseInput().trim();
+    if (phrase.length < MIN_BACKUP_PASSPHRASE_LENGTH) {
+      this.backupFeedback.set({
+        ok: false,
+        text: 'Ingresa la frase de respaldo (mínimo 8 caracteres) para descifrar y restaurar.',
+      });
+      return;
+    }
+
+    this.backupBusy.set(true);
+    try {
+      const res = await this.inv.restoreFromBackup(phrase, filename);
+      this.restorePassphraseInput.set('');
+      if (res.ok) {
+        this.pendingRestoreFilename.set(null);
+      }
+      this.backupFeedback.set({ ok: res.ok, text: res.message });
+    } finally {
+      this.backupBusy.set(false);
+    }
+  }
+
+  async handleCopyToUsb(filename?: string): Promise<void> {
+    this.backupBusy.set(true);
+    try {
+      const res = await this.inv.copyBackupToUsbDrive(filename);
+      this.backupFeedback.set({ ok: res.ok, text: res.message });
+    } catch (err: any) {
+      this.backupFeedback.set({
+        ok: false,
+        text: err?.message || 'No se pudo copiar el respaldo a la memoria USB.',
+      });
+    } finally {
+      this.backupBusy.set(false);
+    }
+  }
+
+  onImportFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files && input.files.length > 0 ? input.files[0] : null;
+    this.selectedImportFile.set(file);
+  }
+
+  async handleImportAndRestoreBak(): Promise<void> {
+    const file = this.selectedImportFile();
+    if (!file) {
+      this.backupFeedback.set({
+        ok: false,
+        text: 'Selecciona un archivo .bak desde disco o memoria USB.',
+      });
+      return;
+    }
+    const phrase = (this.importPassphraseInput().trim() || this.backupPassphraseInput().trim());
+    if (phrase.length < MIN_BACKUP_PASSPHRASE_LENGTH && !this.inv.hasSessionBackupPassphrase()) {
+      this.backupFeedback.set({
+        ok: false,
+        text: 'Ingresa la frase de respaldo (mínimo 8 caracteres) para descifrar el archivo .bak.',
+      });
+      return;
+    }
+
+    this.backupBusy.set(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const effectivePhrase = phrase || (this.inv as any).sessionBackupPassphrase || '';
+      const res = await this.inv.importAndRestoreFromBakBytes(new Uint8Array(buf), effectivePhrase, file.name);
+      if (res.ok) {
+        this.selectedImportFile.set(null);
+        this.importPassphraseInput.set('');
+      }
+      this.backupFeedback.set({ ok: res.ok, text: res.message });
+    } finally {
+      this.backupBusy.set(false);
+    }
+  }
+
+  async handleUndoLastRestore(): Promise<void> {
+    this.backupBusy.set(true);
+    try {
+      const res = await this.inv.undoLastRestore();
+      this.backupFeedback.set({ ok: res.ok, text: res.message });
+    } finally {
+      this.backupBusy.set(false);
+    }
   }
 
   // ---------- Restablecer Datos de Demostración (Bloque D) ----------
