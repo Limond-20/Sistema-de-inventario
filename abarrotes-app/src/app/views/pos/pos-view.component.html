@@ -196,46 +196,78 @@
     </div>
 
     <!-- Lista de Artículos en el Ticket -->
-    <div class="divide-y divide-slate-100 max-h-[300px] overflow-y-auto px-4 py-1">
+    <div class="divide-y divide-slate-100 max-h-[340px] overflow-y-auto px-4 py-1">
       @for (item of cart(); track item.sku) {
-        <div class="py-2.5 flex items-center justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-bold text-slate-900 truncate">
-              {{ item.name }}
-            </p>
-            <p class="text-xs text-slate-500">
-              @if (item.saleUnit === 'Kg') {
-                <span class="font-bold text-slate-700">
-                  {{ item.qty | number:'1.3-3' }} kg ({{ item.qty * 1000 | number:'1.0-0' }} g)
-                </span>
-                · {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}/kg
-              } @else {
-                <span>{{ item.qty | number:'1.0-2' }} × {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}</span>
-              }
-            </p>
+        <div class="py-2.5 flex flex-col gap-2">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-bold text-slate-900 truncate">
+                {{ item.name }}
+              </p>
+              <p class="text-xs text-slate-500">
+                @if (item.saleUnit === 'Kg') {
+                  <span class="font-bold text-slate-700">
+                    {{ item.qty | number:'1.3-3' }} kg ({{ item.qty * 1000 | number:'1.0-0' }} g)
+                  </span>
+                  · {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}/kg
+                } @else {
+                  <span>{{ item.qty | number:'1.0-2' }} × {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}</span>
+                }
+              </p>
+            </div>
+
+            <!-- Controles de cantidad -->
+            <div class="flex items-center gap-1">
+              <button type="button" (click)="adjustCartItemQty(item, -1)" aria-label="Disminuir"
+                class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
+                −
+              </button>
+              <span class="min-w-[36px] text-center font-bold text-sm text-slate-900 font-mono">
+                {{ item.saleUnit === 'Kg' ? (item.qty | number:'1.2-2') : (item.qty | number:'1.0-0') }}
+              </span>
+              <button type="button" (click)="adjustCartItemQty(item, 1)" aria-label="Aumentar"
+                class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
+                +
+              </button>
+            </div>
+
+            <!-- Subtotal y Quitar -->
+            <div class="text-right min-w-[70px]">
+              <p class="text-sm font-black text-slate-900 font-mono">{{ item.subtotal | currency:'MXN':'symbol-narrow' }}</p>
+              <button type="button" (click)="removeCartItem(item.sku)" class="text-[11px] font-semibold text-slate-400 hover:text-red-600 transition-colors">
+                Quitar
+              </button>
+            </div>
           </div>
 
-          <!-- Controles de cantidad -->
-          <div class="flex items-center gap-1">
-            <button type="button" (click)="adjustCartItemQty(item, -1)" aria-label="Disminuir"
-              class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
-              −
-            </button>
-            <span class="min-w-[36px] text-center font-bold text-sm text-slate-900 font-mono">
-              {{ item.saleUnit === 'Kg' ? (item.qty | number:'1.2-2') : (item.qty | number:'1.0-0') }}
-            </span>
-            <button type="button" (click)="adjustCartItemQty(item, 1)" aria-label="Aumentar"
-              class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
-              +
-            </button>
-          </div>
+          <!-- Selector de Precio Escalonado y Descuento por Línea (Bloque F1.3) -->
+          <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 border border-slate-200/80 text-xs">
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-slate-600">Nivel:</span>
+              <select
+                [attr.data-testid]="'select-tier-' + item.sku"
+                [ngModel]="item.selectedTier || 'MENUDEO'"
+                (ngModelChange)="setCartItemPriceTier(item.sku, $event)"
+                class="h-7 rounded border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800">
+                <option value="MENUDEO">Menudeo</option>
+                <option value="MEDIO_MAYOREO">Medio Mayoreo</option>
+                <option value="MAYOREO">Mayoreo</option>
+              </select>
+            </div>
 
-          <!-- Subtotal y Quitar -->
-          <div class="text-right min-w-[70px]">
-            <p class="text-sm font-black text-slate-900 font-mono">{{ item.subtotal | currency:'MXN':'symbol-narrow' }}</p>
-            <button type="button" (click)="removeCartItem(item.sku)" class="text-[11px] font-semibold text-slate-400 hover:text-red-600 transition-colors">
-              Quitar
-            </button>
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-slate-600">Desc. Línea (%):</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                [attr.data-testid]="'input-line-discount-' + item.sku"
+                [ngModel]="item.discountPct ?? 0"
+                (ngModelChange)="setCartItemDiscountPct(item.sku, $event)"
+                class="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-right font-mono text-xs font-bold text-slate-900"
+              />
+            </div>
           </div>
         </div>
       } @empty {
@@ -245,6 +277,46 @@
         </div>
       }
     </div>
+
+    <!-- Descuento Global por Ticket y Tope Configurable con PIN (Bloque F1.3) -->
+    @if (cart().length > 0) {
+      <div class="bg-slate-50/80 border-t border-slate-200 px-4 py-2.5 flex flex-col gap-1.5 text-xs">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-slate-700">Desc. Ticket (%):</span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              data-testid="input-ticket-discount"
+              [ngModel]="ticketDiscountPct()"
+              (ngModelChange)="setTicketDiscount($event)"
+              class="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-right font-mono font-bold text-slate-900"
+            />
+          </div>
+          <button
+            type="button"
+            (click)="openDiscountCapModal()"
+            class="text-[11px] font-bold text-slate-600 hover:text-slate-900 underline">
+            Tope sin PIN: {{ inv.maxDiscountPctWithoutPin() }}%
+          </button>
+        </div>
+
+        @if (hasAnyDiscount()) {
+          <div class="flex items-center justify-between text-xs text-emerald-800 font-semibold">
+            <span>Subtotal bruto: {{ cartGrossTotal() | currency:'MXN':'symbol-narrow' }}</span>
+            <span>Ahorro: -{{ (cartDiscountEvaluation().totalDiscountCents / 100) | currency:'MXN':'symbol-narrow' }} ({{ cartDiscountEvaluation().effectiveDiscountPct }}%)</span>
+          </div>
+        }
+
+        @if (cartDiscountEvaluation().requiresPin) {
+          <div class="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-900">
+            Descuento mayor al tope ({{ inv.maxDiscountPctWithoutPin() }}%): se solicitará PIN al cobrar.
+          </div>
+        }
+      </div>
+    }
 
     <!-- Total a Pagar -->
     <div class="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between">
@@ -495,6 +567,25 @@
           </span>
         </div>
 
+        @if (cartDiscountEvaluation().requiresPin) {
+          <div class="rounded-xl border border-amber-300 bg-amber-50 p-3.5 flex flex-col gap-2">
+            <p class="text-xs font-bold text-amber-950">
+              {{ cartDiscountEvaluation().pinReason }}
+            </p>
+            <label class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold text-slate-800">PIN de Autorización:</span>
+              <input
+                type="password"
+                data-testid="input-pos-discount-pin"
+                [ngModel]="discountAuthPin()"
+                (ngModelChange)="discountAuthPin.set($event)"
+                placeholder="PIN (mín. 6 dígitos)"
+                class="h-10 w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm font-mono font-bold text-slate-900"
+              />
+            </label>
+          </div>
+        }
+
         <!-- Botones de Acción -->
         <div class="grid grid-cols-2 gap-2 pt-1">
           <button type="button" (click)="closeCashModal()"
@@ -584,6 +675,19 @@
               [class]="check.allowed ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-red-200 bg-red-50 text-red-950'">
               <p class="font-semibold leading-relaxed">{{ check.reason }}</p>
             </div>
+
+            @if (cartDiscountEvaluation().requiresPin) {
+              <div class="rounded-xl border border-amber-300 bg-amber-50 p-3 flex flex-col gap-2 text-xs">
+                <p class="font-bold text-amber-950">{{ cartDiscountEvaluation().pinReason }}</p>
+                <input
+                  type="password"
+                  [ngModel]="discountAuthPin()"
+                  (ngModelChange)="discountAuthPin.set($event)"
+                  placeholder="Ingresa PIN de administrador para autorizar descuento"
+                  class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 font-mono font-bold"
+                />
+              </div>
+            }
 
             <button
               type="button"
@@ -737,6 +841,63 @@
           <button type="button" (click)="confirmInternalConsumption()"
             class="h-11 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs">
             Confirmar Consumo
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =====================================================================
+     MODAL 5: CONFIGURAR TOPE DE DESCUENTO SIN PIN (BLOQUE F1.3)
+     ===================================================================== -->
+@if (discountCapModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-md overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <h3 class="text-base font-bold">Configurar Tope de Descuento sin PIN</h3>
+        <button type="button" (click)="closeDiscountCapModal()" class="text-xs text-slate-400 hover:text-white">Cerrar</button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-3">
+        @if (discountCapFeedback()) {
+          <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-900">
+            {{ discountCapFeedback()!.message }}
+          </div>
+        }
+
+        <label class="block">
+          <span class="block text-xs font-bold text-slate-700 mb-1">Tope máximo de descuento sin PIN (%):</span>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            [ngModel]="newMaxDiscountCap()"
+            (ngModelChange)="newMaxDiscountCap.set($event)"
+            class="w-full h-11 rounded-xl border border-slate-300 px-3 text-base font-mono font-bold text-slate-900"
+          />
+        </label>
+
+        <label class="block">
+          <span class="block text-xs font-bold text-slate-700 mb-1">PIN de Administrador:</span>
+          <input
+            type="password"
+            [ngModel]="discountCapAdminPin()"
+            (ngModelChange)="discountCapAdminPin.set($event)"
+            placeholder="Ingresa PIN (mín. 6 dígitos)"
+            class="w-full h-11 rounded-xl border border-slate-300 px-3 text-sm font-mono font-bold text-slate-900"
+          />
+        </label>
+
+        <div class="grid grid-cols-2 gap-2 pt-2">
+          <button type="button" (click)="closeDiscountCapModal()"
+            class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs">
+            Cancelar
+          </button>
+          <button type="button" (click)="saveDiscountCap()"
+            class="h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs">
+            Guardar Tope
           </button>
         </div>
       </div>

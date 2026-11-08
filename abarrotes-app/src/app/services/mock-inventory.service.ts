@@ -79,27 +79,80 @@ import {
   confirmClassificationChanges,
   proposeNewClassification,
 } from './abc-classifier';
+import {
+  DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN,
+  generateInternalSku,
+  generateInternalBarcode,
+  getAllProductBarcodes,
+  validateBarcodeUniqueness,
+  resolveConversionFactor,
+  convertPurchaseToSaleQty,
+  calculateUnitCostFromPurchasePackage,
+  calculateProductTaxes,
+  normalizePriceTiers,
+  resolveTierUnitPrice,
+  evaluateCartDiscounts,
+  evaluateNaturalShrinkTolerance,
+  hasProductMovements,
+  validateCatalogProductInput,
+  validateMobileProductCreateRequest,
+  type PriceTierCode,
+  type PriceTier,
+  type CartDiscountEvaluation,
+  type ShrinkToleranceEvaluation,
+  type ShrinkVarianceClassification,
+  type CatalogProductInput,
+  type MobileProductCreateRequest,
+} from '../domain/catalog';
+
+export type {
+  PriceTierCode,
+  PriceTier,
+  CartDiscountEvaluation,
+  ShrinkToleranceEvaluation,
+  ShrinkVarianceClassification,
+  CatalogProductInput,
+  MobileProductCreateRequest,
+} from '../domain/catalog';
 
 // =====================================================================
 //  MODELOS
 // =====================================================================
 
-export type PurchaseUnit = 'Caja' | 'Costal' | 'Paquete' | 'Charola' | 'Pieza' | 'Kg' | 'Lata';
-export type SaleUnit = 'Pieza' | 'Kg' | 'Lata' | 'Paquete';
+export type PurchaseUnit =
+  | 'Caja'
+  | 'Costal'
+  | 'Bulto'
+  | 'Paquete'
+  | 'Charola'
+  | 'Pieza'
+  | 'Kg'
+  | 'g'
+  | 'L'
+  | 'Lata';
+export type SaleUnit = 'Pieza' | 'Kg' | 'g' | 'L' | 'Lata' | 'Paquete';
 export type AbcClass = 'A' | 'B' | 'C';
 
 export interface Product {
   sku: string;
   barcode: string;
+  /** Todos los códigos de barras asociados al producto (incluye el principal y códigos adicionales o internos). */
+  barcodes?: string[];
+  /** true si el producto utiliza un código interno EAN-13 prefijo 200 generado por la tienda. */
+  hasInternalBarcode?: boolean;
   name: string;
   category: string;
+  /** Ubicación física en tienda (ej. Anaquel A · Repisa 2). */
+  location?: string;
   emoji: string;
   purchaseUnit: PurchaseUnit;
-  /** Cuántas unidades de venta trae una unidad de compra (ej. 1 para pieza/kg directo o 12 para caja c/12). */
+  /** Cuántas unidades de venta trae una unidad de compra (ej. 1 para pieza/kg directo, 24 para caja c/24, 50 para bulto 50 kg). */
   unitsPerPurchase: number;
   saleUnit: SaleUnit;
   /** Costo histórico por unidad de venta (MXN). */
   historicCost: number;
+  /** Alias de costo por unidad de venta (MXN). */
+  unitCost?: number;
   /** Costo de compra unitario usado para el Valor de Utilización (VU) de Pareto. */
   purchaseCost?: number;
   /** Costo más reciente por unidad de venta (MXN). */
@@ -110,6 +163,12 @@ export interface Product {
   lastPurchaseCost: number;
   /** Precio de venta actual al público por unidad de venta (MXN). */
   salePrice: number;
+  /** Tasa de IVA aplicable al producto (%, ej. 0 o 16). */
+  ivaRate?: number;
+  /** Tasa de IEPS aplicable al producto (%, ej. 0 o 8). */
+  iepsRate?: number;
+  /** Precios escalonados por producto (menudeo, medio mayoreo, mayoreo con cantidad mínima). */
+  priceTiers?: PriceTier[];
   /** Margen mínimo deseado (%) sobre precio de venta. */
   targetMargin: number;
   /** Unidades mensuales vendidas estimadas (30 días) para cálculo VU = (Precio - Costo) * Unidades. */
@@ -136,6 +195,12 @@ export interface Product {
   rop: number;
   /** true para productos a granel o sin código de fábrica (Frijol, Queso, Huevo, Azúcar, Pan). */
   isBulk: boolean;
+  /** Tolerancia de merma natural en granel (% sobre existencia teórica, ej. 3%). */
+  naturalShrinkTolerancePct?: number;
+  /** Baja lógica: true (o undefined) = activo; false = dado de baja lógicamente. */
+  isActive?: boolean;
+  deactivatedAt?: string;
+  deactivatedBy?: string;
   /** Producto gancho (si se acaba, el cliente se va a otra tienda). */
   isTrafficDriver?: boolean;
   supplier: string;
@@ -200,6 +265,10 @@ export interface PosSaleItem {
   qty: number;
   unitPrice: number;
   subtotal: number;
+  /** Nivel de precio escalonado elegido en el POS ('MENUDEO' | 'MEDIO_MAYOREO' | 'MAYOREO'). */
+  selectedTier?: PriceTierCode;
+  /** Descuento porcentual aplicado a la línea (0 a 100). */
+  discountPct?: number;
 }
 
 export type CartItem = PosSaleItem;
@@ -273,6 +342,14 @@ export interface AuditLine {
   countedQty: number;
   unitCost: number;
   status: AuditStatus;
+  /** Tolerancia de merma natural configurada para el producto (%). */
+  naturalShrinkTolerancePct?: number;
+  /** Clasificación automática de la diferencia ('SIN_DIFERENCIA' | 'MERMA_NATURAL' | 'FALTANTE' | 'SOBRANTE'). */
+  varianceClassification?: ShrinkVarianceClassification;
+  /** Etiqueta legible ("Merma natural", "Faltante", "Sobrante", "Sin diferencia"). */
+  classificationLabel?: string;
+  /** true si el faltante se encuentra dentro del porcentaje de tolerancia de merma natural. */
+  isWithinNaturalTolerance?: boolean;
 }
 
 export type ShrinkReason = 'Envase Roto en Piso' | 'Caducado sin devolución';
@@ -396,7 +473,9 @@ export function cleanOcrNumber(token: string): number {
 export function matchProductFromCatalog(rawDesc: string, catalog: Product[]): Product | null {
   const norm = normalizeText(rawDesc);
   for (const p of catalog) {
-    if (norm.includes(p.barcode) || norm.includes(p.sku.toLowerCase())) {
+    if (p.isActive === false) continue;
+    const codes = getAllProductBarcodes(p);
+    if (codes.some((c) => norm.includes(c.toLowerCase())) || norm.includes(p.sku.toLowerCase())) {
       return p;
     }
   }
@@ -405,6 +484,7 @@ export function matchProductFromCatalog(rawDesc: string, catalog: Product[]): Pr
   let bestScore = 0;
 
   for (const p of catalog) {
+    if (p.isActive === false) continue;
     const tokens = normalizeText(p.name)
       .replace(/[()]/g, ' ')
       .split(/\s+/)
@@ -947,10 +1027,35 @@ const PRODUCT_SEEDS: ProductSeed[] = [
   },
 ];
 
-const PRODUCTS: Product[] = PRODUCT_SEEDS.map((seed) => ({
-  ...seed,
-  rop: calculateROP(seed.dailySalesRate, seed.supplierLeadTimeDays, seed.safetyStock),
-}));
+const DEFAULT_CATEGORY_LOCATIONS: Record<string, string> = {
+  Lácteos: 'Refrigerador 1 · Puerta 1',
+  Aceites: 'Anaquel B · Repisa 2',
+  Granos: 'Piso · Báscula',
+  Enlatados: 'Anaquel B · Repisa 3',
+  Bebidas: 'Refrigerador 2',
+  Panadería: 'Isla Central',
+  Pastas: 'Anaquel C · Repisa 1',
+  Limpieza: 'Anaquel D · Repisa 4',
+  Huevo: 'Mostrador · Rejilla',
+  Endulzantes: 'Piso · Costales',
+};
+
+const PRODUCTS: Product[] = PRODUCT_SEEDS.map((seed) => {
+  const hasInternal = seed.barcode.startsWith('200');
+  return {
+    ...seed,
+    unitCost: seed.historicCost,
+    barcodes: seed.barcodes && seed.barcodes.length > 0 ? seed.barcodes : [seed.barcode],
+    hasInternalBarcode: seed.hasInternalBarcode ?? hasInternal,
+    location: seed.location || DEFAULT_CATEGORY_LOCATIONS[seed.category] || 'Pasillo General',
+    ivaRate: seed.ivaRate ?? (seed.category === 'Limpieza' ? 16 : 0),
+    iepsRate: seed.iepsRate ?? (seed.category === 'Bebidas' ? 8 : 0),
+    priceTiers: normalizePriceTiers(seed.salePrice, seed.priceTiers),
+    naturalShrinkTolerancePct: seed.naturalShrinkTolerancePct ?? (seed.isBulk ? 3 : 0),
+    isActive: seed.isActive ?? true,
+    rop: calculateROP(seed.dailySalesRate, seed.supplierLeadTimeDays, seed.safetyStock),
+  };
+});
 
 const CREDIT_CUSTOMERS: CreditCustomer[] = [
   {
@@ -1046,13 +1151,31 @@ function buildOcrNote(): SupplierNote {
   };
 }
 
-const AUDIT_LINES: AuditLine[] = [
+function enrichAuditLineWithTolerance(line: AuditLine, catalog: Product[]): AuditLine {
+  const prod = catalog.find((p) => p.sku === line.sku);
+  const tolerancePct =
+    line.naturalShrinkTolerancePct ??
+    prod?.naturalShrinkTolerancePct ??
+    (prod?.isBulk ? 3 : 0);
+  const evalRes = evaluateNaturalShrinkTolerance(line.systemQty, line.countedQty, tolerancePct);
+  return {
+    ...line,
+    naturalShrinkTolerancePct: evalRes.tolerancePct,
+    varianceClassification: evalRes.classification,
+    classificationLabel: evalRes.classificationLabel,
+    isWithinNaturalTolerance: evalRes.isWithinTolerance && evalRes.classification === 'MERMA_NATURAL',
+  };
+}
+
+const RAW_AUDIT_LINES: AuditLine[] = [
   { sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml', emoji: '🫒', location: 'Anaquel B · Repisa 2', saleUnit: 'Pieza', systemQty: 18, countedQty: 15, unitCost: 34.0, status: 'pendiente' },
   { sku: 'ATU-DOL-140', name: 'Atún Dolores en Agua 140g', emoji: '🐟', location: 'Anaquel B · Repisa 3', saleUnit: 'Lata', systemQty: 40, countedQty: 40, unitCost: 16.5, status: 'pendiente' },
   { sku: 'FRI-NEG-50K', name: 'Frijol Negro Granel (1 kg)', emoji: '🫘', location: 'Piso · Junto a báscula', saleUnit: 'Kg', systemQty: 16.5, countedQty: 14.8, unitCost: 28.0, status: 'pendiente' },
   { sku: 'ARR-SOS-900', name: 'Arroz SOS Súper Extra 900g', emoji: '🍚', location: 'Anaquel C · Repisa 1', saleUnit: 'Pieza', systemQty: 16, countedQty: 18, unitCost: 27.6, status: 'pendiente' },
   { sku: 'CHI-LAC-220', name: 'Chiles Jalapeños La Costeña 220g', emoji: '🌶️', location: 'Anaquel C · Repisa 2', saleUnit: 'Lata', systemQty: 24, countedQty: 21, unitCost: 14.2, status: 'pendiente' },
 ];
+
+const AUDIT_LINES: AuditLine[] = RAW_AUDIT_LINES.map((l) => enrichAuditLineWithTolerance(l, PRODUCTS));
 
 const SHRINK_RECORDS: ShrinkRecord[] = [
   { id: 'M-0412', date: '22/10/2026', time: '9:15 a.m.', sku: 'LAC-LAL-1L', name: 'Leche Lala Entera 1L', emoji: '🥛', qty: 2, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 21.0, registeredBy: 'Celular · Toño', hasPhoto: true, reviewed: false },
@@ -1638,6 +1761,7 @@ export class MockInventoryService implements OnDestroy {
       auditLines: this.auditLines(),
       internalConsumptionRecords: this.internalConsumptionRecords(),
       morningAlerts: this.morningAlerts(),
+      maxDiscountPctWithoutPin: this.maxDiscountPctWithoutPin(),
     };
   }
 
@@ -1841,6 +1965,9 @@ export class MockInventoryService implements OnDestroy {
     this.auditLines.set(structuredClone(stateToValidate.auditLines));
     if (stateToValidate.morningAlerts) this.morningAlerts.set(structuredClone(stateToValidate.morningAlerts));
     if (stateToValidate.activeUser) this.activeUser.set(stateToValidate.activeUser);
+    if (typeof stateToValidate.maxDiscountPctWithoutPin === 'number') {
+      this.maxDiscountPctWithoutPin.set(stateToValidate.maxDiscountPctWithoutPin);
+    }
   }
 
   private async savePreRestoreSnapshot(): Promise<string> {
@@ -2170,6 +2297,9 @@ export class MockInventoryService implements OnDestroy {
       this.auditLines.set(stateToValidate.auditLines);
       if (stateToValidate.morningAlerts) this.morningAlerts.set(stateToValidate.morningAlerts);
       if (stateToValidate.activeUser) this.activeUser.set(stateToValidate.activeUser);
+      if (typeof stateToValidate.maxDiscountPctWithoutPin === 'number') {
+        this.maxDiscountPctWithoutPin.set(stateToValidate.maxDiscountPctWithoutPin);
+      }
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
@@ -2285,6 +2415,8 @@ export class MockInventoryService implements OnDestroy {
     this.auditLines.set(structuredClone(AUDIT_LINES));
     this.shrinkRecords.set(structuredClone(SHRINK_RECORDS));
     this.activeUser.set('Don Lupe (Encargado)');
+    this.maxDiscountPctWithoutPin.set(DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN);
+    this.processedMobileProductRequests.clear();
     this.isHydrated.set(true);
     await this.flushSave();
   }
@@ -2340,6 +2472,11 @@ export class MockInventoryService implements OnDestroy {
     }
   }
 
+  /** Conjunto de requestIds ya procesados desde móvil para alta idempotente de productos. */
+  private readonly processedMobileProductRequests = new Set<string>();
+  /** Tope porcentual configurable para descuentos por línea y por ticket sin requerir PIN. */
+  readonly maxDiscountPctWithoutPin = signal<number>(DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN);
+
   private applyLanMessage(data: any): void {
     if (!data || typeof data !== 'object') return;
     if (!this.assertWritable()) return;
@@ -2355,6 +2492,8 @@ export class MockInventoryService implements OnDestroy {
       this.submitBlindAuditResults(data.counts);
     } else if (data.type === 'OCR_TICKET_PARSED' && Array.isArray(data.lines) && data.lines.length > 0) {
       this.setCustomOcrNote(data.lines, data.folio || 'OCR-MOVIL', 'Celular en Vivo');
+    } else if (data.type === 'PRODUCT_CREATE_REQUEST') {
+      this.handleProductCreateRequestFromLan(data);
     }
   }
 
@@ -3167,10 +3306,15 @@ export class MockInventoryService implements OnDestroy {
     });
   }
 
-  /** Busca un producto por su código EAN-13. */
-  findProductByBarcode(barcode: string): Product | undefined {
+  /** Busca un producto por cualquiera de sus códigos de barras (principal, adicionales o código interno). */
+  findProductByBarcode(barcode: string, includeInactive = false): Product | undefined {
     const clean = String(barcode || '').trim();
-    return this.products().find((p) => p.barcode === clean);
+    if (!clean) return undefined;
+    return this.products().find((p) => {
+      if (!includeInactive && p.isActive === false) return false;
+      const codes = getAllProductBarcodes(p);
+      return codes.some((c) => c.toLowerCase() === clean.toLowerCase());
+    });
   }
 
   /** Crea una línea manual a partir de un producto del catálogo. */
@@ -3671,26 +3815,30 @@ export class MockInventoryService implements OnDestroy {
 
   /**
    * Compara el conteo físico vs el stock teórico y calcula la diferencia en piezas y pesos ($).
+   * Evalúa la tolerancia de merma natural en granel (% por producto): las diferencias dentro
+   * de la tolerancia se marcan como "Merma natural", no faltante.
    */
   submitBlindAuditResults(counts: { sku: string; countedQty: number }[]): void {
     if (!this.assertWritable()) return;
+    const catalog = this.products();
     const newAuditLines: AuditLine[] = counts.map((c) => {
-      const p = this.products().find((x) => x.sku === c.sku);
+      const p = catalog.find((x) => x.sku === c.sku);
       const systemQty = p ? p.stock : 0;
       const unitCost = p ? p.historicCost : 10;
       const name = p ? p.name : c.sku;
       const saleUnit = p ? p.saleUnit : 'Pieza';
-      return {
+      const baseLine: AuditLine = {
         sku: c.sku,
         name,
         emoji: '',
-        location: 'Pasillo 3 · Auditoría Ciega Móvil',
+        location: p?.location || 'Pasillo 3 · Auditoría Ciega Móvil',
         saleUnit,
         systemQty,
         countedQty: c.countedQty,
         unitCost,
         status: 'pendiente' as AuditStatus,
       };
+      return enrichAuditLineWithTolerance(baseLine, catalog);
     });
 
     this.auditLines.set(newAuditLines);
@@ -3706,11 +3854,12 @@ export class MockInventoryService implements OnDestroy {
         route: '/auditoria',
       },
     ]);
+    void this.flushSave();
   }
 
   /**
    * Cuadra el stock al conteo físico en una sola transacción:
-   * - MERMA_OPERATIVA: merma normal granel/corte.
+   * - MERMA_OPERATIVA: merma normal granel/corte (si está dentro de la tolerancia de merma natural, se registra como "Merma natural").
    * - FALTANTE_INJUSTIFICADO: pérdida o extravío no justificado.
    * - Registra en Kardex quién autorizó el ajuste.
    */
@@ -3730,6 +3879,16 @@ export class MockInventoryService implements OnDestroy {
     const diffQty = Math.round((line.countedQty - actualPreviousStock) * 1000) / 1000;
     const diffMoney = multiplyMoney(line.unitCost, diffQty);
 
+    const tolerancePct =
+      line.naturalShrinkTolerancePct ??
+      prod?.naturalShrinkTolerancePct ??
+      (prod?.isBulk ? 3 : 0);
+    const toleranceEval = evaluateNaturalShrinkTolerance(actualPreviousStock, line.countedQty, tolerancePct);
+    const isNaturalShrink =
+      type === 'MERMA_OPERATIVA' &&
+      toleranceEval.isWithinTolerance &&
+      toleranceEval.classification === 'MERMA_NATURAL';
+
     // 1. Cuadrar stock en catálogo
     this.products.update((list) =>
       list.map((p) => (p.sku === productId ? { ...p, stock: line.countedQty } : p)),
@@ -3737,12 +3896,23 @@ export class MockInventoryService implements OnDestroy {
 
     // 2. Marcar auditoría como autorizada
     this.auditLines.update((list) =>
-      list.map((l) => (l.sku === productId ? { ...l, status: 'autorizado' as AuditStatus } : l)),
+      list.map((l) =>
+        l.sku === productId
+          ? {
+              ...l,
+              status: 'autorizado' as AuditStatus,
+              varianceClassification: toleranceEval.classification,
+              classificationLabel: toleranceEval.classificationLabel,
+              isWithinNaturalTolerance: isNaturalShrink,
+            }
+          : l,
+      ),
     );
 
     // 3. Registrar Kardex encadenado
-    const typeLabel =
-      type === 'MERMA_OPERATIVA'
+    const typeLabel = isNaturalShrink
+      ? 'Merma natural'
+      : type === 'MERMA_OPERATIVA'
         ? 'Merma Normal Granel/Corte'
         : 'Faltante Injustificado';
 
@@ -3827,6 +3997,911 @@ export class MockInventoryService implements OnDestroy {
       message: res.message,
       remainingAttempts: pinResult.remainingAttempts,
       isLocked: false,
+    };
+  }
+
+  // ===================================================================
+  //  BLOQUE F1: CATÁLOGO, PRECIOS ESCALONADOS, DESCUENTOS Y ALTA MÓVIL
+  // ===================================================================
+
+  /**
+   * Genera un SKU interno sugerido a partir del nombre y categoría del producto.
+   */
+  generateSuggestedInternalSku(name: string, category?: string): string {
+    const existingSkus = this.products().map((p) => p.sku);
+    return generateInternalSku(name, category, existingSkus);
+  }
+
+  /**
+   * Genera un código de barras interno EAN-13 (prefijo 200) único en el catálogo.
+   */
+  generateNextInternalBarcode(): string {
+    const allExisting = this.products().flatMap((p) => getAllProductBarcodes(p));
+    return generateInternalBarcode(allExisting);
+  }
+
+  /**
+   * Asigna un código de barras interno EAN-13 (prefijo 200) a un producto sin código de fábrica.
+   */
+  async assignInternalBarcodeToProduct(
+    sku: string,
+  ): Promise<{ ok: boolean; message: string; barcode?: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const prod = this.products().find((p) => p.sku === sku);
+    if (!prod) {
+      return { ok: false, message: `Producto con SKU ${sku} no encontrado.` };
+    }
+    const internalCode = this.generateNextInternalBarcode();
+    const currentCodes = getAllProductBarcodes(prod);
+    const nextCodes = currentCodes.includes(internalCode) ? currentCodes : [...currentCodes, internalCode];
+    const nextPrimary = prod.barcode && prod.barcode.trim().length > 0 ? prod.barcode : internalCode;
+
+    this.products.update((list) =>
+      list.map((p) =>
+        p.sku === sku
+          ? {
+              ...p,
+              barcode: nextPrimary,
+              barcodes: nextCodes,
+              hasInternalBarcode: true,
+            }
+          : p,
+      ),
+    );
+    await this.flushSave();
+    return {
+      ok: true,
+      message: `Código interno ${internalCode} asignado a ${prod.name}.`,
+      barcode: internalCode,
+    };
+  }
+
+  /**
+   * Verifica si un producto tiene movimientos registrados en el Kardex.
+   */
+  hasProductKardexMovements(sku: string): boolean {
+    return hasProductMovements(sku, this.kardex());
+  }
+
+  /**
+   * Alta de producto en catálogo (Bloque F1.1, F1.2, F1.3, F1.4):
+   * - Valida nombre, SKU (autogenerado o editable), categoría, ubicación, unidad de venta y compra con factor de conversión,
+   *   costo, precio, IVA/IEPS, caducidad, mínimo/ROP, tolerancia de merma natural y múltiples códigos de barras sin duplicados.
+   * - Exige PIN de administrador/encargado para registrar el stock inicial mediante un movimiento AJUSTE_INICIAL en el Kardex.
+   */
+  async createCatalogProduct(
+    input: CatalogProductInput,
+    pin?: string,
+    authorizerName = 'Administrador',
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    product?: Product;
+    requiresPin?: boolean;
+    remainingAttempts?: number;
+    isLocked?: boolean;
+  }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+
+    const catalog = this.products();
+    const validation = validateCatalogProductInput(input, catalog);
+    if (!validation.valid) {
+      return { ok: false, message: validation.message };
+    }
+
+    const effectivePin = (pin ?? input.pin ?? '').trim();
+    const initialStock = Math.round((Number(input.initialStock) || 0) * 1000) / 1000;
+
+    // El movimiento AJUSTE_INICIAL en el Kardex requiere autorización con PIN
+    if (!effectivePin) {
+      return {
+        ok: false,
+        requiresPin: true,
+        message: 'Se requiere el PIN de administrador o encargado para registrar el alta y el AJUSTE_INICIAL en el Kardex.',
+      };
+    }
+
+    const pinResult = await this.verifyAdminPin(effectivePin, authorizerName);
+    if (!pinResult.success) {
+      return {
+        ok: false,
+        requiresPin: true,
+        message: pinResult.message,
+        remainingAttempts: pinResult.remainingAttempts,
+        isLocked: pinResult.isLocked,
+      };
+    }
+
+    const existingSkus = catalog.map((p) => p.sku);
+    const finalSku =
+      input.sku && input.sku.trim().length > 0
+        ? input.sku.trim().toUpperCase()
+        : generateInternalSku(input.name, input.category, existingSkus);
+
+    if (catalog.some((p) => p.sku.toLowerCase() === finalSku.toLowerCase())) {
+      return {
+        ok: false,
+        message: `El SKU interno "${finalSku}" ya está asignado a otro producto.`,
+      };
+    }
+
+    const rawCodes: string[] = [];
+    if (input.barcode && input.barcode.trim()) rawCodes.push(input.barcode.trim());
+    if (Array.isArray(input.barcodes)) {
+      for (const c of input.barcodes) {
+        const clean = String(c || '').trim();
+        if (clean && !rawCodes.includes(clean)) rawCodes.push(clean);
+      }
+    }
+
+    let hasInternalBarcode = Boolean(input.useInternalBarcode ?? input.hasInternalBarcode);
+    if (rawCodes.length === 0 || hasInternalBarcode) {
+      const allExistingCodes = catalog.flatMap((p) => getAllProductBarcodes(p));
+      const generatedInternal = generateInternalBarcode([...allExistingCodes, ...rawCodes]);
+      if (rawCodes.length === 0) {
+        rawCodes.push(generatedInternal);
+        hasInternalBarcode = true;
+      } else if (hasInternalBarcode && !rawCodes.some((c) => c.startsWith('200'))) {
+        rawCodes.push(generatedInternal);
+      }
+    }
+
+    const barcodeCheck = validateBarcodeUniqueness(rawCodes, catalog);
+    if (!barcodeCheck.valid) {
+      return { ok: false, message: barcodeCheck.message || 'Código de barras duplicado.' };
+    }
+
+    const conversionFactor = resolveConversionFactor(
+      input.unitsPerPurchase,
+      input.purchaseUnit,
+      input.saleUnit,
+    );
+    const rawUnitCost =
+      input.unitCost !== undefined
+        ? input.unitCost
+        : input.cost !== undefined
+          ? input.cost
+          : input.packageCost !== undefined
+            ? calculateUnitCostFromPurchasePackage(
+                input.packageCost,
+                conversionFactor,
+                input.purchaseUnit,
+                input.saleUnit,
+              )
+            : 0;
+    const unitCost = fromCents(toCents(rawUnitCost));
+    const salePrice = fromCents(toCents(input.salePrice));
+    const minStock = Math.max(0, Number(input.minStock) || 0);
+    const rop =
+      typeof input.rop === 'number' && !isNaN(input.rop) && input.rop >= 0
+        ? input.rop
+        : minStock > 0
+          ? minStock
+          : calculateROP(1, 3, 2);
+    const isBulk =
+      input.isBulk ??
+      (input.saleUnit === 'Kg' || input.saleUnit === 'g' || input.saleUnit === 'L');
+    const naturalShrinkTolerancePct =
+      typeof input.naturalShrinkTolerancePct === 'number' && !isNaN(input.naturalShrinkTolerancePct)
+        ? Math.max(0, Math.min(50, input.naturalShrinkTolerancePct))
+        : isBulk
+          ? 3
+          : 0;
+    const expiry = (input.expiry || '2027-12-31').trim();
+    const tiers = normalizePriceTiers(salePrice, input.priceTiers);
+    const targetMargin =
+      salePrice > 0 ? Math.max(5, Math.round(marginPct(unitCost, salePrice))) : 20;
+
+    const newProduct: Product = {
+      sku: finalSku,
+      barcode: barcodeCheck.normalizedBarcodes[0],
+      barcodes: barcodeCheck.normalizedBarcodes,
+      hasInternalBarcode:
+        hasInternalBarcode || barcodeCheck.normalizedBarcodes.some((c) => c.startsWith('200')),
+      name: input.name.trim(),
+      category: (input.category || 'Abarrotes').trim(),
+      location: (input.location || DEFAULT_CATEGORY_LOCATIONS[input.category] || 'Pasillo General').trim(),
+      emoji: '',
+      purchaseUnit: (input.purchaseUnit || 'Pieza') as PurchaseUnit,
+      unitsPerPurchase: conversionFactor,
+      saleUnit: (input.saleUnit || 'Pieza') as SaleUnit,
+      historicCost: unitCost,
+      unitCost,
+      purchaseCost: unitCost,
+      newCost: unitCost,
+      weightedAvgCost: unitCost,
+      lastPurchaseCost: unitCost,
+      salePrice,
+      ivaRate: Math.max(0, Number(input.ivaRate ?? 0)),
+      iepsRate: Math.max(0, Number(input.iepsRate ?? 0)),
+      priceTiers: tiers,
+      targetMargin,
+      monthlySalesUnits: 30,
+      expiry,
+      fefoExpiryDate: expiry,
+      acceptsPhysicalExchange: Boolean(input.acceptsPhysicalExchange),
+      stock: initialStock,
+      minStock,
+      abcClass: 'B',
+      dailySalesRate: 1,
+      supplierLeadTimeDays: 3,
+      safetyStock: 2,
+      rop,
+      isBulk,
+      naturalShrinkTolerancePct,
+      isActive: true,
+      supplier: (input.supplier || 'Proveedor General').trim(),
+    };
+
+    const authorizer = pinResult.authorizedBy || authorizerName || this.activeUser();
+
+    return this.enqueueKardexOperation(async () => {
+      const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+      const entry = createKardexEntry(
+        {
+          type: 'AJUSTE_INICIAL',
+          producto: {
+            sku: newProduct.sku,
+            name: newProduct.name,
+            saleUnit: newProduct.saleUnit,
+          },
+          cantidad: initialStock,
+          saldoAnterior: 0,
+          saldoResultante: initialStock,
+          usuario: authorizer,
+          referencia: `Alta catálogo (${newProduct.sku}) - PIN autorizado`,
+          amount: multiplyMoney(unitCost, initialStock),
+          description: `Ajuste inicial de inventario por alta de producto ${newProduct.name}: ${initialStock} ${newProduct.saleUnit} (Autorizó: ${authorizer})`,
+        },
+        previousHash,
+      );
+
+      this.products.update((list) => [newProduct, ...list]);
+      this.kardex.update((k) => [entry, ...k]);
+      await this.flushSave();
+
+      return {
+        ok: true,
+        message: `Producto "${newProduct.name}" (${newProduct.sku}) creado con movimiento AJUSTE_INICIAL en Kardex.`,
+        product: newProduct,
+      };
+    });
+  }
+
+  /**
+   * Edición de producto en catálogo (Bloque F1.1, F1.2, F1.3, F1.4).
+   * Valida unicidad de SKU y códigos de barras entre productos.
+   */
+  async updateCatalogProduct(
+    originalSku: string,
+    changes: Partial<CatalogProductInput>,
+  ): Promise<{ ok: boolean; message: string; product?: Product }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+
+    const catalog = this.products();
+    const existing = catalog.find((p) => p.sku === originalSku);
+    if (!existing) {
+      return { ok: false, message: `Producto con SKU ${originalSku} no encontrado.` };
+    }
+
+    const targetSku =
+      changes.sku && changes.sku.trim().length > 0
+        ? changes.sku.trim().toUpperCase()
+        : existing.sku;
+
+    if (
+      targetSku.toLowerCase() !== originalSku.toLowerCase() &&
+      catalog.some((p) => p.sku.toLowerCase() === targetSku.toLowerCase())
+    ) {
+      return { ok: false, message: `El SKU "${targetSku}" ya pertenece a otro producto.` };
+    }
+
+    if (
+      targetSku.toLowerCase() !== originalSku.toLowerCase() &&
+      hasProductMovements(originalSku, this.kardex())
+    ) {
+      return {
+        ok: false,
+        message: `No se puede cambiar el SKU de "${existing.name}" porque ya tiene movimientos encadenados en el Kardex.`,
+      };
+    }
+
+    let candidateBarcodes = getAllProductBarcodes(existing);
+    if (changes.barcodes !== undefined || changes.barcode !== undefined) {
+      const merged: string[] = [];
+      if (changes.barcode && changes.barcode.trim()) {
+        merged.push(changes.barcode.trim());
+      }
+      if (Array.isArray(changes.barcodes)) {
+        for (const c of changes.barcodes) {
+          const clean = String(c || '').trim();
+          if (clean && !merged.includes(clean)) merged.push(clean);
+        }
+      }
+      if (merged.length === 0 && changes.useInternalBarcode) {
+        const allExisting = catalog
+          .filter((p) => p.sku !== originalSku)
+          .flatMap((p) => getAllProductBarcodes(p));
+        merged.push(generateInternalBarcode(allExisting));
+      }
+      if (merged.length === 0) {
+        return { ok: false, message: 'El producto debe conservar al menos un código de barras.' };
+      }
+      candidateBarcodes = merged;
+    }
+
+    const barcodeCheck = validateBarcodeUniqueness(candidateBarcodes, catalog, originalSku);
+    if (!barcodeCheck.valid) {
+      return { ok: false, message: barcodeCheck.message || 'Código de barras duplicado.' };
+    }
+
+    const nextName = changes.name !== undefined ? changes.name.trim() : existing.name;
+    if (nextName.length < 2) {
+      return { ok: false, message: 'El nombre del producto debe tener al menos 2 caracteres.' };
+    }
+
+    const rawNextCost = changes.unitCost ?? changes.cost;
+    const nextCost =
+      rawNextCost !== undefined ? fromCents(toCents(rawNextCost)) : existing.historicCost;
+    const nextPrice =
+      changes.salePrice !== undefined ? fromCents(toCents(changes.salePrice)) : existing.salePrice;
+    if (nextCost < 0 || nextPrice <= 0) {
+      return { ok: false, message: 'El costo y precio de venta deben ser montos válidos.' };
+    }
+
+    const nextConversion =
+      changes.unitsPerPurchase !== undefined
+        ? resolveConversionFactor(changes.unitsPerPurchase)
+        : existing.unitsPerPurchase;
+    const nextSaleUnit = (changes.saleUnit ?? existing.saleUnit) as SaleUnit;
+    const nextPurchaseUnit = (changes.purchaseUnit ?? existing.purchaseUnit) as PurchaseUnit;
+    const nextIsBulk =
+      changes.isBulk !== undefined
+        ? changes.isBulk
+        : existing.isBulk || nextSaleUnit === 'Kg' || nextSaleUnit === 'g' || nextSaleUnit === 'L';
+    const nextTolerance =
+      changes.naturalShrinkTolerancePct !== undefined
+        ? Math.max(0, Math.min(50, Number(changes.naturalShrinkTolerancePct) || 0))
+        : (existing.naturalShrinkTolerancePct ?? (nextIsBulk ? 3 : 0));
+    const nextMinStock =
+      changes.minStock !== undefined ? Math.max(0, Number(changes.minStock) || 0) : existing.minStock;
+    const nextRop =
+      changes.rop !== undefined ? Math.max(0, Number(changes.rop) || 0) : existing.rop;
+    const nextExpiry = changes.expiry !== undefined ? changes.expiry.trim() : existing.expiry;
+    const nextTiers = normalizePriceTiers(nextPrice, changes.priceTiers ?? existing.priceTiers);
+
+    const updated: Product = {
+      ...existing,
+      sku: targetSku,
+      barcode: barcodeCheck.normalizedBarcodes[0],
+      barcodes: barcodeCheck.normalizedBarcodes,
+      hasInternalBarcode:
+        changes.useInternalBarcode ??
+        existing.hasInternalBarcode ??
+        barcodeCheck.normalizedBarcodes.some((c) => c.startsWith('200')),
+      name: nextName,
+      category: changes.category !== undefined ? changes.category.trim() : existing.category,
+      location: changes.location !== undefined ? changes.location.trim() : existing.location,
+      purchaseUnit: nextPurchaseUnit,
+      unitsPerPurchase: nextConversion,
+      saleUnit: nextSaleUnit,
+      historicCost: nextCost,
+      unitCost: nextCost,
+      purchaseCost: nextCost,
+      newCost: nextCost,
+      weightedAvgCost: nextCost,
+      lastPurchaseCost: nextCost,
+      salePrice: nextPrice,
+      ivaRate: changes.ivaRate !== undefined ? Math.max(0, Number(changes.ivaRate) || 0) : existing.ivaRate,
+      iepsRate: changes.iepsRate !== undefined ? Math.max(0, Number(changes.iepsRate) || 0) : existing.iepsRate,
+      priceTiers: nextTiers,
+      targetMargin: nextPrice > 0 ? Math.max(5, Math.round(marginPct(nextCost, nextPrice))) : existing.targetMargin,
+      expiry: nextExpiry,
+      fefoExpiryDate: nextExpiry,
+      acceptsPhysicalExchange:
+        changes.acceptsPhysicalExchange !== undefined
+          ? Boolean(changes.acceptsPhysicalExchange)
+          : existing.acceptsPhysicalExchange,
+      minStock: nextMinStock,
+      rop: nextRop,
+      isBulk: nextIsBulk,
+      naturalShrinkTolerancePct: nextTolerance,
+      supplier: changes.supplier !== undefined ? changes.supplier.trim() : existing.supplier,
+    };
+
+    this.products.update((list) => list.map((p) => (p.sku === originalSku ? updated : p)));
+    await this.flushSave();
+
+    return {
+      ok: true,
+      message: `Producto "${updated.name}" actualizado correctamente.`,
+      product: updated,
+    };
+  }
+
+  /**
+   * Baja lógica o eliminación de un producto (Bloque F1.1):
+   * Regla estricta: NO se borra físicamente si tiene movimientos en el Kardex; se aplica baja lógica (isActive = false).
+   */
+  async deactivateOrDeleteCatalogProduct(
+    sku: string,
+    pin?: string,
+    authorizerName = 'Administrador',
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    action?: 'DEACTIVATED' | 'DELETED';
+    logicalDeactivation: boolean;
+    deletedPhysically: boolean;
+  }> {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+        logicalDeactivation: false,
+        deletedPhysically: false,
+      };
+    }
+
+    const prod = this.products().find((p) => p.sku === sku);
+    if (!prod) {
+      return {
+        ok: false,
+        message: `Producto con SKU ${sku} no encontrado.`,
+        logicalDeactivation: false,
+        deletedPhysically: false,
+      };
+    }
+
+    if (pin && pin.trim()) {
+      const pinCheck = await this.verifyAdminPin(pin, authorizerName);
+      if (!pinCheck.success) {
+        return {
+          ok: false,
+          message: pinCheck.message,
+          logicalDeactivation: false,
+          deletedPhysically: false,
+        };
+      }
+    }
+
+    const hasMovements = hasProductMovements(sku, this.kardex());
+    if (hasMovements) {
+      // Baja lógica obligatoria: no se borra si tiene movimientos
+      this.products.update((list) =>
+        list.map((p) =>
+          p.sku === sku
+            ? {
+                ...p,
+                isActive: false,
+                deactivatedAt: new Date().toISOString(),
+                deactivatedBy: this.activeUser(),
+              }
+            : p,
+        ),
+      );
+      await this.flushSave();
+      return {
+        ok: true,
+        action: 'DEACTIVATED',
+        message: `El producto "${prod.name}" tiene movimientos en el Kardex y no puede borrarse: se aplicó baja lógica (inactivo).`,
+        logicalDeactivation: true,
+        deletedPhysically: false,
+      };
+    }
+
+    this.products.update((list) => list.filter((p) => p.sku !== sku));
+    await this.flushSave();
+    return {
+      ok: true,
+      action: 'DELETED',
+      message: `Producto "${prod.name}" eliminado del catálogo (sin movimientos previos).`,
+      logicalDeactivation: false,
+      deletedPhysically: true,
+    };
+  }
+
+  /**
+   * Intenta borrar físicamente un producto; falla si tiene movimientos en el Kardex.
+   */
+  async deletePhysicalProduct(sku: string, _pin?: string): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    if (hasProductMovements(sku, this.kardex())) {
+      return {
+        ok: false,
+        message: 'No se puede borrar un producto que ya tiene movimientos en el Kardex. Usa la baja lógica.',
+      };
+    }
+    this.products.update((list) => list.filter((p) => p.sku !== sku));
+    await this.flushSave();
+    return { ok: true, message: 'Producto eliminado.' };
+  }
+
+  /**
+   * Reactiva un producto que estaba en baja lógica.
+   */
+  async reactivateCatalogProduct(sku: string, _pin?: string): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const prod = this.products().find((p) => p.sku === sku);
+    if (!prod) {
+      return { ok: false, message: `Producto ${sku} no encontrado.` };
+    }
+    this.products.update((list) =>
+      list.map((p) =>
+        p.sku === sku
+          ? { ...p, isActive: true, deactivatedAt: undefined, deactivatedBy: undefined }
+          : p,
+      ),
+    );
+    await this.flushSave();
+    return { ok: true, message: `Producto "${prod.name}" reactivado en catálogo.` };
+  }
+
+  /**
+   * Configura el tope máximo de descuento (%) sin PIN. Requiere PIN de administrador.
+   */
+  async setMaxDiscountPctWithoutPin(
+    maxPct: number,
+    pin: string,
+    authorizerName = 'Administrador',
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    if (typeof maxPct !== 'number' || isNaN(maxPct) || maxPct < 0 || maxPct > 100) {
+      return { ok: false, message: 'El tope de descuento debe estar entre 0% y 100%.' };
+    }
+    const pinCheck = await this.verifyAdminPin(pin, authorizerName);
+    if (!pinCheck.success) {
+      return { ok: false, message: pinCheck.message };
+    }
+    this.maxDiscountPctWithoutPin.set(Math.round(maxPct * 100) / 100);
+    await this.flushSave();
+    return {
+      ok: true,
+      message: `Tope de descuento sin PIN actualizado a ${this.maxDiscountPctWithoutPin()}%.`,
+    };
+  }
+
+  /**
+   * Resuelve el precio unitario escalonado (menudeo, medio mayoreo, mayoreo) para un producto y cantidad.
+   */
+  resolveProductUnitPriceForQty(
+    skuOrProduct: string | Product,
+    qty: number,
+    explicitTier?: PriceTierCode,
+  ): {
+    unitPrice: number;
+    appliedTier: PriceTierCode;
+    activeTier: PriceTierCode;
+    tierLabel: string;
+  } {
+    const prod =
+      typeof skuOrProduct === 'string'
+        ? this.products().find((p) => p.sku === skuOrProduct)
+        : skuOrProduct;
+    if (!prod) {
+      return {
+        unitPrice: 0,
+        appliedTier: 'MENUDEO',
+        activeTier: 'MENUDEO',
+        tierLabel: 'Menudeo',
+      };
+    }
+    const res = resolveTierUnitPrice(prod.salePrice, prod.priceTiers, qty, explicitTier);
+    return {
+      unitPrice: res.unitPrice,
+      appliedTier: res.appliedTier,
+      activeTier: res.appliedTier,
+      tierLabel: res.tierLabel,
+    };
+  }
+
+  /**
+   * Evalúa los descuentos por línea y por ticket en centavos enteros para el carrito actual.
+   * Pasa el precio base de menudeo (`baseUnitPrice`) de cada producto para que, si se combina un precio
+   * escalonado (Mayoreo/Medio Mayoreo) con descuento por línea o ticket, `maxDiscountPctWithoutPin`
+   * evalúe el total descontado sobre el precio menudeo original.
+   */
+  evaluatePosCartDiscounts(items: PosSaleItem[], ticketDiscountPct = 0): CartDiscountEvaluation {
+    const catalog = this.products();
+    return evaluateCartDiscounts(
+      items.map((i) => {
+        const prod = catalog.find((p) => p.sku === i.sku);
+        const retailPrice = prod ? prod.salePrice : i.unitPrice;
+        return {
+          sku: i.sku,
+          name: i.name,
+          qty: i.qty,
+          unitPrice: i.unitPrice,
+          baseUnitPrice: Math.max(retailPrice, i.unitPrice),
+          discountPct: i.discountPct ?? 0,
+        };
+      }),
+      ticketDiscountPct,
+      this.maxDiscountPctWithoutPin(),
+    );
+  }
+
+  /**
+   * Procesa una venta en el POS aplicando precios escalonados y descuentos por línea y por ticket (Bloque F1.3).
+   * Si el descuento de alguna línea o del ticket supera el tope configurable (maxDiscountPctWithoutPin),
+   * exige y verifica el PIN de administrador/encargado antes de procesar la venta.
+   */
+  async processSaleWithDiscounts(params: {
+    items: PosSaleItem[];
+    ticketDiscountPct?: number;
+    paymentType?: 'EFECTIVO' | 'FIADO';
+    paymentMethod?: 'EFECTIVO' | 'FIADO';
+    cashReceived?: number;
+    receivedAmount?: number;
+    customerId?: string;
+    pin?: string;
+    authorizerName?: string;
+  }): Promise<{
+    ok: boolean;
+    message: string;
+    total: number;
+    totalCharged: number;
+    change: number;
+    requiresPin?: boolean;
+    evaluation?: CartDiscountEvaluation;
+  }> {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+        total: 0,
+        totalCharged: 0,
+        change: 0,
+      };
+    }
+    if (!params.items || params.items.length === 0) {
+      return { ok: false, message: 'El carrito está vacío.', total: 0, totalCharged: 0, change: 0 };
+    }
+
+    const evaluation = this.evaluatePosCartDiscounts(params.items, params.ticketDiscountPct ?? 0);
+    if (evaluation.requiresPin) {
+      if (!params.pin || !params.pin.trim()) {
+        return {
+          ok: false,
+          requiresPin: true,
+          evaluation,
+          message:
+            evaluation.pinReason ||
+            `El descuento supera el tope permitido de ${this.maxDiscountPctWithoutPin()}%. Ingresa el PIN de autorización.`,
+          total: evaluation.finalTotal,
+          totalCharged: evaluation.finalTotal,
+          change: 0,
+        };
+      }
+      const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName || 'Administrador');
+      if (!pinCheck.success) {
+        return {
+          ok: false,
+          requiresPin: true,
+          evaluation,
+          message: pinCheck.message,
+          total: evaluation.finalTotal,
+          totalCharged: evaluation.finalTotal,
+          change: 0,
+        };
+      }
+    }
+
+    // Construir líneas con su importe neto exacto en centavos para que caja y Kardex cuadren al centavo
+    const netItems: PosSaleItem[] = params.items.map((item, idx) => {
+      const lineEval = evaluation.lines[idx];
+      const netSubtotal = lineEval ? fromCents(lineEval.finalNetCents) : item.subtotal;
+      return {
+        ...item,
+        subtotal: netSubtotal,
+      };
+    });
+
+    const mode = params.paymentType || params.paymentMethod || 'EFECTIVO';
+    if (mode === 'FIADO') {
+      const res = this.processCreditSale(netItems, params.customerId || '');
+      if (res.ok && evaluation.totalDiscountCents > 0) {
+        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount);
+      }
+      await this.flushSave();
+      return {
+        ok: res.ok,
+        message: res.message,
+        total: res.total,
+        totalCharged: res.total,
+        change: 0,
+        evaluation,
+      };
+    } else {
+      const cash = params.cashReceived ?? params.receivedAmount ?? evaluation.finalTotal;
+      const res = this.processCashSale(netItems, cash);
+      if (res.ok && evaluation.totalDiscountCents > 0) {
+        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount);
+      }
+      await this.flushSave();
+      return {
+        ok: res.ok,
+        message: res.message,
+        total: res.total,
+        totalCharged: res.total,
+        change: res.change,
+        evaluation,
+      };
+    }
+  }
+
+  private annotateLatestSaleWithDiscount(discountAmount: number): void {
+    const entries = [...this.kardex()];
+    if (entries.length === 0) return;
+    const tag = `DESC-$${discountAmount.toFixed(2)}`;
+    const head = entries[0];
+    const prevHash = entries[1]?.entryHash || 'GENESIS';
+    const rehashedHead = createKardexEntry(
+      {
+        timestamp: head.timestamp,
+        type: head.type,
+        producto: head.producto,
+        cantidad: head.cantidad,
+        saldoAnterior: head.saldoAnterior,
+        saldoResultante: head.saldoResultante,
+        usuario: head.usuario,
+        referencia: `${head.referencia} (${tag})`,
+        amount: head.amount,
+        description: head.description,
+      },
+      prevHash,
+    );
+    entries[0] = rehashedHead;
+    this.kardex.set(entries);
+  }
+
+  /**
+   * Procesa de forma idempotente el mensaje LAN `PRODUCT_CREATE_REQUEST` enviado desde el móvil
+   * cuando escanea un código de barras desconocido y solicita "Crear producto" (nombre, precio, costo, unidad).
+   */
+  handleProductCreateRequestFromLan(rawPayload: any): {
+    ok: boolean;
+    created: boolean;
+    idempotentDuplicate?: boolean;
+    message: string;
+    product?: Product;
+  } {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        created: false,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+      };
+    }
+
+    const candidate = rawPayload?.product ? { ...rawPayload.product, requestId: rawPayload.requestId } : rawPayload;
+    const validation = validateMobileProductCreateRequest(candidate);
+    if (!validation.valid || !validation.normalized) {
+      return {
+        ok: false,
+        created: false,
+        message: validation.message || 'Solicitud PRODUCT_CREATE_REQUEST inválida.',
+      };
+    }
+
+    const req = validation.normalized;
+
+    // 1. Idempotencia por requestId
+    if (req.requestId && this.processedMobileProductRequests.has(req.requestId)) {
+      const existingByCode = this.findProductByBarcode(req.barcode, true);
+      return {
+        ok: true,
+        created: false,
+        idempotentDuplicate: true,
+        message: `Solicitud ${req.requestId} ya procesada previamente (idempotente).`,
+        product: existingByCode,
+      };
+    }
+
+    // 2. Idempotencia por código de barras (si el producto ya existe en el catálogo, no lo duplica)
+    const existingProduct = this.findProductByBarcode(req.barcode, true);
+    if (existingProduct) {
+      if (req.requestId) {
+        this.processedMobileProductRequests.add(req.requestId);
+      }
+      return {
+        ok: true,
+        created: false,
+        idempotentDuplicate: true,
+        message: `El código ${req.barcode} ya está registrado en "${existingProduct.name}" (idempotente).`,
+        product: existingProduct,
+      };
+    }
+
+    const catalog = this.products();
+    const sku = generateInternalSku(req.name, req.category || 'Abarrotes', catalog.map((p) => p.sku));
+    const saleUnit = req.saleUnit as SaleUnit;
+    const isBulk = saleUnit === 'Kg' || saleUnit === 'g' || saleUnit === 'L';
+    const unitCost = fromCents(toCents(req.cost));
+    const salePrice = fromCents(toCents(req.salePrice));
+    const targetMargin = salePrice > 0 ? Math.max(5, Math.round(marginPct(unitCost, salePrice))) : 20;
+
+    const newProd: Product = {
+      sku,
+      barcode: req.barcode,
+      barcodes: [req.barcode],
+      hasInternalBarcode: req.barcode.startsWith('200'),
+      name: req.name,
+      category: req.category || 'Abarrotes',
+      location: DEFAULT_CATEGORY_LOCATIONS[req.category || ''] || 'Pasillo General',
+      emoji: '',
+      purchaseUnit: isBulk ? 'Costal' : 'Pieza',
+      unitsPerPurchase: 1,
+      saleUnit,
+      historicCost: unitCost,
+      unitCost,
+      purchaseCost: unitCost,
+      newCost: unitCost,
+      weightedAvgCost: unitCost,
+      lastPurchaseCost: unitCost,
+      salePrice,
+      ivaRate: 0,
+      iepsRate: 0,
+      priceTiers: normalizePriceTiers(salePrice),
+      targetMargin,
+      monthlySalesUnits: 30,
+      expiry: '2027-12-31',
+      fefoExpiryDate: '2027-12-31',
+      acceptsPhysicalExchange: false,
+      stock: 0,
+      minStock: 5,
+      abcClass: 'B',
+      dailySalesRate: 1,
+      supplierLeadTimeDays: 3,
+      safetyStock: 2,
+      rop: calculateROP(1, 3, 2),
+      isBulk,
+      naturalShrinkTolerancePct: isBulk ? 3 : 0,
+      isActive: true,
+      supplier: 'Alta Móvil LAN',
+    };
+
+    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const entry = createKardexEntry(
+      {
+        type: 'AJUSTE_INICIAL',
+        producto: { sku: newProd.sku, name: newProd.name, saleUnit: newProd.saleUnit },
+        cantidad: 0,
+        saldoAnterior: 0,
+        saldoResultante: 0,
+        usuario: this.activeUser(),
+        referencia: `Alta móvil PRODUCT_CREATE_REQUEST (${newProd.barcode})`,
+        amount: 0,
+        description: `Alta de producto desde escáner móvil: ${newProd.name} (${newProd.barcode})`,
+      },
+      previousHash,
+    );
+
+    if (req.requestId) {
+      this.processedMobileProductRequests.add(req.requestId);
+    }
+
+    this.products.update((list) => [newProd, ...list]);
+    this.kardex.update((k) => [entry, ...k]);
+    void this.flushSave();
+
+    return {
+      ok: true,
+      created: true,
+      message: `Producto "${newProd.name}" creado desde móvil con código ${newProd.barcode}.`,
+      product: newProd,
     };
   }
 }

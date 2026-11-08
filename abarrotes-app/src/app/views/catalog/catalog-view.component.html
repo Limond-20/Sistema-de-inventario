@@ -1,20 +1,40 @@
-<!-- ===================== ENCABEZADO Y BOTÓN DE HOJA PDF GRANEL ===================== -->
+<!-- ===================== ENCABEZADO Y ACCIONES DE CATÁLOGO (BLOQUE F1) ===================== -->
 <section class="mb-5 flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 print:hidden">
   <div>
     <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
-      Estrategia ABC · ROP · FEFO · Costo Promedio vs Reposición
+      Estrategia ABC · ROP · FEFO · Precios Escalonados · Conversión de Unidades
     </span>
     <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Catálogo Maestro y Punto de Reorden</h1>
-    <p class="text-sm text-slate-600 mt-0.5">Control de artículos de alta rotación (Clase A), reposición y márgenes contra inflación.</p>
+    <p class="text-sm text-slate-600 mt-0.5">Alta, edición, baja lógica, múltiples códigos de barras, precios por volumen y merma natural.</p>
   </div>
 
-  <button
-    type="button"
-    (click)="openBulkSheetModal()"
-    class="h-11 px-5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold shadow-2xs flex items-center gap-2 transition-all">
-    <span>Generar Hoja PDF de Mostrador (Granel)</span>
-  </button>
+  <div class="flex flex-wrap items-center gap-2.5">
+    <button
+      type="button"
+      data-testid="btn-new-product"
+      (click)="openCreateModal()"
+      class="h-11 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-2xs flex items-center gap-2 transition-all">
+      <span>Alta de Producto</span>
+    </button>
+
+    <button
+      type="button"
+      data-testid="btn-print-internal-sheet"
+      (click)="openBulkSheetModal()"
+      class="h-11 px-5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold shadow-2xs flex items-center gap-2 transition-all">
+      <span>Hoja Imprimible de Códigos Internos / Granel</span>
+    </button>
+  </div>
 </section>
+
+@if (catalogBanner()) {
+  <div
+    class="mb-4 rounded-xl border px-4 py-3 text-sm font-semibold flex items-center justify-between gap-3 print:hidden"
+    [class]="catalogBanner()!.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900'">
+    <span>{{ catalogBanner()!.message }}</span>
+    <button type="button" (click)="catalogBanner.set(null)" class="text-xs underline font-bold">Cerrar</button>
+  </div>
+}
 
 <!-- ===================== FILTROS POR CLASIFICACIÓN ABC (PARETO) ===================== -->
 <section class="mb-4 print:hidden" aria-label="Filtrar por Clasificación ABC">
@@ -86,10 +106,10 @@
   </div>
 </section>
 
-<!-- ===================== BUSCADOR Y CATEGORÍAS ===================== -->
+<!-- ===================== BUSCADOR, INACTIVOS Y CATEGORÍAS ===================== -->
 <section class="mb-4 bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-col gap-2.5 print:hidden">
-  <div class="flex flex-col md:flex-row gap-2">
-    <div class="flex-1 flex items-center gap-2 px-3 h-10 rounded-lg border border-slate-200 bg-slate-50 focus-within:border-slate-400 focus-within:bg-white transition-all">
+  <div class="flex flex-col md:flex-row items-center gap-2">
+    <div class="flex-1 w-full flex items-center gap-2 px-3 h-10 rounded-lg border border-slate-200 bg-slate-50 focus-within:border-slate-400 focus-within:bg-white transition-all">
       <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
       </svg>
@@ -97,7 +117,7 @@
         type="text"
         [value]="search()"
         (input)="onSearch($event)"
-        placeholder="Buscar por nombre, SKU o código EAN-13..."
+        placeholder="Buscar por nombre, SKU, ubicación o cualquiera de sus códigos de barras..."
         class="flex-1 text-xs font-medium outline-none bg-transparent placeholder:text-slate-400"
       />
       @if (search()) {
@@ -106,6 +126,16 @@
         </button>
       }
     </div>
+
+    <label class="inline-flex items-center gap-2 px-3 h-10 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer shrink-0">
+      <input
+        type="checkbox"
+        [ngModel]="showInactive()"
+        (ngModelChange)="showInactive.set($event)"
+        class="rounded border-slate-300"
+      />
+      <span>Mostrar bajas lógicas (inactivos)</span>
+    </label>
   </div>
 
   <!-- Categorías -->
@@ -125,55 +155,74 @@
   </div>
 </section>
 
-<!-- ===================== TABLA CON ABC, ROP, VALUACIÓN Y FEFO ===================== -->
+<!-- ===================== TABLA CON ABC, ROP, PRECIOS ESCALONADOS Y ACCIONES ===================== -->
 <section class="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-x-auto print:hidden">
   <table class="w-full text-left border-collapse text-sm">
     <thead class="bg-slate-900 text-white text-sm">
       <tr>
-        <th class="px-4 py-3.5">Producto / Clase</th>
-        <th class="px-4 py-3.5">Existencia vs ROP</th>
+        <th class="px-4 py-3.5">Producto / Códigos / Ubicación</th>
+        <th class="px-4 py-3.5">Existencia / Conversión / Merma</th>
         <th class="px-4 py-3.5 text-right">Costo Promedio vs Último Costo</th>
-        <th class="px-4 py-3.5 text-right">Precio Venta</th>
+        <th class="px-4 py-3.5 text-right">Precios Escalonados e Impuestos</th>
         <th class="px-4 py-3.5">Margen Real</th>
-        <th class="px-4 py-3.5">Caducidad FEFO</th>
+        <th class="px-4 py-3.5">Caducidad FEFO / Acciones</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-slate-100">
       @for (p of rows(); track p.sku) {
-        <tr class="hover:bg-slate-50 transition-colors align-top">
-          <!-- 1. Producto + Clase ABC -->
+        <tr class="hover:bg-slate-50 transition-colors align-top" [class.opacity-60]="p.isActive === false">
+          <!-- 1. Producto + Clase ABC + Códigos + Ubicación -->
           <td class="px-4 py-4">
-            <div class="mb-1 flex items-center gap-1.5">
+            <div class="mb-1 flex flex-wrap items-center gap-1.5">
               <span class="rounded px-2 py-0.5 text-xs font-semibold"
                 [class]="p.abcClass === 'A'
                   ? 'bg-emerald-100 text-emerald-800'
                   : (p.abcClass === 'B' ? 'bg-slate-100 text-slate-800' : 'bg-slate-100 text-slate-600')">
                 Clase {{ p.abcClass }}
               </span>
+              <span class="rounded bg-slate-100 px-2 py-0.5 text-xs font-mono font-semibold text-slate-700">
+                SKU: {{ p.sku }}
+              </span>
               @if (p.isBulk) {
                 <span class="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Granel</span>
               }
+              @if (p.hasInternalBarcode || p.barcode.startsWith('200')) {
+                <span class="rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Código Interno</span>
+              }
+              @if (p.isActive === false) {
+                <span class="rounded bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">Baja Lógica (Inactivo)</span>
+              }
             </div>
             <p class="text-base font-bold text-slate-900 leading-snug">{{ p.name }}</p>
-            <p class="mt-1 text-sm text-slate-600">{{ p.category }} · EAN: {{ p.barcode }} · {{ p.supplier }}</p>
+            <p class="mt-1 text-xs text-slate-600">
+              {{ p.category }} · Ubicación: <b class="text-slate-800">{{ p.location || 'Pasillo General' }}</b> · {{ p.supplier }}
+            </p>
+            <p class="mt-0.5 text-xs text-slate-500 font-mono">
+              Códigos ({{ p.allBarcodes.length }}): {{ p.allBarcodes.join(', ') }}
+            </p>
           </td>
 
-          <!-- 2. Stock vs Punto de Reorden (ROP): sin cuadro, solo texto -->
+          <!-- 2. Stock vs Punto de Reorden (ROP) + Conversión + Tolerancia Merma Natural -->
           <td class="px-4 py-4">
             <p class="text-base font-bold text-slate-900 tabular-nums">
-              Stock: <span [class]="p.belowRop ? 'text-amber-700' : 'text-slate-900'">{{ p.stock | number:'1.0-1' }}</span>
+              Stock: <span [class]="p.belowRop ? 'text-amber-700' : 'text-slate-900'">{{ p.stock | number:'1.0-2' }}</span>
               <span class="mx-1 text-slate-400">/</span>
               ROP: <span class="text-slate-600">{{ p.rop | number:'1.0-1' }}</span> {{ p.saleUnit }}
             </p>
-            <p class="mt-1 text-sm text-slate-600">
-              Venta: {{ p.dailySalesRate }}/día · Reparto: {{ p.supplierLeadTimeDays }}d · Seguridad: {{ p.safetyStock }}
+            <p class="mt-1 text-xs text-slate-600">
+              Compra: <b>{{ p.purchaseUnit }}</b> ({{ p.unitsPerPurchase }} {{ p.saleUnit }}/{{ p.purchaseUnit }}) · Mín: {{ p.minStock }}
             </p>
+            @if (p.isBulk || (p.naturalShrinkTolerancePct ?? 0) > 0) {
+              <p class="mt-0.5 text-xs font-semibold text-slate-700">
+                Tolerancia merma natural: <b>{{ p.naturalShrinkTolerancePct ?? 3 }}%</b>
+              </p>
+            }
             @if (p.belowRop) {
-              <p class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-amber-800">
+              <p class="mt-1.5 flex items-center gap-2 text-xs font-semibold text-amber-800">
                 <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>Reabastecer (Bajo ROP)
               </p>
             } @else {
-              <p class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-emerald-700">
+              <p class="mt-1.5 flex items-center gap-2 text-xs font-semibold text-emerald-700">
                 <span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500"></span>Abasto Normal
               </p>
             }
@@ -192,14 +241,26 @@
                 +{{ p.costDiff | currency:'MXN':'symbol-narrow' }}
               </span>
             } @else {
-              <span class="mt-1 inline-block text-sm text-slate-500">Estable</span>
+              <span class="mt-1 inline-block text-xs text-slate-500">Estable</span>
             }
           </td>
 
-          <!-- 4. Precio Venta -->
+          <!-- 4. Precio Venta Escalonado + IVA/IEPS -->
           <td class="px-4 py-4 text-right">
             <span class="text-lg font-bold text-slate-900 tabular-nums">{{ p.salePrice | currency:'MXN':'symbol-narrow' }}</span>
-            <span class="block text-sm text-slate-500">/{{ p.saleUnit }}</span>
+            <span class="block text-xs text-slate-500">Menudeo / {{ p.saleUnit }}</span>
+            @for (t of p.tiers; track t.tier) {
+              @if (t.tier !== 'MENUDEO' && t.unitPrice < p.salePrice) {
+                <span class="block text-xs text-slate-700 tabular-nums">
+                  {{ t.label }} (≥{{ t.minQty }}): <b>{{ t.unitPrice | currency:'MXN':'symbol-narrow' }}</b>
+                </span>
+              }
+            }
+            @if ((p.ivaRate ?? 0) > 0 || (p.iepsRate ?? 0) > 0) {
+              <span class="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                IVA {{ p.ivaRate ?? 0 }}% · IEPS {{ p.iepsRate ?? 0 }}%
+              </span>
+            }
           </td>
 
           <!-- 5. Margen -->
@@ -213,26 +274,50 @@
             </span>
           </td>
 
-          <!-- 6. Semáforo FEFO: sin cuadros, solo texto -->
+          <!-- 6. Semáforo FEFO y Acciones de Catálogo -->
           <td class="px-4 py-4">
             @if (p.daysLeft <= 4) {
-              <p class="flex items-start gap-2 text-sm font-bold text-amber-800">
+              <p class="flex items-start gap-2 text-xs font-bold text-amber-800">
                 <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>
                 <span>FEFO: {{ fmtDate(p.fefoExpiryDate) }} ({{ p.daysLeft <= 1 ? 'Mañana' : 'En ' + p.daysLeft + ' días' }})</span>
               </p>
-              @if (p.acceptsPhysicalExchange) {
-                <p class="mt-1 pl-4 text-sm text-slate-700">Cambio Físico · {{ p.nextVisitInfo }}</p>
-              } @else {
-                <p class="mt-1 pl-4 text-sm font-semibold text-red-700">Sin devolución: ofertar hoy</p>
-              }
             } @else {
-              <span class="text-sm font-semibold text-slate-800 tabular-nums">{{ fmtDate(p.fefoExpiryDate) }}</span>
-              @if (p.acceptsPhysicalExchange) {
-                <span class="block text-sm font-semibold text-emerald-700">Con Cambio Físico</span>
-              } @else {
-                <span class="block text-sm text-slate-500">Lote vigente</span>
-              }
+              <span class="text-xs font-semibold text-slate-800 tabular-nums">Cad: {{ fmtDate(p.fefoExpiryDate) }}</span>
             }
+
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                (click)="openEditModal(p)"
+                class="h-8 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition-colors">
+                Editar
+              </button>
+
+              @if (!p.barcode.startsWith('200') && !p.hasInternalBarcode) {
+                <button
+                  type="button"
+                  (click)="assignInternalCode(p)"
+                  class="h-8 px-2.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors">
+                  + Cód. Interno
+                </button>
+              }
+
+              @if (p.isActive !== false) {
+                <button
+                  type="button"
+                  (click)="deactivateProduct(p)"
+                  class="h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition-colors">
+                  {{ p.hasMovements ? 'Baja Lógica' : 'Eliminar' }}
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  (click)="reactivateProduct(p)"
+                  class="h-8 px-2.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-colors">
+                  Reactivar
+                </button>
+              }
+            </div>
           </td>
         </tr>
       } @empty {
@@ -247,16 +332,437 @@
 </section>
 
 <!-- =====================================================================
-     MODAL IMPRIMIBLE: HOJA DE CÓDIGOS DE MOSTRADOR (GRANEL EAN-13)
+     MODAL ALTA / EDICIÓN DE PRODUCTO (BLOQUE F1)
+     ===================================================================== -->
+@if (productModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:hidden" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+      <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div>
+          <span class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Catálogo Maestro · Bloque F1</span>
+          <h2 class="text-lg font-bold">
+            {{ editingOriginalSku() ? 'Editar Producto (' + editingOriginalSku() + ')' : 'Alta de Nuevo Producto' }}
+          </h2>
+        </div>
+        <button
+          type="button"
+          (click)="closeProductModal()"
+          class="h-9 px-3.5 rounded-lg border border-slate-700 bg-slate-800 text-white text-xs font-bold hover:bg-slate-700">
+          Cerrar
+        </button>
+      </div>
+
+      <div class="p-5 space-y-5">
+        @if (formFeedback()) {
+          <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-900">
+            {{ formFeedback()!.message }}
+          </div>
+        }
+
+        <!-- 1. Identificación, SKU, Categoría y Ubicación -->
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nombre del Producto *</label>
+            <input
+              type="text"
+              data-testid="input-product-name"
+              [ngModel]="formName()"
+              (ngModelChange)="formName.set($event); onNameOrCategoryChange()"
+              placeholder="Ej. Jabón Líquido Multiusos 1L"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-semibold"
+            />
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-bold text-slate-700">SKU Interno (Editable)</label>
+              <button type="button" (click)="regenerateSuggestedSku()" class="text-[11px] font-bold text-slate-600 underline">
+                Autogenerar
+              </button>
+            </div>
+            <input
+              type="text"
+              data-testid="input-product-sku"
+              [ngModel]="formSku()"
+              (ngModelChange)="formSku.set($event); formSkuManuallyEdited.set(true)"
+              placeholder="ABR-PRO-001"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono font-bold uppercase"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Categoría</label>
+            <input
+              type="text"
+              [ngModel]="formCategory()"
+              (ngModelChange)="formCategory.set($event); onNameOrCategoryChange()"
+              placeholder="Ej. Limpieza, Lácteos, Granos"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-semibold"
+            />
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Ubicación Física en Tienda</label>
+            <input
+              type="text"
+              [ngModel]="formLocation()"
+              (ngModelChange)="formLocation.set($event)"
+              placeholder="Ej. Anaquel B · Repisa 2"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm"
+            />
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Proveedor</label>
+            <input
+              type="text"
+              [ngModel]="formSupplier()"
+              (ngModelChange)="formSupplier.set($event)"
+              placeholder="Ej. Distribuidora del Bajío"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm"
+            />
+          </div>
+        </div>
+
+        <!-- 2. Unidades de Venta / Compra con Factor de Conversión y Costos -->
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+          <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">
+            Unidades de Venta y Compra · Conversión y Costos
+          </h3>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Unidad de Venta</label>
+              <select
+                data-testid="select-sale-unit"
+                [ngModel]="formSaleUnit()"
+                (ngModelChange)="onSaleUnitChange($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+                @for (u of saleUnitOptions; track u) {
+                  <option [value]="u">{{ u }}</option>
+                }
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Unidad de Compra</label>
+              <select
+                [ngModel]="formPurchaseUnit()"
+                (ngModelChange)="formPurchaseUnit.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+                @for (pu of purchaseUnitOptions; track pu) {
+                  <option [value]="pu">{{ pu }}</option>
+                }
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Factor Conversión (Ej. 24 o 50)</label>
+              <input
+                type="number"
+                min="0.001"
+                step="any"
+                data-testid="input-conversion-factor"
+                [ngModel]="formUnitsPerPurchase()"
+                (ngModelChange)="formUnitsPerPurchase.set($event); recalculateUnitCostFromPackage()"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Costo por Empaque ($)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                [ngModel]="formPackageCost()"
+                (ngModelChange)="formPackageCost.set($event); recalculateUnitCostFromPackage()"
+                placeholder="Opcional (calcula unitario)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Costo Unitario Venta ($) *</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                data-testid="input-product-cost"
+                [ngModel]="formCost()"
+                (ngModelChange)="formCost.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold"
+              />
+            </div>
+          </div>
+
+          <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Precio Menudeo ($) *</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                data-testid="input-product-price"
+                [ngModel]="formSalePrice()"
+                (ngModelChange)="formSalePrice.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">IVA (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                [ngModel]="formIvaRate()"
+                (ngModelChange)="formIvaRate.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">IEPS (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                [ngModel]="formIepsRate()"
+                (ngModelChange)="formIepsRate.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tolerancia Merma Natural (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.5"
+                data-testid="input-shrink-tolerance"
+                [ngModel]="formShrinkTolerancePct()"
+                (ngModelChange)="formShrinkTolerancePct.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Precios Escalonados (Menudeo, Medio Mayoreo, Mayoreo) -->
+        <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+          <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">
+            Precios Escalonados por Volumen (Menudeo · Medio Mayoreo · Mayoreo)
+          </h3>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Cant. Mín. Medio Mayoreo</label>
+              <input
+                type="number"
+                min="1"
+                [ngModel]="formMedioMayoreoMinQty()"
+                (ngModelChange)="formMedioMayoreoMinQty.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Precio Medio Mayoreo ($)</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                [ngModel]="formMedioMayoreoPrice()"
+                (ngModelChange)="formMedioMayoreoPrice.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Cant. Mín. Mayoreo</label>
+              <input
+                type="number"
+                min="1"
+                [ngModel]="formMayoreoMinQty()"
+                (ngModelChange)="formMayoreoMinQty.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Precio Mayoreo ($)</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                [ngModel]="formMayoreoPrice()"
+                (ngModelChange)="formMayoreoPrice.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono font-bold"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Múltiples Códigos de Barras y Código Interno -->
+        <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">
+              Códigos de Barras del Producto (Validación de Duplicados)
+            </h3>
+            <button
+              type="button"
+              (click)="generateAndAddInternalBarcode()"
+              class="h-9 px-3 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold">
+              Generar Código Interno EAN-13 (200...)
+            </button>
+          </div>
+
+          <div class="flex gap-2">
+            <input
+              type="text"
+              data-testid="input-product-barcode"
+              [ngModel]="formNewBarcodeInput()"
+              (ngModelChange)="formNewBarcodeInput.set($event)"
+              placeholder="Escanea o escribe un código EAN-13 y presiona Agregar..."
+              class="flex-1 h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
+            />
+            <button
+              type="button"
+              (click)="addBarcodeToList()"
+              class="h-11 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold">
+              Agregar Código
+            </button>
+          </div>
+
+          @if (formBarcodes().length > 0) {
+            <div class="flex flex-wrap gap-2">
+              @for (code of formBarcodes(); track code) {
+                <span class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-mono font-bold text-slate-800">
+                  <span>{{ code }}</span>
+                  <button
+                    type="button"
+                    (click)="removeBarcodeFromList(code)"
+                    class="text-rose-700 hover:text-rose-900 font-bold">
+                    Quitar
+                  </button>
+                </span>
+              }
+            </div>
+          } @else {
+            <p class="text-xs text-slate-500">
+              Si el producto no tiene código de fábrica, al guardar se le asignará automáticamente un código interno 200... e irá a la hoja imprimible.
+            </p>
+          }
+        </div>
+
+        <!-- 5. Caducidad, Mínimo/ROP y Stock Inicial con PIN (AJUSTE_INICIAL) -->
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Fecha de Caducidad</label>
+            <input
+              type="date"
+              [ngModel]="formExpiry()"
+              (ngModelChange)="formExpiry.set($event)"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Stock Mínimo</label>
+            <input
+              type="number"
+              min="0"
+              [ngModel]="formMinStock()"
+              (ngModelChange)="formMinStock.set($event)"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Punto de Reorden (ROP)</label>
+            <input
+              type="number"
+              min="0"
+              [ngModel]="formRop()"
+              (ngModelChange)="formRop.set($event)"
+              class="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
+            />
+          </div>
+
+          <div class="flex items-end pb-2">
+            <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                [ngModel]="formIsBulk()"
+                (ngModelChange)="formIsBulk.set($event)"
+                class="rounded border-slate-300"
+              />
+              <span>Venta a granel / báscula</span>
+            </label>
+          </div>
+        </div>
+
+        @if (!editingOriginalSku()) {
+          <div class="rounded-xl border border-amber-200 bg-amber-50/70 p-4 grid sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-800 mb-1">
+                Stock Inicial ({{ formSaleUnit() }}) — Genera AJUSTE_INICIAL en Kardex
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                data-testid="input-initial-stock"
+                [ngModel]="formInitialStock()"
+                (ngModelChange)="formInitialStock.set($event)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-800 mb-1">
+                PIN de Administrador / Encargado (Obligatorio para AJUSTE_INICIAL) *
+              </label>
+              <input
+                type="password"
+                data-testid="input-catalog-pin"
+                [ngModel]="formAdminPin()"
+                (ngModelChange)="formAdminPin.set($event)"
+                placeholder="Ingresa PIN (mínimo 6 dígitos)"
+                class="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm font-mono"
+              />
+            </div>
+          </div>
+        }
+
+        <div class="flex justify-end gap-2.5 pt-2 border-t border-slate-200">
+          <button
+            type="button"
+            (click)="closeProductModal()"
+            class="h-11 px-5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            data-testid="btn-save-product"
+            (click)="saveProductForm()"
+            class="h-11 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold">
+            {{ editingOriginalSku() ? 'Guardar Cambios' : 'Crear Producto y Registrar Kardex' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =====================================================================
+     MODAL IMPRIMIBLE: HOJA DE CÓDIGOS INTERNOS Y GRANEL (EAN-13 PREFIJO 200)
      ===================================================================== -->
 @if (bulkSheetModalOpen()) {
-  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:static print:bg-white print:p-0" role="dialog" aria-modal="true">
-    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:rounded-none">
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:static print:bg-white print:p-0 print:block print:overflow-visible" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none print:overflow-visible print:shadow-none print:border-none print:rounded-none print:bg-white">
       <!-- Barra superior (se oculta al imprimir) -->
-      <div class="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 print:hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 print:hidden no-print">
         <div>
           <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estándar GS1 Prefijo 200 · Uso en Mostrador</span>
-          <h2 class="text-base font-bold">Hoja de Códigos para Productos a Granel</h2>
+          <h2 class="text-base font-bold">Hoja Imprimible de Códigos Internos y Productos a Granel</h2>
         </div>
         <div class="flex items-center gap-2">
           <button type="button" (click)="printBulkSheet()"
@@ -271,24 +777,26 @@
       </div>
 
       <!-- Contenido de la Hoja -->
-      <div class="p-6">
+      <div class="p-6 print:p-0 print:bg-white">
         <div class="border-b border-slate-900 pb-3 mb-5 flex items-center justify-between">
           <div>
-            <h3 class="text-lg font-black text-slate-900">{{ inv.storeName }} · Tablero de Códigos Rápidos</h3>
-            <p class="text-xs text-slate-600">Hoja de apoyo para mostrador para cobrar productos sin código de fábrica.</p>
+            <h3 class="text-lg font-black text-slate-900">{{ inv.storeName }} · Tablero de Códigos Rápidos e Internos</h3>
+            <p class="text-xs text-slate-600">Hoja de apoyo para mostrador para cobrar productos sin código de fábrica o a granel.</p>
           </div>
           <div class="text-right text-[11px] font-semibold text-slate-500 font-mono">
             Actualizado: {{ inv.today }}<br />
-            Prefijo EAN: 200
+            Prefijo EAN: 200 ({{ bulkProducts().length }} productos)
           </div>
         </div>
 
-        <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4 print:grid-cols-3">
           @for (item of bulkProducts(); track item.sku) {
-            <div class="rounded-xl border border-slate-300 p-3 flex flex-col items-center text-center bg-white">
+            <div class="print-label-card break-inside-avoid rounded-xl border border-slate-300 p-3 flex flex-col items-center text-center bg-white">
               <div class="w-full flex items-center justify-between text-[10px] font-bold text-slate-500 mb-1">
                 <span>SKU: {{ item.sku }}</span>
-                <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 uppercase">Granel</span>
+                <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 uppercase">
+                  {{ item.isBulk ? 'Granel' : 'Código Interno' }}
+                </span>
               </div>
 
               <h4 class="text-sm font-bold text-slate-900 leading-snug">{{ item.name }}</h4>

@@ -6,17 +6,16 @@ import {
   CreditCustomer,
   MockInventoryService,
   PosSaleItem,
+  PriceTierCode,
   Product,
 } from '../../services/mock-inventory.service';
 import {
   parseMoney,
-  parseMoneyToCents,
   sumMoney,
   subtractMoney,
   multiplyMoney,
-  toCents,
-  fromCents,
 } from '../../domain/money';
+import { getAllProductBarcodes } from '../../domain/catalog';
 
 type BulkCalcMode = 'weight' | 'amount';
 
@@ -47,6 +46,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
       qty: 2,
       unitPrice: 26.0,
       subtotal: 52.0,
+      selectedTier: 'MENUDEO',
+      discountPct: 0,
     },
     {
       sku: 'QUE-FRE-1K',
@@ -58,8 +59,18 @@ export class PosViewComponent implements OnInit, OnDestroy {
       qty: 0.263,
       unitPrice: 95.0,
       subtotal: 25.0,
+      selectedTier: 'MENUDEO',
+      discountPct: 0,
     },
   ]);
+
+  // ---------- Descuentos por Ticket y Autorización PIN (Bloque F1.3) ----------
+  protected readonly ticketDiscountPct = signal<number>(0);
+  protected readonly discountAuthPin = signal<string>('');
+  protected readonly discountCapModalOpen = signal<boolean>(false);
+  protected readonly newMaxDiscountCap = signal<number>(10);
+  protected readonly discountCapAdminPin = signal<string>('');
+  protected readonly discountCapFeedback = signal<{ ok: boolean; message: string } | null>(null);
 
   // ---------- Modal Calculadora Dual de Granel ----------
   protected readonly bulkModalProduct = signal<Product | null>(null);
@@ -111,26 +122,41 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Accesos Rápidos en Carrusel ----------
   protected readonly quickAccessProducts = computed(() => {
     const pinnedSet = new Set(this.inv.pinnedQuickAccessSkus());
-    return this.inv.products().filter((p) => pinnedSet.has(p.sku));
+    return this.inv.products().filter((p) => p.isActive !== false && pinnedSet.has(p.sku));
   });
 
-  // ---------- Lista Completa de Productos (Sin filtros, búsqueda rápida opcional) ----------
+  // ---------- Lista Completa de Productos Activos ----------
   protected readonly displayedProducts = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
-    const all = this.inv.products();
+    const all = this.inv.products().filter((p) => p.isActive !== false);
     if (!q) return all;
-    return all.filter(
-      (p) =>
+    return all.filter((p) => {
+      const codes = getAllProductBarcodes(p);
+      return (
         p.name.toLowerCase().includes(q) ||
-        p.barcode.includes(q) ||
+        codes.some((c) => c.toLowerCase().includes(q)) ||
         p.sku.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q),
-    );
+        p.category.toLowerCase().includes(q)
+      );
+    });
   });
 
+  // ---------- Evaluación de Descuentos por Línea y por Ticket (Bloque F1.3) ----------
+  protected readonly cartDiscountEvaluation = computed(() =>
+    this.inv.evaluatePosCartDiscounts(this.cart(), this.ticketDiscountPct()),
+  );
+
+  protected readonly hasAnyDiscount = computed(
+    () => this.cartDiscountEvaluation().totalDiscountCents > 0,
+  );
+
   // ---------- Computadas del Carrito ----------
-  protected readonly cartTotal = computed(() =>
+  protected readonly cartGrossTotal = computed(() =>
     sumMoney(this.cart().map((item) => item.subtotal)),
+  );
+
+  protected readonly cartTotal = computed(() =>
+    this.cartDiscountEvaluation().finalTotal,
   );
 
   protected readonly cartItemsCount = computed(() => this.cart().length);
@@ -188,7 +214,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
         allowed: false,
         available,
         projectedBalance,
-        reason: `🚫 BLOQUEADO POR SALDO VENCIDO: ${customer.name} tiene una deuda vencida de $${customer.currentBalance.toFixed(2)} desde el ${customer.dueDate}. Debe registrar un abono antes de llevar más mercancía fiada.`,
+        reason: `BLOQUEADO POR SALDO VENCIDO: ${customer.name} tiene una deuda vencida de $${customer.currentBalance.toFixed(2)} desde el ${customer.dueDate}. Debe registrar un abono antes de llevar más mercancía fiada.`,
       };
     }
 
@@ -197,7 +223,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
         allowed: false,
         available,
         projectedBalance,
-        reason: `🚫 REBASA EL LÍMITE DE CRÉDITO: La cuenta actual es de $${total.toFixed(2)}, pero ${customer.name} solo tiene $${Math.max(0, available).toFixed(2)} disponibles (Límite: $${customer.creditLimit.toFixed(2)}).`,
+        reason: `REBASA EL LÍMITE DE CRÉDITO: La cuenta actual es de $${total.toFixed(2)}, pero ${customer.name} solo tiene $${Math.max(0, available).toFixed(2)} disponibles (Límite: $${customer.creditLimit.toFixed(2)}).`,
       };
     }
 
@@ -205,7 +231,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       allowed: true,
       available,
       projectedBalance,
-      reason: `✅ Crédito aprobado. Nuevo saldo de ${customer.name}: $${projectedBalance.toFixed(2)} de $${customer.creditLimit.toFixed(2)}.`,
+      reason: `Crédito aprobado. Nuevo saldo de ${customer.name}: $${projectedBalance.toFixed(2)} de $${customer.creditLimit.toFixed(2)}.`,
     };
   });
 
@@ -352,6 +378,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
           qty: qtyKg,
           unitPrice: prod.salePrice,
           subtotal,
+          selectedTier: 'MENUDEO',
+          discountPct: 0,
         },
       ];
     });
@@ -367,10 +395,22 @@ export class PosViewComponent implements OnInit, OnDestroy {
         if (nextQty <= 0) {
           return list.filter((i) => i.sku !== product.sku);
         }
-        const nextSub = multiplyMoney(existing.unitPrice, nextQty);
-        return list.map((i) => (i.sku === product.sku ? { ...i, qty: nextQty, subtotal: nextSub } : i));
+        const resolved = this.inv.resolveProductUnitPriceForQty(product.sku, nextQty);
+        const nextSub = multiplyMoney(resolved.unitPrice, nextQty);
+        return list.map((i) =>
+          i.sku === product.sku
+            ? {
+                ...i,
+                qty: nextQty,
+                unitPrice: resolved.unitPrice,
+                selectedTier: resolved.appliedTier,
+                subtotal: nextSub,
+              }
+            : i,
+        );
       }
       if (delta <= 0) return list;
+      const resolved = this.inv.resolveProductUnitPriceForQty(product.sku, delta);
       return [
         ...list,
         {
@@ -381,8 +421,10 @@ export class PosViewComponent implements OnInit, OnDestroy {
           saleUnit: product.saleUnit,
           isBulk: product.isBulk,
           qty: delta,
-          unitPrice: product.salePrice,
-          subtotal: multiplyMoney(product.salePrice, delta),
+          unitPrice: resolved.unitPrice,
+          subtotal: multiplyMoney(resolved.unitPrice, delta),
+          selectedTier: resolved.appliedTier,
+          discountPct: 0,
         },
       ];
     });
@@ -399,9 +441,79 @@ export class PosViewComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const resolved = this.inv.resolveProductUnitPriceForQty(sku, nextQty);
     this.cart.update((list) =>
-      list.map((i) => (i.sku === sku ? { ...i, qty: nextQty, subtotal: multiplyMoney(i.unitPrice, nextQty) } : i)),
+      list.map((i) =>
+        i.sku === sku
+          ? {
+              ...i,
+              qty: nextQty,
+              unitPrice: resolved.unitPrice,
+              selectedTier: resolved.appliedTier,
+              subtotal: multiplyMoney(resolved.unitPrice, nextQty),
+            }
+          : i,
+      ),
     );
+  }
+
+  /**
+   * Selector manual de nivel de precio escalonado en el POS (Menudeo, Medio Mayoreo, Mayoreo).
+   */
+  setCartItemPriceTier(sku: string, tier: PriceTierCode): void {
+    const item = this.cart().find((i) => i.sku === sku);
+    if (!item) return;
+    const resolved = this.inv.resolveProductUnitPriceForQty(sku, item.qty, tier);
+    this.cart.update((list) =>
+      list.map((i) =>
+        i.sku === sku
+          ? {
+              ...i,
+              selectedTier: resolved.appliedTier,
+              unitPrice: resolved.unitPrice,
+              subtotal: multiplyMoney(resolved.unitPrice, i.qty),
+            }
+          : i,
+      ),
+    );
+  }
+
+  /**
+   * Asigna porcentaje de descuento por línea en el carrito del POS.
+   */
+  setCartItemDiscountPct(sku: string, pct: number): void {
+    const cleanPct = Math.max(0, Math.min(100, Number(pct) || 0));
+    this.cart.update((list) =>
+      list.map((i) => (i.sku === sku ? { ...i, discountPct: cleanPct } : i)),
+    );
+  }
+
+  setTicketDiscount(pct: number): void {
+    const cleanPct = Math.max(0, Math.min(100, Number(pct) || 0));
+    this.ticketDiscountPct.set(cleanPct);
+  }
+
+  openDiscountCapModal(): void {
+    this.newMaxDiscountCap.set(this.inv.maxDiscountPctWithoutPin());
+    this.discountCapAdminPin.set('');
+    this.discountCapFeedback.set(null);
+    this.discountCapModalOpen.set(true);
+  }
+
+  closeDiscountCapModal(): void {
+    this.discountCapModalOpen.set(false);
+    this.discountCapFeedback.set(null);
+  }
+
+  async saveDiscountCap(): Promise<void> {
+    const res = await this.inv.setMaxDiscountPctWithoutPin(
+      Number(this.newMaxDiscountCap()),
+      this.discountCapAdminPin(),
+    );
+    this.discountCapFeedback.set({ ok: res.ok, message: res.message });
+    if (res.ok) {
+      this.closeDiscountCapModal();
+    }
   }
 
   adjustCartItemQty(item: PosSaleItem, delta: number): void {
@@ -418,6 +530,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   clearCart(): void {
     this.cart.set([]);
+    this.ticketDiscountPct.set(0);
+    this.discountAuthPin.set('');
     this.saleFeedback.set(null);
   }
 
@@ -427,6 +541,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     const total = this.cartTotal();
     const suggestedBills = [50, 100, 200, 500].find((b) => b >= total) ?? Math.ceil(total);
     this.cashReceived.set(suggestedBills);
+    this.discountAuthPin.set('');
     this.cashModalOpen.set(true);
   }
 
@@ -446,12 +561,34 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.cashReceived.set(amount);
   }
 
-  confirmCashSale(): void {
+  async confirmCashSale(): Promise<void> {
     if (!this.canConfirmCash()) return;
+    const evalRes = this.cartDiscountEvaluation();
+    if (evalRes.totalDiscountCents > 0 || evalRes.requiresPin) {
+      const res = await this.inv.processSaleWithDiscounts({
+        items: this.cart(),
+        ticketDiscountPct: this.ticketDiscountPct(),
+        paymentType: 'EFECTIVO',
+        cashReceived: parseMoney(this.cashReceived() || 0),
+        pin: this.discountAuthPin(),
+      });
+      if (res.ok) {
+        this.saleFeedback.set({ ok: true, text: res.message });
+        this.cart.set([]);
+        this.ticketDiscountPct.set(0);
+        this.discountAuthPin.set('');
+        this.closeCashModal();
+      } else {
+        this.saleFeedback.set({ ok: false, text: res.message });
+      }
+      return;
+    }
+
     const res = this.inv.processCashSale(this.cart(), parseMoney(this.cashReceived() || 0));
     if (res.ok) {
       this.saleFeedback.set({ ok: true, text: res.message });
       this.cart.set([]);
+      this.ticketDiscountPct.set(0);
       this.closeCashModal();
     } else {
       this.saleFeedback.set({ ok: false, text: res.message });
@@ -460,6 +597,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   // ---------- Modal Fiado ----------
   openCreditModal(): void {
+    this.discountAuthPin.set('');
     this.creditModalOpen.set(true);
     this.abonoFeedback.set(null);
   }
@@ -472,16 +610,38 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.creditModalOpen.set(false);
   }
 
-  confirmCreditSale(): void {
+  async confirmCreditSale(): Promise<void> {
     const val = this.creditValidation();
     if (!val.allowed) return;
     const customer = this.selectedCustomer();
     if (!customer) return;
 
+    const evalRes = this.cartDiscountEvaluation();
+    if (evalRes.totalDiscountCents > 0 || evalRes.requiresPin) {
+      const res = await this.inv.processSaleWithDiscounts({
+        items: this.cart(),
+        ticketDiscountPct: this.ticketDiscountPct(),
+        paymentType: 'FIADO',
+        customerId: customer.id,
+        pin: this.discountAuthPin(),
+      });
+      if (res.ok) {
+        this.saleFeedback.set({ ok: true, text: res.message });
+        this.cart.set([]);
+        this.ticketDiscountPct.set(0);
+        this.discountAuthPin.set('');
+        this.closeCreditModal();
+      } else {
+        this.saleFeedback.set({ ok: false, text: res.message });
+      }
+      return;
+    }
+
     const res = this.inv.processCreditSale(this.cart(), customer.id);
     if (res.ok) {
       this.saleFeedback.set({ ok: true, text: res.message });
       this.cart.set([]);
+      this.ticketDiscountPct.set(0);
       this.closeCreditModal();
     } else {
       this.saleFeedback.set({ ok: false, text: res.message });

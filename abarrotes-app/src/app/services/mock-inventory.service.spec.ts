@@ -1022,6 +1022,96 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
         run: () => service.importAndRestoreFromBakBytes(new Uint8Array(64), 'frase-respaldo-segura'),
       },
       { name: 'undoLastRestore', run: () => service.undoLastRestore() },
+      {
+        name: 'createCatalogProduct',
+        run: () =>
+          service.createCatalogProduct({
+            name: 'Producto RO F1',
+            sku: 'ABA-RO-001',
+            category: 'Abarrotes',
+            location: 'Pasillo 1',
+            saleUnit: 'Pieza',
+            purchaseUnit: 'Caja',
+            unitsPerPurchase: 24,
+            unitCost: 10,
+            salePrice: 15,
+            ivaRate: 16,
+            iepsRate: 0,
+            rop: 5,
+            initialStock: 10,
+            pin: '984312',
+          }),
+      },
+      {
+        name: 'updateCatalogProduct',
+        run: () =>
+          service.updateCatalogProduct(targetSku, {
+            name: prod.name,
+            sku: targetSku,
+            category: prod.category,
+            location: 'Pasillo 1',
+            saleUnit: prod.saleUnit,
+            purchaseUnit: prod.purchaseUnit,
+            unitsPerPurchase: prod.unitsPerPurchase,
+            unitCost: prod.unitCost,
+            salePrice: prod.salePrice,
+            ivaRate: 16,
+            iepsRate: 0,
+            rop: prod.rop,
+          }),
+      },
+      {
+        name: 'deactivateOrDeleteCatalogProduct',
+        run: () => service.deactivateOrDeleteCatalogProduct(targetSku, '984312'),
+      },
+      {
+        name: 'deletePhysicalProduct',
+        run: () => service.deletePhysicalProduct(targetSku, '984312'),
+      },
+      {
+        name: 'reactivateCatalogProduct',
+        run: () => service.reactivateCatalogProduct(targetSku, '984312'),
+      },
+      {
+        name: 'assignInternalBarcodeToProduct',
+        run: () => service.assignInternalBarcodeToProduct(targetSku),
+      },
+      {
+        name: 'setMaxDiscountPctWithoutPin',
+        run: () => service.setMaxDiscountPctWithoutPin(15, '984312'),
+      },
+      {
+        name: 'processSaleWithDiscounts',
+        run: () =>
+          service.processSaleWithDiscounts({
+            items: [
+              {
+                sku: targetSku,
+                barcode: prod.barcode,
+                name: prod.name,
+                emoji: prod.emoji,
+                saleUnit: prod.saleUnit,
+                isBulk: false,
+                qty: 1,
+                unitPrice: prod.salePrice,
+                subtotal: prod.salePrice,
+              },
+            ],
+            paymentMethod: 'EFECTIVO',
+            receivedAmount: 100,
+          }),
+      },
+      {
+        name: 'handleProductCreateRequestFromLan',
+        run: () =>
+          service.handleProductCreateRequestFromLan({
+            barcode: '7509998887776',
+            name: 'Producto Móvil RO',
+            salePrice: 20,
+            cost: 15,
+            saleUnit: 'Pieza',
+          }),
+      },
     ];
 
     for (const mutator of mutatorInvocations) {
@@ -1216,5 +1306,332 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(service.indexedDbSaveStatus()).toBe('error');
     expect(service.indexedDbSaveLabel()).toBe('No se pudo guardar');
     expect(service.lastSaveError()).toContain('QuotaExceededError');
+  });
+
+  // =========================================================================
+  //  BLOQUE F1: CATÁLOGO (Alta, baja lógica, códigos múltiples, precios
+  //  escalonados, descuentos con tope/PIN, tolerancia de merma natural y
+  //  PRODUCT_CREATE_REQUEST desde móvil)
+  // =========================================================================
+
+  it('23. Bloque F1 (Integración): Crear producto con stock inicial (AJUSTE_INICIAL + PIN), venderlo, verlo en el Kardex y que persista tras recargar', async () => {
+    await service.setupInitialPin('984312');
+    const memoryAdapter = new MemoryStateStorageAdapter();
+    service.storageAdapter = memoryAdapter;
+
+    // 1. Intento de crear producto con stock inicial sin PIN -> falla pidiendo PIN
+    const noPinRes = await service.createCatalogProduct({
+      name: 'Café Soluble Olla 200g',
+      sku: 'ABA-CAF-200',
+      category: 'Abarrotes',
+      location: 'Pasillo 2 · Estante B',
+      saleUnit: 'Pieza',
+      purchaseUnit: 'Caja',
+      unitsPerPurchase: 12,
+      packageCost: 720, // $720 / 12 = $60.00 costo unitario
+      salePrice: 85,
+      ivaRate: 0,
+      iepsRate: 0,
+      rop: 6,
+      initialStock: 24,
+      barcodes: ['7501059299011', '7501059299028'],
+      priceTiers: [
+        { tier: 'MENUDEO', label: 'Menudeo', minQty: 1, unitPrice: 85 },
+        { tier: 'MEDIO_MAYOREO', label: 'Medio Mayoreo', minQty: 6, unitPrice: 80 },
+        { tier: 'MAYOREO', label: 'Mayoreo', minQty: 12, unitPrice: 74 },
+      ],
+    });
+    expect(noPinRes.ok).toBeFalse();
+    expect(noPinRes.requiresPin).toBeTrue();
+
+    // 2. Crear producto con PIN de Administrador ('984312') -> genera AJUSTE_INICIAL en el Kardex
+    const createRes = await service.createCatalogProduct({
+      name: 'Café Soluble Olla 200g',
+      sku: 'ABA-CAF-200',
+      category: 'Abarrotes',
+      location: 'Pasillo 2 · Estante B',
+      saleUnit: 'Pieza',
+      purchaseUnit: 'Caja',
+      unitsPerPurchase: 12,
+      packageCost: 720,
+      salePrice: 85,
+      ivaRate: 0,
+      iepsRate: 0,
+      rop: 6,
+      initialStock: 24,
+      barcodes: ['7501059299011', '7501059299028'],
+      priceTiers: [
+        { tier: 'MENUDEO', label: 'Menudeo', minQty: 1, unitPrice: 85 },
+        { tier: 'MEDIO_MAYOREO', label: 'Medio Mayoreo', minQty: 6, unitPrice: 80 },
+        { tier: 'MAYOREO', label: 'Mayoreo', minQty: 12, unitPrice: 74 },
+      ],
+      pin: '984312',
+    });
+    expect(createRes.ok).toBeTrue();
+    expect(createRes.product?.unitCost).toBe(60);
+    expect(createRes.product?.stock).toBe(24);
+
+    // Se puede buscar por cualquiera de sus códigos de barras
+    expect(service.findProductByBarcode('7501059299011')?.sku).toBe('ABA-CAF-200');
+    expect(service.findProductByBarcode('7501059299028')?.sku).toBe('ABA-CAF-200');
+
+    // 3. Vender 6 piezas (aplica precio escalonado MEDIO_MAYOREO = $80)
+    const tierResolved = service.resolveProductUnitPriceForQty(createRes.product!, 6);
+    expect(tierResolved.activeTier).toBe('MEDIO_MAYOREO');
+    expect(tierResolved.unitPrice).toBe(80);
+
+    const saleRes = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: 'ABA-CAF-200',
+          barcode: '7501059299028',
+          name: 'Café Soluble Olla 200g',
+          emoji: '[P]',
+          saleUnit: 'Pieza',
+          isBulk: false,
+          qty: 6,
+          unitPrice: tierResolved.unitPrice,
+          selectedTier: tierResolved.activeTier,
+          subtotal: 6 * tierResolved.unitPrice,
+        },
+      ],
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 500,
+    });
+    expect(saleRes.ok).toBeTrue();
+    expect(saleRes.totalCharged).toBe(480);
+
+    // 4. Verificar entradas en el Kardex (AJUSTE_INICIAL + VENTA_EFECTIVO) y cadena SHA-256
+    const prodMovements = service
+      .kardex()
+      .filter((e) => (typeof e.producto === 'string' ? e.producto : e.producto.sku) === 'ABA-CAF-200');
+    expect(prodMovements.length).toBe(2);
+    expect(prodMovements.some((e) => e.type === 'AJUSTE_INICIAL' && e.cantidad === 24 && e.saldoResultante === 24)).toBeTrue();
+    expect(prodMovements.some((e) => e.type === 'VENTA_EFECTIVO' && e.cantidad === -6 && e.saldoResultante === 18)).toBeTrue();
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+
+    await service.flushSave();
+
+    // 5. Simulamos recargar la aplicación desde IndexedDB / storageAdapter
+    const reloadedService = new MockInventoryService();
+    reloadedService.storageAdapter = memoryAdapter;
+    const restoreRes = await reloadedService.restorePersistedState();
+    expect(restoreRes.success).toBeTrue();
+
+    const reloadedProd = reloadedService.products().find((p) => p.sku === 'ABA-CAF-200');
+    expect(reloadedProd).toBeTruthy();
+    expect(reloadedProd!.stock).toBe(18);
+    expect(reloadedProd!.barcodes).toEqual(['7501059299011', '7501059299028']);
+    expect(
+      reloadedService
+        .kardex()
+        .filter((e) => (typeof e.producto === 'string' ? e.producto : e.producto.sku) === 'ABA-CAF-200').length
+    ).toBe(2);
+    expect(reloadedService.verifyKardexIntegrity().valid).toBeTrue();
+  });
+
+  it('24. Bloque F1: Rechaza códigos de barras duplicados entre productos y aplica baja lógica (no borra si tiene movimientos en Kardex)', async () => {
+    await service.setupInitialPin('984312');
+    // 1. Intentar dar de alta un producto con el código de barras de Leche Lala ('7501020515350')
+    const dupRes = await service.createCatalogProduct({
+      name: 'Clon Leche',
+      sku: 'LAC-CLON-01',
+      category: 'Lácteos',
+      location: 'Refrigerador 1',
+      saleUnit: 'Pieza',
+      purchaseUnit: 'Caja',
+      unitsPerPurchase: 12,
+      unitCost: 20,
+      salePrice: 25,
+      ivaRate: 0,
+      iepsRate: 0,
+      rop: 5,
+      initialStock: 0,
+      barcodes: ['7501020515350'],
+    });
+    expect(dupRes.ok).toBeFalse();
+    expect(dupRes.message).toContain('duplicado');
+
+    // 2. Intentar borrar físicamente un producto con movimientos en el Kardex ('LAC-LAL-1L') -> bloqueado
+    const physicalDelWithMovements = await service.deletePhysicalProduct('LAC-LAL-1L', '984312');
+    expect(physicalDelWithMovements.ok).toBeFalse();
+    expect(physicalDelWithMovements.message).toContain('movimientos');
+
+    // 3. deactivateOrDeleteCatalogProduct sobre producto con movimientos aplica baja lógica (isActive = false)
+    const logicalDeactivate = await service.deactivateOrDeleteCatalogProduct('LAC-LAL-1L', '984312');
+    expect(logicalDeactivate.ok).toBeTrue();
+    expect(logicalDeactivate.action).toBe('DEACTIVATED');
+    const lalaAfter = service.products().find((p) => p.sku === 'LAC-LAL-1L')!;
+    expect(lalaAfter.isActive).toBeFalse();
+    // Un producto dado de baja lógica ya no aparece en el buscador de escaneo del POS
+    expect(service.findProductByBarcode('7501020515350')).toBeUndefined();
+
+    // 4. Reactivar producto con PIN
+    const reactivateRes = await service.reactivateCatalogProduct('LAC-LAL-1L', '984312');
+    expect(reactivateRes.ok).toBeTrue();
+    expect(service.findProductByBarcode('7501020515350')?.sku).toBe('LAC-LAL-1L');
+  });
+
+  it('25. Bloque F1: Descuentos por línea y por ticket en centavos con tope configurable y PIN al pasar el tope', async () => {
+    await service.setupInitialPin('984312');
+    // Tope por defecto = 10%
+    expect(service.maxDiscountPctWithoutPin()).toBe(10);
+    const prod = service.products().find((p) => p.sku === 'LAC-LAL-1L')!; // $26.50
+
+    // 1. Descuento de 5% por línea (dentro del tope de 10%) -> NO pide PIN
+    const saleWithinCap = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 2,
+          unitPrice: 26.5,
+          discountPct: 5,
+          subtotal: 53,
+        },
+      ],
+      ticketDiscountPct: 0,
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 100,
+    });
+    expect(saleWithinCap.ok).toBeTrue();
+    expect(saleWithinCap.totalCharged).toBe(50.35);
+
+    // 2. Descuento de 15% por ticket (supera tope de 10%) sin PIN -> bloqueado con requiresPin = true
+    const saleOverCapNoPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 2,
+          unitPrice: 26.5,
+          discountPct: 0,
+          subtotal: 53,
+        },
+      ],
+      ticketDiscountPct: 15,
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 100,
+    });
+    expect(saleOverCapNoPin.ok).toBeFalse();
+    expect(saleOverCapNoPin.requiresPin).toBeTrue();
+
+    // 3. Mismo descuento de 15% con PIN válido de encargado/admin -> se procesa y registra el descuento en la referencia del Kardex
+    const saleOverCapWithPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 2,
+          unitPrice: 26.5,
+          discountPct: 0,
+          subtotal: 53,
+        },
+      ],
+      ticketDiscountPct: 15,
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 100,
+      pin: '984312', // Administrador / Encargado
+    });
+    expect(saleOverCapWithPin.ok).toBeTrue();
+    expect(saleOverCapWithPin.totalCharged).toBe(45.05);
+    expect(service.kardex()[0].referencia).toContain('DESC-$7.95');
+
+    // 4. Prioridad Mayoreo + descuento por ticket:
+    // Leche Lala: Menudeo $26.50, Mayoreo (12 pzas) = $23.80 (~10.19% menos que menudeo).
+    // Si además se aplica 4% de descuento por ticket, se acumulan y el total descontado sobre el precio menudeo (~13.78%) supera el tope de 10% -> exige PIN.
+    const wholesalePlusTicketNoPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 12,
+          unitPrice: 23.8,
+          selectedTier: 'MAYOREO',
+          discountPct: 0,
+          subtotal: 285.6,
+        },
+      ],
+      ticketDiscountPct: 4,
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 300,
+    });
+    expect(wholesalePlusTicketNoPin.ok).toBeFalse();
+    expect(wholesalePlusTicketNoPin.requiresPin).toBeTrue();
+    expect(wholesalePlusTicketNoPin.evaluation?.effectiveDiscountVsRetailPct).toBeGreaterThan(10);
+  });
+
+  it('26. Bloque F1: Tolerancia de merma natural en granel (% por producto) clasifica diferencias dentro de tolerancia como "Merma natural" y no como faltante', () => {
+    // FRI-NEG-50K es granel con systemQty = 16.5 kg y naturalShrinkTolerancePct = 3% (tolerancia = 0.495 kg)
+    // Contamos 16.2 kg -> diferencia -0.3 kg (1.82% <= 3%) -> debe marcarse como "Merma natural"
+    service.submitBlindAuditResults([{ sku: 'FRI-NEG-50K', countedQty: 16.2 }]);
+    const lineWithin = service.auditLines().find((l) => l.sku === 'FRI-NEG-50K')!;
+    expect(lineWithin.varianceClassification).toBe('MERMA_NATURAL');
+    expect(lineWithin.classificationLabel).toBe('Merma natural');
+    expect(lineWithin.isWithinNaturalTolerance).toBeTrue();
+
+    // Al cuadrar el ajuste en el Kardex, la referencia indica [Merma natural]
+    service.applySquareAdjustment('FRI-NEG-50K', 'MERMA_OPERATIVA');
+    expect(service.kardex()[0].referencia).toContain('Merma natural');
+
+    // Si la diferencia supera el 3% (ej. teórico 16.2 kg, contado 14.8 kg -> -1.4 kg > 3%), se marca como "Faltante"
+    service.submitBlindAuditResults([{ sku: 'FRI-NEG-50K', countedQty: 14.8 }]);
+    const lineOver = service.auditLines().find((l) => l.sku === 'FRI-NEG-50K')!;
+    expect(lineOver.varianceClassification).toBe('FALTANTE');
+    expect(lineOver.classificationLabel).toBe('Faltante');
+    expect(lineOver.isWithinNaturalTolerance).toBeFalse();
+  });
+
+  it('27. Bloque F1: Móvil envía PRODUCT_CREATE_REQUEST y la PC lo valida y crea de forma idempotente', async () => {
+    await service.restorePersistedState();
+    const countBefore = service.products().length;
+
+    // 1. Primer envío de PRODUCT_CREATE_REQUEST por LAN
+    service.handleIncomingLanMessage({
+      type: 'PRODUCT_CREATE_REQUEST',
+      requestId: 'REQ-7509998887776',
+      barcode: '7509998887776',
+      name: 'Galletas Marías Móvil 170g',
+      salePrice: 20,
+      cost: 14.5,
+      saleUnit: 'Pieza',
+    });
+
+    expect(service.products().length).toBe(countBefore + 1);
+    const created = service.findProductByBarcode('7509998887776');
+    expect(created).toBeTruthy();
+    expect(created!.name).toBe('Galletas Marías Móvil 170g');
+    expect(created!.salePrice).toBe(20);
+    expect(created!.unitCost).toBe(14.5);
+
+    // 2. Reenvío duplicado del mismo PRODUCT_CREATE_REQUEST (mismo requestId o mismo código de barras) -> idempotente, no duplica
+    const duplicateRes = service.handleProductCreateRequestFromLan({
+      type: 'PRODUCT_CREATE_REQUEST',
+      requestId: 'REQ-7509998887776',
+      barcode: '7509998887776',
+      name: 'Galletas Marías Móvil 170g',
+      salePrice: 20,
+      cost: 14.5,
+      saleUnit: 'Pieza',
+    });
+    expect(duplicateRes.ok).toBeTrue();
+    expect(duplicateRes.idempotentDuplicate).toBeTrue();
+    expect(service.products().length).toBe(countBefore + 1);
   });
 });

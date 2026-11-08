@@ -7,6 +7,7 @@ export type KardexType =
   | 'VENTA_FIADO'
   | 'ABONO_FIADO'
   | 'ENTRADA_COMPRA'
+  | 'AJUSTE_INICIAL'
   | 'AJUSTE_AUDITORIA'
   | 'BAJA_MERMA'
   | 'CONSUMO_INTERNO'

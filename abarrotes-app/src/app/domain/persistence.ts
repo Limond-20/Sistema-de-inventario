@@ -42,6 +42,7 @@ export interface PersistedAppState {
   auditLines: any[];
   internalConsumptionRecords?: any[];
   morningAlerts?: any[];
+  maxDiscountPctWithoutPin?: number;
 }
 
 export interface ValidationResult {

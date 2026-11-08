@@ -61,11 +61,31 @@
 
             <!-- 1. Datos del Producto -->
       <div class="lg:col-span-3">
+        <div class="flex flex-wrap items-center gap-1.5 mb-1">
+          @if (r.isWithinNaturalTolerance) {
+            <span class="rounded bg-amber-100 border border-amber-300 px-2 py-0.5 text-xs font-bold text-amber-900">
+              Merma natural (≤ {{ r.naturalShrinkTolerancePct }}%)
+            </span>
+          } @else if (r.diffQty < 0) {
+            <span class="rounded bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">
+              Faltante
+            </span>
+          } @else if (r.diffQty > 0) {
+            <span class="rounded bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">
+              Sobrante
+            </span>
+          }
+        </div>
         <p class="text-base font-bold text-slate-900 leading-snug">{{ r.name }}</p>
         <p class="mt-1 text-sm text-slate-600">Ubicación: {{ r.location }}</p>
         <p class="mt-0.5 text-sm text-slate-600">
           Costo unitario: <span class="font-semibold text-slate-800 tabular-nums">{{ r.unitCost | currency:'MXN':'symbol-narrow' }}</span> / {{ unitLabel(r, 1) }}
         </p>
+        @if ((r.naturalShrinkTolerancePct ?? 0) > 0) {
+          <p class="mt-0.5 text-xs text-slate-500">
+            Tolerancia granel: <b>{{ r.naturalShrinkTolerancePct }}%</b> (máx. {{ r.toleranceMaxLossQty | number:'1.0-3' }} {{ unitLabel(r, r.toleranceMaxLossQty) }})
+          </p>
+        }
       </div>
 
       <!-- 2. Comparación Sistema vs Conteo Físico vs Diferencia -->
@@ -113,14 +133,20 @@
           </div>
           
          } @else if (r.status === 'pendiente') {
-          <p class="px-0.5 text-sm font-semibold" [class]="r.diffQty < 0 ? 'text-red-700' : 'text-amber-800'">
-            @if (r.diffQty < 0) { Faltan {{ -r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
-            @else { Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
-          </p>
+          @if (r.isWithinNaturalTolerance) {
+            <p class="px-0.5 text-sm font-bold text-amber-900">
+              Merma natural: diferencia de {{ -r.diffQty | number:'1.0-3' }} {{ unitLabel(r, r.diffQty) }} dentro de la tolerancia ({{ r.naturalShrinkTolerancePct }}%). No se clasifica como faltante.
+            </p>
+          } @else {
+            <p class="px-0.5 text-sm font-semibold" [class]="r.diffQty < 0 ? 'text-red-700' : 'text-amber-800'">
+              @if (r.diffQty < 0) { Faltan {{ -r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
+              @else { Sobran {{ r.diffQty | number:'1.0-1' }} {{ unitLabel(r, r.diffQty) }} en el estante. }
+            </p>
+          }
           <div class="grid grid-cols-2 gap-2">
             <button type="button" (click)="applySquare(r.sku, 'MERMA_OPERATIVA')"
               class="min-h-12 rounded-xl border border-brand-200 bg-brand-100 px-3 py-2 text-sm font-semibold text-brand-800 transition-colors hover:bg-brand-200">
-              Merma Normal Granel/Corte
+              {{ r.isWithinNaturalTolerance ? 'Autorizar Merma Natural' : 'Merma Normal Granel/Corte' }}
             </button>
             <button type="button" (click)="applySquare(r.sku, 'FALTANTE_INJUSTIFICADO')"
               class="min-h-12 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition-colors hover:bg-rose-50">

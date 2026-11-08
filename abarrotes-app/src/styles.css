@@ -155,9 +155,38 @@ a[class*="bg-emerald-600"]:hover {
 
 @media print {
   html,
-  body {
+  body,
+  app-root,
+  main {
     height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    width: 100% !important;
     overflow: visible !important;
     background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  app-navbar,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-shell {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    width: 100% !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    display: block !important;
+  }
+
+  .print-label-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

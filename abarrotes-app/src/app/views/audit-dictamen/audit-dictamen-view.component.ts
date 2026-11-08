@@ -3,11 +3,13 @@ import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuditLine, MockInventoryService } from '../../services/mock-inventory.service';
 import { sumMoney, multiplyMoney } from '../../domain/money';
+import { evaluateNaturalShrinkTolerance } from '../../domain/catalog';
 import { IconComponent } from '../../components/icon/icon.component';
 
 interface AuditView extends AuditLine {
   diffQty: number;
   diffMoney: number;
+  toleranceMaxLossQty: number;
 }
 
 @Component({
@@ -33,17 +35,42 @@ export class AuditDictamenViewComponent implements OnInit, OnDestroy {
     }
   };
 
-  protected readonly rows = computed<AuditView[]>(() =>
-    this.inv.auditLines().map((l) => {
+  protected readonly rows = computed<AuditView[]>(() => {
+    const catalog = this.inv.products();
+    return this.inv.auditLines().map((l) => {
+      const prod = catalog.find((p) => p.sku === l.sku);
+      const tolerancePct =
+        l.naturalShrinkTolerancePct ??
+        prod?.naturalShrinkTolerancePct ??
+        (prod?.isBulk ? 3 : 0);
+      const evalTol = evaluateNaturalShrinkTolerance(l.systemQty, l.countedQty, tolerancePct);
       const diffQty = +(l.countedQty - l.systemQty).toFixed(2);
-      return { ...l, diffQty, diffMoney: multiplyMoney(l.unitCost, diffQty) };
-    }),
-  );
+      return {
+        ...l,
+        diffQty,
+        diffMoney: multiplyMoney(l.unitCost, diffQty),
+        naturalShrinkTolerancePct: evalTol.tolerancePct,
+        varianceClassification: evalTol.classification,
+        classificationLabel: evalTol.classificationLabel,
+        isWithinNaturalTolerance:
+          evalTol.isWithinTolerance && evalTol.classification === 'MERMA_NATURAL',
+        toleranceMaxLossQty: evalTol.maxNaturalLossQty,
+      };
+    });
+  });
 
   protected readonly withDiff = computed(() => this.rows().filter((r) => r.diffQty !== 0));
   protected readonly matches = computed(() => this.rows().filter((r) => r.diffQty === 0).length);
+  /** Las diferencias dentro de la tolerancia se marcan como "Merma natural", no faltante. */
+  protected readonly naturalShrinkCount = computed(
+    () => this.rows().filter((r) => r.isWithinNaturalTolerance).length,
+  );
   protected readonly missingMoney = computed(() =>
-    sumMoney(this.withDiff().filter((r) => r.diffMoney < 0).map((r) => r.diffMoney)),
+    sumMoney(
+      this.withDiff()
+        .filter((r) => r.diffMoney < 0 && !r.isWithinNaturalTolerance)
+        .map((r) => r.diffMoney),
+    ),
   );
   protected readonly extraMoney = computed(() =>
     sumMoney(this.withDiff().filter((r) => r.diffMoney > 0).map((r) => r.diffMoney)),

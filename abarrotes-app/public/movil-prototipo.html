@@ -310,6 +310,61 @@
           </div>
         </div>
 
+        <!-- F1: Tarjeta para crear producto cuando se escanea un código desconocido -->
+        <div id="pos-unknown-barcode-card" class="hidden bg-amber-50 rounded-2xl border border-amber-300 shadow-sm p-3.5 flex-col gap-2.5">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">Código no registrado en catálogo</span>
+              <p id="pos-unknown-code-label" class="text-xs font-mono font-bold text-slate-900">EAN: ---</p>
+            </div>
+            <button type="button" id="btn-show-create-product-form" onclick="toggleMobileCreateProductForm(true)"
+              class="h-10 px-3 rounded-xl bg-brand-600 text-white text-xs font-bold touch-btn shrink-0">
+              Crear producto
+            </button>
+          </div>
+
+          <div id="pos-create-product-form" class="hidden flex-col gap-2 pt-2 border-t border-amber-200">
+            <div>
+              <label class="text-[11px] font-bold text-slate-700 block mb-0.5">Nombre del producto</label>
+              <input type="text" id="mob-prod-name" placeholder="Ej. Galletas Marías 170g"
+                class="w-full h-10 px-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900" />
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="text-[11px] font-bold text-slate-700 block mb-0.5">Precio ($)</label>
+                <input type="number" id="mob-prod-price" step="0.5" min="0.5" placeholder="20.00"
+                  class="w-full h-10 px-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold text-slate-900" />
+              </div>
+              <div>
+                <label class="text-[11px] font-bold text-slate-700 block mb-0.5">Costo ($)</label>
+                <input type="number" id="mob-prod-cost" step="0.5" min="0" placeholder="15.00"
+                  class="w-full h-10 px-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold text-slate-900" />
+              </div>
+              <div>
+                <label class="text-[11px] font-bold text-slate-700 block mb-0.5">Unidad</label>
+                <select id="mob-prod-unit"
+                  class="w-full h-10 px-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900">
+                  <option value="Pieza">Pieza</option>
+                  <option value="Kg">Kg</option>
+                  <option value="g">g</option>
+                  <option value="L">L</option>
+                </select>
+              </div>
+            </div>
+            <p id="mob-prod-error" class="hidden text-xs font-bold text-rose-700"></p>
+            <div class="grid grid-cols-2 gap-2 pt-1">
+              <button type="button" onclick="toggleMobileCreateProductForm(false)"
+                class="h-10 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 touch-btn">
+                Cancelar
+              </button>
+              <button type="button" onclick="submitMobileCreateProduct()"
+                class="h-10 rounded-xl bg-emerald-600 text-white text-xs font-bold touch-btn">
+                Guardar y Enviar a PC
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Botonera rápida de prueba de 5 productos base -->
         <div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs flex flex-col gap-2">
           <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -337,9 +392,14 @@
               <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$21</span>
             </button>
             <button type="button" onclick="simulateBarcode('7501005110011')"
-              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 col-span-2 touch-btn">
+              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
               <span class="truncate">Harina Maseca 1kg</span>
               <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$22</span>
+            </button>
+            <button type="button" onclick="simulateBarcode('7509998887776')"
+              class="h-11 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-left flex items-center justify-between text-xs font-bold text-amber-900 touch-btn">
+              <span class="truncate">Código Nuevo (F1)</span>
+              <span class="font-mono text-amber-700 font-black shrink-0 ml-1">+Alta</span>
             </button>
           </div>
         </div>
@@ -860,6 +920,8 @@
       }
     }
 
+    let lastUnknownBarcode = '';
+
     function handleBarcodeScanned(barcode) {
       playScannerBeep();
       triggerVibrate(80);
@@ -868,7 +930,7 @@
       const title = product ? product.name : `Código EAN: ${code}`;
       const sub = product
         ? `$${product.salePrice.toFixed(2)} · Enviado a PC al instante ✓`
-        : 'Código no catalogado · Enviado a PC ✓';
+        : 'Código desconocido · Pulsa "Crear producto" para registrarlo';
 
       // Actualizar tarjeta inferior blanca fija
       const lastName = document.getElementById('pos-last-name');
@@ -881,6 +943,24 @@
         pill.classList.replace('text-slate-400', 'text-emerald-700');
       }
 
+      const unknownCard = document.getElementById('pos-unknown-barcode-card');
+      const unknownLabel = document.getElementById('pos-unknown-code-label');
+      if (!product) {
+        lastUnknownBarcode = code;
+        if (unknownLabel) unknownLabel.textContent = `EAN: ${code}`;
+        if (unknownCard) {
+          unknownCard.classList.remove('hidden');
+          unknownCard.classList.add('flex');
+        }
+        toggleMobileCreateProductForm(false);
+      } else {
+        lastUnknownBarcode = '';
+        if (unknownCard) {
+          unknownCard.classList.add('hidden');
+          unknownCard.classList.remove('flex');
+        }
+      }
+
       const sent = broadcastToPC({
         type: 'BARCODE_SCANNED',
         altType: 'BARCODE_SCAN',
@@ -890,6 +970,85 @@
 
       if (sent) {
         showScanToast(title, sub);
+      }
+    }
+
+    function toggleMobileCreateProductForm(show) {
+      const form = document.getElementById('pos-create-product-form');
+      const err = document.getElementById('mob-prod-error');
+      if (err) {
+        err.textContent = '';
+        err.classList.add('hidden');
+      }
+      if (!form) return;
+      if (show) {
+        form.classList.remove('hidden');
+        form.classList.add('flex');
+        const nameInput = document.getElementById('mob-prod-name');
+        if (nameInput) nameInput.focus();
+      } else {
+        form.classList.add('hidden');
+        form.classList.remove('flex');
+      }
+    }
+
+    function submitMobileCreateProduct() {
+      const code = lastUnknownBarcode;
+      const nameEl = document.getElementById('mob-prod-name');
+      const priceEl = document.getElementById('mob-prod-price');
+      const costEl = document.getElementById('mob-prod-cost');
+      const unitEl = document.getElementById('mob-prod-unit');
+      const errEl = document.getElementById('mob-prod-error');
+
+      const name = nameEl ? nameEl.value.trim() : '';
+      const salePrice = priceEl ? parseFloat(priceEl.value) : NaN;
+      const cost = costEl && costEl.value !== '' ? parseFloat(costEl.value) : 0;
+      const saleUnit = unitEl ? unitEl.value : 'Pieza';
+
+      if (!code || !name || !Number.isFinite(salePrice) || salePrice <= 0 || !Number.isFinite(cost) || cost < 0) {
+        if (errEl) {
+          errEl.textContent = 'Ingresa nombre válido, precio mayor a 0 y costo válido.';
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+
+      const payload = {
+        type: 'PRODUCT_CREATE_REQUEST',
+        requestId: `REQ-${code}`,
+        barcode: code,
+        name: name,
+        salePrice: salePrice,
+        cost: cost,
+        saleUnit: saleUnit
+      };
+
+      const sent = broadcastToPC(payload);
+      CATALOG.push({
+        barcode: code,
+        sku: `MOB-${code.slice(-4)}`,
+        name: name,
+        salePrice: salePrice,
+        unit: saleUnit,
+        unitCost: cost
+      });
+
+      const unknownCard = document.getElementById('pos-unknown-barcode-card');
+      if (unknownCard) {
+        unknownCard.classList.add('hidden');
+        unknownCard.classList.remove('flex');
+      }
+      if (nameEl) nameEl.value = '';
+      if (priceEl) priceEl.value = '';
+      if (costEl) costEl.value = '';
+
+      const lastName = document.getElementById('pos-last-name');
+      const lastSub = document.getElementById('pos-last-sub');
+      if (lastName) lastName.textContent = name;
+      if (lastSub) lastSub.textContent = `$${salePrice.toFixed(2)} · PRODUCT_CREATE_REQUEST enviado a PC ✓`;
+
+      if (sent) {
+        showScanToast(`Producto creado: ${name}`, `EAN ${code} · $${salePrice.toFixed(2)} (${saleUnit})`);
       }
     }
 

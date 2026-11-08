@@ -18,14 +18,14 @@ import { MockInventoryService } from './services/mock-inventory.service';
         <p class="text-sm text-brand-200 mt-1.5">Verificando integridad del Kardex y existencias por producto</p>
       </div>
     } @else {
-      <div class="h-screen w-screen flex bg-slate-100 overflow-hidden select-none">
+      <div class="h-screen w-screen flex bg-slate-100 overflow-hidden select-none print-shell print:h-auto print:w-full print:overflow-visible print:bg-white print:block">
         <!-- Barra lateral fija -->
-        <app-navbar />
+        <app-navbar class="print:hidden no-print" />
 
         <!-- Área de trabajo con márgenes; solo esta zona se desplaza si el contenido es largo -->
-        <main class="flex-1 min-w-0 overflow-y-auto flex flex-col">
+        <main class="flex-1 min-w-0 overflow-y-auto flex flex-col print:overflow-visible print:h-auto print:block">
           @if (inv.isReadOnlyMode()) {
-            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-3 text-sm font-semibold flex items-center justify-between shrink-0" role="alert" data-testid="readonly-warning-banner">
+            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-3 text-sm font-semibold flex items-center justify-between shrink-0 print:hidden no-print" role="alert" data-testid="readonly-warning-banner">
               <div class="flex items-center gap-2.5 text-amber-900">
                 <app-icon name="lock" [size]="18" />
                 <span>{{ inv.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' }} · Modo solo lectura</span>
@@ -35,7 +35,7 @@ import { MockInventoryService } from './services/mock-inventory.service';
           }
 
           @if (inv.isBackupOlderThan24h()) {
-            <div class="border-b border-amber-200 bg-amber-50/80 text-slate-900 px-10 py-2.5 text-xs font-semibold flex items-center justify-between shrink-0" role="status" data-testid="stale-backup-banner">
+            <div class="border-b border-amber-200 bg-amber-50/80 text-slate-900 px-10 py-2.5 text-xs font-semibold flex items-center justify-between shrink-0 print:hidden no-print" role="status" data-testid="stale-backup-banner">
               <div class="flex items-center gap-2 text-amber-900">
                 <app-icon name="alert" [size]="16" />
                 <span>El último respaldo cifrado tiene más de 24 horas (o aún no se ha realizado). Ingresa tu frase de respaldo para proteger la tienda.</span>
@@ -44,7 +44,7 @@ import { MockInventoryService } from './services/mock-inventory.service';
             </div>
           }
 
-          <div class="px-10 py-8 max-w-[1440px] w-full mx-auto flex-1">
+          <div class="px-10 py-8 max-w-[1440px] w-full mx-auto flex-1 print:p-0 print:max-w-none">
             <router-outlet />
           </div>
         </main>
