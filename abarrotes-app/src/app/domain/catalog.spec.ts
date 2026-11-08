@@ -3,16 +3,22 @@ import assert from 'node:assert/strict';
 import {
   generateInternalSku,
   computeEan13CheckDigit,
+  computeUpcACheckDigit,
+  computeEan8CheckDigit,
+  normalizeBarcode,
+  barcodesMatch,
   generateInternalBarcode,
   getAllProductBarcodes,
   validateBarcodeUniqueness,
   convertPurchaseToSaleQty,
   calculateUnitCostFromPurchasePackage,
   calculateProductTaxes,
+  calculateBulkSaleCost,
   normalizePriceTiers,
   resolveTierUnitPrice,
   evaluateCartDiscounts,
   evaluateNaturalShrinkTolerance,
+  evaluateCumulativeNaturalShrink,
   hasProductMovements,
   validateCatalogProductInput,
   validateMobileProductCreateRequest,
@@ -253,4 +259,187 @@ test('Catálogo (F1): protección de baja lógica (no se borra si tiene movimien
   assert.equal(mobileCheck.valid, true);
   assert.equal(mobileCheck.normalized?.barcode, '7509988776655');
   assert.equal(mobileCheck.normalized?.salePrice, 22.5);
+});
+
+test('Catálogo (F1 seguimiento): Códigos de barras normalizados UPC-A/EAN-13/EAN-8, equivalencia y duplicados', () => {
+  // UPC-A (12 dígitos) y EAN-13 (13 dígitos) con '0' son equivalentes
+  const upcA = '012345678905';
+  const ean13 = '0012345678905';
+  const ean8 = '96385074';
+
+  const normUpc = normalizeBarcode(upcA);
+  const normEan13 = normalizeBarcode(ean13);
+  const normEan8 = normalizeBarcode(ean8);
+
+  assert.equal(normUpc.format, 'UPC-A');
+  assert.equal(normUpc.validCheckDigit, true);
+  assert.equal(normUpc.normalized, ean13);
+
+  assert.equal(normEan13.validCheckDigit, true);
+  assert.equal(barcodesMatch(upcA, ean13), true);
+
+  assert.equal(normEan8.format, 'EAN-8');
+  assert.equal(normEan8.validCheckDigit, true);
+
+  // Duplicado cruzado entre producto existente con EAN-13 y candidato con UPC-A
+  const existing = [
+    {
+      sku: 'AB-ARR-001',
+      name: 'Arroz 1kg',
+      barcodes: [ean13],
+    },
+  ];
+  const duplicateCheck = validateBarcodeUniqueness([upcA], existing);
+  assert.equal(duplicateCheck.valid, false);
+  assert.match(duplicateCheck.error || '', /equivalencia UPC-A\/EAN-13/);
+  assert.equal(duplicateCheck.conflictingSku, 'AB-ARR-001');
+});
+
+test('Catálogo (F1 seguimiento): Dígito de verificación inválido avisa y permite continuar con confirmación', () => {
+  // 7501031311309 es válido (dígito 9). Si ponemos 4 al final, es inválido.
+  const invalidCode = '7501031311304';
+  const norm = normalizeBarcode(invalidCode);
+  assert.equal(norm.validCheckDigit, false);
+  assert.equal(norm.expectedCheckDigit, '9');
+  assert.equal(norm.actualCheckDigit, '4');
+
+  // Sin confirmación previa: rechaza y solicita confirmación
+  const unconfirmed = validateCatalogProductInput(
+    {
+      name: 'Refresco Cola 600ml',
+      category: 'Bebidas',
+      saleUnit: 'Pieza',
+      unitsPerPurchase: 1,
+      cost: 12.0,
+      salePrice: 18.0,
+      barcode: invalidCode,
+    },
+    []
+  );
+  assert.equal(unconfirmed.valid, false);
+  assert.equal(unconfirmed.requiresBarcodeConfirmation, true);
+  assert.match(unconfirmed.error || '', /dígito de verificación inválido/i);
+
+  // Con confirmación: permite continuar
+  const confirmed = validateCatalogProductInput(
+    {
+      name: 'Refresco Cola 600ml',
+      category: 'Bebidas',
+      saleUnit: 'Pieza',
+      unitsPerPurchase: 1,
+      cost: 12.0,
+      salePrice: 18.0,
+      barcode: invalidCode,
+      confirmInvalidBarcode: true,
+    },
+    []
+  );
+  assert.equal(confirmed.valid, true);
+});
+
+test('Catálogo (F1 seguimiento): Merma natural acumulada por periodo señala si 3 conteos de -2% superan tolerancia mensual de 3%', () => {
+  // Base mensual vendida/rotada: 100 kg. Tolerancia mensual: 3% (máximo 3.0 kg de pérdida acumulada).
+  const periodBaseQty = 100;
+  const tolerancePct = 3;
+
+  // 1er conteo: -2% (pérdida de 2 kg, acumulado previo 0) -> dentro de tolerancia mensual (2 kg <= 3 kg)
+  const eval1 = evaluateCumulativeNaturalShrink({
+    systemQty: 50,
+    countedQty: 48, // -2 kg
+    naturalShrinkTolerancePct: tolerancePct,
+    periodBaseQty,
+    accumulatedPeriodShrinkQty: 0,
+  });
+  assert.equal(eval1.classification, 'MERMA_NATURAL');
+  assert.equal(eval1.isWithinNaturalTolerance, true);
+  assert.equal(eval1.accumulatedPeriodShrinkQty, 2);
+
+  // 2do conteo: -2% adicional (pérdida de 2 kg, acumulado previo 2 kg -> total 4 kg > 3 kg)
+  const eval2 = evaluateCumulativeNaturalShrink({
+    systemQty: 48,
+    countedQty: 46, // -2 kg
+    naturalShrinkTolerancePct: tolerancePct,
+    periodBaseQty,
+    accumulatedPeriodShrinkQty: eval1.accumulatedPeriodShrinkQty,
+  });
+  assert.equal(eval2.classification, 'FALTANTE');
+  assert.equal(eval2.isWithinNaturalTolerance, false);
+  assert.equal(eval2.exceedsPeriodAccumulatedTolerance, true);
+  assert.match(eval2.label, /supera tolerancia/);
+
+  // 3er conteo: -2% adicional (pérdida de 2 kg, acumulado previo 4 kg -> total 6 kg)
+  const eval3 = evaluateCumulativeNaturalShrink({
+    systemQty: 46,
+    countedQty: 44, // -2 kg
+    naturalShrinkTolerancePct: tolerancePct,
+    periodBaseQty,
+    accumulatedPeriodShrinkQty: eval2.accumulatedPeriodShrinkQty,
+  });
+  assert.equal(eval3.classification, 'FALTANTE');
+  assert.equal(eval3.isWithinNaturalTolerance, false);
+  assert.equal(eval3.exceedsPeriodAccumulatedTolerance, true);
+  assert.equal(eval3.accumulatedPeriodShrinkQty, 6);
+});
+
+test('Catálogo (F1 seguimiento): Costo en granel: bulto de 50 kg a $847.00 vendido en tandas de 0.350 kg coincide dentro de 1 centavo', () => {
+  const packageCostPesos = 847.0; // $847.00 = 84,700 centavos
+  const packageFactor = 50; // 50 kg
+  const portionQty = 0.35; // 350 gramos
+  const expectedTotalCostCents = 84700;
+
+  let totalCostCentsAccum = 0;
+  let cumulativeSold = 0;
+  let priorCostCents = 0;
+
+  // Vendemos sucesivamente 0.350 kg hasta agotar los 50 kg
+  while (cumulativeSold < packageFactor) {
+    const remaining = Math.round((packageFactor - cumulativeSold) * 1000) / 1000;
+    const saleQty = Math.min(portionQty, remaining);
+
+    const step = calculateBulkSaleCost({
+      packageCostPesos,
+      packageFactor,
+      saleQty,
+      cumulativeSoldQtyPrior: cumulativeSold,
+      cumulativeCostCentsPrior: priorCostCents,
+    });
+
+    totalCostCentsAccum += step.saleCostCents;
+    priorCostCents = step.cumulativeCostCentsAfter;
+    cumulativeSold = step.cumulativeSoldQtyAfter;
+  }
+
+  assert.equal(cumulativeSold, 50);
+  // La suma acumulada de los costos de todas las tandas debe coincidir con $847.00 dentro de 1 centavo (aquí es exacto)
+  const differenceCents = Math.abs(totalCostCentsAccum - expectedTotalCostCents);
+  assert.ok(
+    differenceCents <= 1,
+    `La diferencia (${differenceCents} centavos) supera el tope de 1 centavo.`
+  );
+  assert.equal(totalCostCentsAccum, expectedTotalCostCents);
+});
+
+test('Catálogo (F1 seguimiento): Descuentos por debajo del costo bloquean sin PIN y registran la causa', () => {
+  // Producto con costo $20.00 (2000 centavos), precio menudeo $25.00
+  // Descuento del 30% lleva el precio a $17.50 (< $20.00 de costo)
+  const lines = [
+    {
+      sku: 'ACE-1L',
+      name: 'Aceite 1L',
+      qty: 1,
+      unitPrice: 25.0,
+      baseUnitPrice: 25.0,
+      unitCost: 20.0,
+      discountPct: 30, // 30% off -> $17.50
+    },
+  ];
+
+  const evalResult = evaluateCartDiscounts({
+    lines,
+    maxDiscountPctWithoutPin: 15,
+  });
+
+  assert.equal(evalResult.requiresPin, true);
+  assert.ok(evalResult.reasons.some((r) => r.includes('costo')));
+  assert.equal(evalResult.lines[0].isBelowCost, true);
 });

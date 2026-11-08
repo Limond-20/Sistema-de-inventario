@@ -5,6 +5,7 @@ import {
   CORRUPT_STATE_KEY_PREFIX,
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY,
   IndexedDbStateStorageAdapter,
   MemoryStateStorageAdapter,
   type StateStorageAdapter,
@@ -1334,7 +1335,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
       iepsRate: 0,
       rop: 6,
       initialStock: 24,
-      barcodes: ['7501059299011', '7501059299028'],
+      barcodes: ['7501059299016', '7501059299023'],
       priceTiers: [
         { tier: 'MENUDEO', label: 'Menudeo', minQty: 1, unitPrice: 85 },
         { tier: 'MEDIO_MAYOREO', label: 'Medio Mayoreo', minQty: 6, unitPrice: 80 },
@@ -1359,7 +1360,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
       iepsRate: 0,
       rop: 6,
       initialStock: 24,
-      barcodes: ['7501059299011', '7501059299028'],
+      barcodes: ['7501059299016', '7501059299023'],
       priceTiers: [
         { tier: 'MENUDEO', label: 'Menudeo', minQty: 1, unitPrice: 85 },
         { tier: 'MEDIO_MAYOREO', label: 'Medio Mayoreo', minQty: 6, unitPrice: 80 },
@@ -1372,8 +1373,8 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(createRes.product?.stock).toBe(24);
 
     // Se puede buscar por cualquiera de sus códigos de barras
-    expect(service.findProductByBarcode('7501059299011')?.sku).toBe('ABA-CAF-200');
-    expect(service.findProductByBarcode('7501059299028')?.sku).toBe('ABA-CAF-200');
+    expect(service.findProductByBarcode('7501059299016')?.sku).toBe('ABA-CAF-200');
+    expect(service.findProductByBarcode('7501059299023')?.sku).toBe('ABA-CAF-200');
 
     // 3. Vender 6 piezas (aplica precio escalonado MEDIO_MAYOREO = $80)
     const tierResolved = service.resolveProductUnitPriceForQty(createRes.product!, 6);
@@ -1421,7 +1422,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const reloadedProd = reloadedService.products().find((p) => p.sku === 'ABA-CAF-200');
     expect(reloadedProd).toBeTruthy();
     expect(reloadedProd!.stock).toBe(18);
-    expect(reloadedProd!.barcodes).toEqual(['7501059299011', '7501059299028']);
+    expect(reloadedProd!.barcodes).toEqual(['7501059299016', '7501059299023']);
     expect(
       reloadedService
         .kardex()
@@ -1598,7 +1599,8 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(lineOver.isWithinNaturalTolerance).toBeFalse();
   });
 
-  it('27. Bloque F1: Móvil envía PRODUCT_CREATE_REQUEST y la PC lo valida y crea de forma idempotente', async () => {
+  it('27. Bloque F1: Móvil envía PRODUCT_CREATE_REQUEST y la PC lo valida y crea de forma idempotente (queda PENDIENTE_APROBACION)', async () => {
+    await service.setupInitialPin('984312');
     await service.restorePersistedState();
     const countBefore = service.products().length;
 
@@ -1614,13 +1616,18 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     });
 
     expect(service.products().length).toBe(countBefore + 1);
-    const created = service.findProductByBarcode('7509998887776');
-    expect(created).toBeTruthy();
-    expect(created!.name).toBe('Galletas Marías Móvil 170g');
-    expect(created!.salePrice).toBe(20);
-    expect(created!.unitCost).toBe(14.5);
+    // En el POS ordinario no aparece al escanear por estar pendiente de aprobación
+    expect(service.findProductByBarcode('7509998887776')).toBeUndefined();
 
-    // 2. Reenvío duplicado del mismo PRODUCT_CREATE_REQUEST (mismo requestId o mismo código de barras) -> idempotente, no duplica
+    // Con includePending = true sí se localiza para revisión administrativa
+    const pending = service.findProductByBarcode('7509998887776', false, true);
+    expect(pending).toBeTruthy();
+    expect(pending!.approvalStatus).toBe('PENDIENTE_APROBACION');
+    expect(pending!.name).toBe('Galletas Marías Móvil 170g');
+    expect(pending!.salePrice).toBe(20);
+    expect(pending!.unitCost).toBe(14.5);
+
+    // 2. Reenvío duplicado del mismo PRODUCT_CREATE_REQUEST -> idempotente, no duplica
     const duplicateRes = service.handleProductCreateRequestFromLan({
       type: 'PRODUCT_CREATE_REQUEST',
       requestId: 'REQ-7509998887776',
@@ -1633,5 +1640,226 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(duplicateRes.ok).toBeTrue();
     expect(duplicateRes.idempotentDuplicate).toBeTrue();
     expect(service.products().length).toBe(countBefore + 1);
+
+    // 3. Aprobación con PIN desde la PC permitiendo corregir precio y costo
+    const approveRes = await service.approvePendingProduct(pending!.sku, {
+      pin: '984312',
+      newPrice: 22.0,
+      newCost: 15.0,
+    });
+    expect(approveRes.ok).toBeTrue();
+
+    // Ahora sí está aprobado y aparece en el POS
+    const approved = service.findProductByBarcode('7509998887776');
+    expect(approved).toBeTruthy();
+    expect(approved!.approvalStatus).toBe('APROBADO');
+    expect(approved!.salePrice).toBe(22.0);
+    expect(approved!.unitCost).toBe(15.0);
+    expect(service.kardex()[0].referencia).toContain('Aprobación móvil');
+  });
+
+  it('28. Seguimiento F1: Persistencia migra productos v1 a v2 y maneja fallback de almacenamiento', async () => {
+    const memoryAdapter = new MemoryStateStorageAdapter();
+    service.storageAdapter = memoryAdapter;
+
+    // Simular un estado v1 en LEGACY_STATE_STORAGE_KEY ('binnitech_pos_state_v1')
+    const v1State = {
+      schemaVersion: 1,
+      timestamp: '2026-10-22T00:00:00.000Z',
+      activeUser: 'Don Lupe (Encargado)',
+      products: [
+        {
+          sku: 'LEG-PROD-01',
+          name: 'Producto Legado V1',
+          stock: 10,
+          salePrice: 30,
+          cost: 20,
+          barcode: '7501000000018',
+        },
+      ],
+      creditCustomers: [],
+      kardex: [],
+      shrinkRecords: [],
+      auditLines: [],
+    };
+    await memoryAdapter.save(LEGACY_STATE_STORAGE_KEY, v1State);
+
+    const restoreRes = await service.restorePersistedState();
+    expect(restoreRes.success).toBeTrue();
+
+    const migrated = service.products().find((p) => p.sku === 'LEG-PROD-01');
+    expect(migrated).toBeDefined();
+    expect(migrated!.approvalStatus).toBe('APROBADO');
+    expect(migrated!.barcodes).toContain('7501000000018');
+    expect(migrated!.priceTiers).toBeDefined();
+    expect(migrated!.priceTiers?.length).toBeGreaterThan(0);
+  });
+
+  it('29. Seguimiento F1: Códigos de barras: equivalencia UPC-A/EAN-13 en escáner y rechazo de duplicados cruzados', async () => {
+    await service.setupInitialPin('984312');
+    // Leche Lala tiene EAN-13 '7501020515350'
+    // Añadimos un producto con UPC-A de 12 dígitos '012345678905'
+    const createRes = await service.createCatalogProduct({
+      name: 'Cereal Maíz 500g',
+      category: 'Abarrotes',
+      saleUnit: 'Pieza',
+      purchaseUnit: 'Caja',
+      unitsPerPurchase: 1,
+      cost: 25,
+      salePrice: 35,
+      barcode: '012345678905', // UPC-A
+      initialStock: 10,
+      pin: '984312',
+    });
+    expect(createRes.ok).toBeTrue();
+
+    // Escanear como EAN-13 canónico '0012345678905' encuentra el producto
+    const foundByEan = service.findProductByBarcode('0012345678905');
+    expect(foundByEan).toBeTruthy();
+    expect(foundByEan!.name).toBe('Cereal Maíz 500g');
+
+    // Intentar registrar otro producto con EAN-13 equivalente debe fallar por duplicado
+    const dupRes = await service.createCatalogProduct({
+      name: 'Cereal Clon',
+      category: 'Abarrotes',
+      saleUnit: 'Pieza',
+      purchaseUnit: 'Caja',
+      unitsPerPurchase: 1,
+      cost: 20,
+      salePrice: 30,
+      barcode: '0012345678905',
+      pin: '984312',
+    });
+    expect(dupRes.ok).toBeFalse();
+    expect(dupRes.message).toMatch(/duplicado|equivalencia/i);
+  });
+
+  it('30. Seguimiento F1: Merma natural genera movimiento MERMA_NATURAL en Kardex con valor en centavos y se suma al reporte', async () => {
+    await service.setupInitialPin('984312');
+    // FRI-NEG-50K es granel con existencia 16.5 kg, costo $18.00/kg
+    service.submitBlindAuditResults([{ sku: 'FRI-NEG-50K', countedQty: 16.2 }]); // Diferencia -0.3 kg dentro de tolerancia (3%)
+
+    const squareRes = service.applySquareAdjustment('FRI-NEG-50K', 'MERMA_OPERATIVA', 'Administrador');
+    expect(squareRes.ok).toBeTrue();
+
+    const latestKardex = service.kardex()[0];
+    expect(latestKardex.type).toBe('MERMA_NATURAL');
+    // 0.3 kg * $28.00 = $8.40 (840 centavos)
+    expect(latestKardex.amount).toBe(8.4);
+    expect(latestKardex.referencia).toContain('Merma natural');
+
+    // Se suma a shrinkRecords con razón 'Merma natural'
+    const latestShrink = service.shrinkRecords()[0];
+    expect(latestShrink.sku).toBe('FRI-NEG-50K');
+    expect(latestShrink.reason).toBe('Merma natural');
+    expect(latestShrink.qty).toBe(0.3);
+
+    // Se actualizó cumulativeNaturalShrinkQty en el producto
+    const prod = service.products().find((p) => p.sku === 'FRI-NEG-50K');
+    expect(prod?.cumulativeNaturalShrinkQty).toBe(0.3);
+  });
+
+  it('31. Seguimiento F1: Costo en granel: guarda costo y factor en saveReception y calcula venta en tandas', () => {
+    // Registramos recepción de bulto de 50 kg a $847.00
+    const receptionLines: ReceptionLine[] = [
+      {
+        sku: 'FRI-NEG-50K',
+        name: 'Frijol Negro 50kg',
+        emoji: '🫘',
+        qtyPurchase: 1,
+        purchaseUnit: 'Bulto',
+        unitsPerPurchase: 50,
+        saleUnit: 'Kg',
+        lineTotal: 847.0,
+        historicCost: 16.94,
+        newCost: 16.94,
+        packageCost: 847.0,
+        packageFactor: 50,
+        salePrice: 24.0,
+        targetMargin: 29,
+        resolved: true,
+      },
+    ];
+
+    service.saveReception(receptionLines, 'REC-TEST-50K');
+    const updatedProd = service.products().find((p) => p.sku === 'FRI-NEG-50K')!;
+    expect(updatedProd.packageCost).toBe(847.0);
+    expect(updatedProd.packageFactor).toBe(50);
+    expect(updatedProd.unitsPerPurchase).toBe(50);
+  });
+
+  it('32. Seguimiento F1: Descuentos bloquean venta por debajo del costo sin PIN y registran escalón [MAYOREO] en Kardex', async () => {
+    await service.setupInitialPin('984312');
+    const prod = service.products().find((p) => p.sku === 'LAC-LAL-1L')!; // Costo $18.50, Menudeo $26.50
+
+    // 1. Venta por debajo del costo ($15.00 < $18.50) intentada sin PIN -> bloqueada
+    const belowCostNoPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 1,
+          unitPrice: prod.salePrice,
+          discountPct: 50, // 50% de $26.50 = $13.25 (< costo $18.50)
+          subtotal: 13.25,
+        },
+      ],
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 20,
+    });
+    expect(belowCostNoPin.ok).toBeFalse();
+    expect(belowCostNoPin.requiresPin).toBeTrue();
+    expect(belowCostNoPin.message).toMatch(/costo/i);
+
+    // 2. Con PIN correcto -> venta autorizada
+    const belowCostWithPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 1,
+          unitPrice: prod.salePrice,
+          discountPct: 50,
+          subtotal: 13.25,
+        },
+      ],
+      pin: '984312',
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 20,
+    });
+    expect(belowCostWithPin.ok).toBeTrue();
+
+    // 3. Venta con escalón Mayoreo registra [MAYOREO] en la referencia del Kardex
+    const wholesaleSale = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 12,
+          unitPrice: 23.8,
+          selectedTier: 'MAYOREO',
+          activeTier: 'MAYOREO',
+          discountPct: 0,
+          subtotal: 285.6,
+        },
+      ],
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 300,
+    });
+    expect(wholesaleSale.ok).toBeTrue();
+    const latestKardex = service.kardex()[0];
+    expect(latestKardex.referencia).toContain('[MAYOREO]');
   });
 });

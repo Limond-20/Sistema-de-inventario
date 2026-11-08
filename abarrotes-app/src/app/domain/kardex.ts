@@ -9,6 +9,7 @@ export type KardexType =
   | 'ENTRADA_COMPRA'
   | 'AJUSTE_INICIAL'
   | 'AJUSTE_AUDITORIA'
+  | 'MERMA_NATURAL'
   | 'BAJA_MERMA'
   | 'CONSUMO_INTERNO'
   | 'FALTANTE_SISTEMA'

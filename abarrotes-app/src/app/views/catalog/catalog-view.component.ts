@@ -42,6 +42,18 @@ export class CatalogViewComponent {
   protected readonly formFeedback = signal<{ ok: boolean; message: string } | null>(null);
   protected readonly catalogBanner = signal<{ ok: boolean; message: string } | null>(null);
 
+  // Modal de Aprobación de Producto Móvil
+  protected readonly approvalModalOpen = signal<boolean>(false);
+  protected readonly approvingProduct = signal<Product | null>(null);
+  protected readonly approvalPrice = signal<number>(0);
+  protected readonly approvalCost = signal<number>(0);
+  protected readonly approvalPin = signal<string>('');
+  protected readonly approvalFeedback = signal<{ ok: boolean; message: string } | null>(null);
+
+  protected readonly pendingApprovalList = computed(() =>
+    this.inv.products().filter((p) => p.approvalStatus === 'PENDIENTE_APROBACION')
+  );
+
   // Campos del formulario
   protected readonly formName = signal<string>('');
   protected readonly formSku = signal<string>('');
@@ -424,6 +436,49 @@ export class CatalogViewComponent {
 
   protected async assignInternalCode(p: Product): Promise<void> {
     const res = await this.inv.assignInternalBarcodeToProduct(p.sku);
+    this.catalogBanner.set({ ok: res.ok, message: res.message });
+  }
+
+  // ---------- Aprobación de Productos Móviles ----------
+
+  protected openApprovalModal(p: Product): void {
+    this.approvingProduct.set(p);
+    this.approvalPrice.set(p.salePrice);
+    this.approvalCost.set(p.unitCost ?? p.historicCost ?? 0);
+    this.approvalPin.set('');
+    this.approvalFeedback.set(null);
+    this.approvalModalOpen.set(true);
+  }
+
+  protected closeApprovalModal(): void {
+    this.approvalModalOpen.set(false);
+    this.approvingProduct.set(null);
+    this.approvalFeedback.set(null);
+  }
+
+  protected async confirmApproval(): Promise<void> {
+    const prod = this.approvingProduct();
+    if (!prod) return;
+    const pin = this.approvalPin().trim();
+    if (!pin) {
+      this.approvalFeedback.set({ ok: false, message: 'Ingresa el PIN de administrador o encargado.' });
+      return;
+    }
+    const res = await this.inv.approvePendingProduct(prod.sku, {
+      pin,
+      newPrice: Number(this.approvalPrice()) || prod.salePrice,
+      newCost: Number(this.approvalCost()) >= 0 ? Number(this.approvalCost()) : prod.unitCost,
+    });
+    if (res.ok) {
+      this.catalogBanner.set({ ok: true, message: res.message });
+      this.closeApprovalModal();
+    } else {
+      this.approvalFeedback.set({ ok: false, message: res.message });
+    }
+  }
+
+  protected async rejectProduct(prod: Product): Promise<void> {
+    const res = await this.inv.rejectPendingProduct(prod.sku);
     this.catalogBanner.set({ ok: res.ok, message: res.message });
   }
 

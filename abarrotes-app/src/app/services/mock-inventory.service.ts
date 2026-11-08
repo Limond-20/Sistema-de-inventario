@@ -41,6 +41,7 @@ import {
 import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY,
   CORRUPT_STATE_KEY_PREFIX,
   WRITER_LOCK_NAME,
   DEFAULT_DEBOUNCE_MS,
@@ -93,6 +94,9 @@ import {
   resolveTierUnitPrice,
   evaluateCartDiscounts,
   evaluateNaturalShrinkTolerance,
+  evaluateCumulativeNaturalShrink,
+  barcodesMatch,
+  calculateBulkSaleCost,
   hasProductMovements,
   validateCatalogProductInput,
   validateMobileProductCreateRequest,
@@ -204,6 +208,13 @@ export interface Product {
   /** Producto gancho (si se acaba, el cliente se va a otra tienda). */
   isTrafficDriver?: boolean;
   supplier: string;
+  approvalStatus?: 'APROBADO' | 'PENDIENTE_APROBACION' | 'RECHAZADO';
+  approvalRequestDate?: string;
+  cumulativeNaturalShrinkQty?: number;
+  packageCost?: number;
+  packageFactor?: number;
+  cumulativeBulkSoldQty?: number;
+  cumulativeBulkCostCents?: number;
 }
 
 export type { CreditCustomerStatus } from '../domain/credit';
@@ -267,6 +278,7 @@ export interface PosSaleItem {
   subtotal: number;
   /** Nivel de precio escalonado elegido en el POS ('MENUDEO' | 'MEDIO_MAYOREO' | 'MAYOREO'). */
   selectedTier?: PriceTierCode;
+  activeTier?: PriceTierCode;
   /** Descuento porcentual aplicado a la línea (0 a 100). */
   discountPct?: number;
 }
@@ -316,6 +328,8 @@ export interface ReceptionLine {
   newCost: number;
   salePrice: number;
   targetMargin: number;
+  packageCost?: number;
+  packageFactor?: number;
   /** true cuando el tendero ya aceptó el precio sugerido. */
   resolved: boolean;
 }
@@ -352,7 +366,7 @@ export interface AuditLine {
   isWithinNaturalTolerance?: boolean;
 }
 
-export type ShrinkReason = 'Envase Roto en Piso' | 'Caducado sin devolución';
+export type ShrinkReason = 'Envase Roto en Piso' | 'Caducado sin devolución' | 'Merma natural' | string;
 
 export interface ShrinkRecord {
   id: string;
@@ -2217,7 +2231,10 @@ export class MockInventoryService implements OnDestroy {
     affectedSkus?: string[];
   }> {
     try {
-      const raw = await this.storageAdapter.load(STATE_STORAGE_KEY);
+      let raw = await this.storageAdapter.load(STATE_STORAGE_KEY);
+      if (!raw) {
+        raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY);
+      }
       if (!raw) {
         this.isHydrated.set(true);
         this.drainPendingLanMessages();
@@ -2498,6 +2515,9 @@ export class MockInventoryService implements OnDestroy {
   }
 
   readonly products = signal<Product[]>(structuredClone(PRODUCTS));
+  readonly pendingApprovalProducts = computed(() =>
+    this.products().filter((p) => p.approvalStatus === 'PENDIENTE_APROBACION')
+  );
   readonly creditCustomers = signal<CreditCustomer[]>(structuredClone(CREDIT_CUSTOMERS));
 
   /** Turno y arqueo de caja con desglose estricto (efectivo vs fiado vs consumo interno). */
@@ -2852,12 +2872,19 @@ export class MockInventoryService implements OnDestroy {
         const soldItem = items.find((i) => i.sku === p.sku);
         if (!soldItem) return p;
 
+        const tier = soldItem.selectedTier || soldItem.activeTier;
+        const tierTag =
+          tier === 'MAYOREO'
+            ? ' [MAYOREO]'
+            : tier === 'MEDIO_MAYOREO'
+              ? ' [MEDIO_MAYOREO]'
+              : '';
         const deduction = deductStock(p, soldItem.qty, {
           saleType: 'VENTA_EFECTIVO',
           usuario: currentUser,
-          referencia: 'Venta Mostrador Efectivo',
+          referencia: `Venta Mostrador Efectivo${tierTag}`,
           amount: soldItem.subtotal,
-          description: `Venta en efectivo: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
+          description: `Venta en efectivo: ${soldItem.qty} ${p.saleUnit} de ${p.name}${tierTag}`,
           previousHash: currentHash,
         });
 
@@ -2957,12 +2984,19 @@ export class MockInventoryService implements OnDestroy {
         const soldItem = items.find((i) => i.sku === p.sku);
         if (!soldItem) return p;
 
+        const tier = soldItem.selectedTier || soldItem.activeTier;
+        const tierTag =
+          tier === 'MAYOREO'
+            ? ' [MAYOREO]'
+            : tier === 'MEDIO_MAYOREO'
+              ? ' [MEDIO_MAYOREO]'
+              : '';
         const deduction = deductStock(p, soldItem.qty, {
           saleType: 'VENTA_FIADO',
           usuario: currentUser,
-          referencia: `Fiado Cliente ${customer.name}`,
+          referencia: `Fiado Cliente ${customer.name}${tierTag}`,
           amount: soldItem.subtotal,
-          description: `Fiado a ${customer.name}: ${soldItem.qty} ${p.saleUnit} de ${p.name}`,
+          description: `Fiado a ${customer.name}: ${soldItem.qty} ${p.saleUnit} de ${p.name}${tierTag}`,
           previousHash: currentHash,
         });
 
@@ -3307,13 +3341,18 @@ export class MockInventoryService implements OnDestroy {
   }
 
   /** Busca un producto por cualquiera de sus códigos de barras (principal, adicionales o código interno). */
-  findProductByBarcode(barcode: string, includeInactive = false): Product | undefined {
+  findProductByBarcode(
+    barcode: string,
+    includeInactive = false,
+    includePending = false
+  ): Product | undefined {
     const clean = String(barcode || '').trim();
     if (!clean) return undefined;
     return this.products().find((p) => {
       if (!includeInactive && p.isActive === false) return false;
+      if (!includePending && p.approvalStatus === 'PENDIENTE_APROBACION') return false;
       const codes = getAllProductBarcodes(p);
-      return codes.some((c) => c.toLowerCase() === clean.toLowerCase());
+      return codes.some((c) => barcodesMatch(c, clean));
     });
   }
 
@@ -3375,6 +3414,9 @@ export class MockInventoryService implements OnDestroy {
           newCost: line.newCost,
           lastPurchaseCost: line.newCost,
           salePrice: line.salePrice,
+          packageCost: line.packageCost ?? fromCents(toCents(line.newCost * line.unitsPerPurchase)),
+          packageFactor: line.unitsPerPurchase,
+          unitsPerPurchase: line.unitsPerPurchase,
         };
       }),
     );
@@ -3879,19 +3921,37 @@ export class MockInventoryService implements OnDestroy {
     const diffQty = Math.round((line.countedQty - actualPreviousStock) * 1000) / 1000;
     const diffMoney = multiplyMoney(line.unitCost, diffQty);
 
+    const periodBaseQty = prod?.monthlySalesUnits || actualPreviousStock || 1;
+    const priorAccumShrink = prod?.cumulativeNaturalShrinkQty || 0;
     const tolerancePct =
       line.naturalShrinkTolerancePct ??
       prod?.naturalShrinkTolerancePct ??
       (prod?.isBulk ? 3 : 0);
-    const toleranceEval = evaluateNaturalShrinkTolerance(actualPreviousStock, line.countedQty, tolerancePct);
+    const toleranceEval = evaluateNaturalShrinkTolerance({
+      systemQty: actualPreviousStock,
+      countedQty: line.countedQty,
+      naturalShrinkTolerancePct: tolerancePct,
+      accumulatedPeriodShrinkQty: priorAccumShrink,
+      periodBaseQty,
+    });
     const isNaturalShrink =
       type === 'MERMA_OPERATIVA' &&
-      toleranceEval.isWithinTolerance &&
+      toleranceEval.isWithinNaturalTolerance &&
       toleranceEval.classification === 'MERMA_NATURAL';
 
-    // 1. Cuadrar stock en catálogo
+    // 1. Cuadrar stock en catálogo y registrar merma natural acumulada
     this.products.update((list) =>
-      list.map((p) => (p.sku === productId ? { ...p, stock: line.countedQty } : p)),
+      list.map((p) =>
+        p.sku === productId
+          ? {
+              ...p,
+              stock: line.countedQty,
+              cumulativeNaturalShrinkQty:
+                (p.cumulativeNaturalShrinkQty || 0) +
+                (isNaturalShrink && diffQty < 0 ? Math.abs(diffQty) : 0),
+            }
+          : p
+      )
     );
 
     // 2. Marcar auditoría como autorizada
@@ -3909,7 +3969,8 @@ export class MockInventoryService implements OnDestroy {
       ),
     );
 
-    // 3. Registrar Kardex encadenado
+    // 3. Registrar Kardex encadenado (tipo MERMA_NATURAL si se clasificó como merma natural)
+    const kardexMovementType = isNaturalShrink ? 'MERMA_NATURAL' : 'AJUSTE_AUDITORIA';
     const typeLabel = isNaturalShrink
       ? 'Merma natural'
       : type === 'MERMA_OPERATIVA'
@@ -3919,7 +3980,7 @@ export class MockInventoryService implements OnDestroy {
     const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
     this.kardex.update((k) => [
       createKardexEntry({
-        type: 'AJUSTE_AUDITORIA',
+        type: kardexMovementType,
         producto: { sku: line.sku, name: line.name, saleUnit: line.saleUnit },
         cantidad: diffQty,
         saldoAnterior: actualPreviousStock,
@@ -3949,7 +4010,11 @@ export class MockInventoryService implements OnDestroy {
           emoji: '',
           qty: Math.abs(diffQty),
           saleUnit: line.saleUnit,
-          reason: type === 'MERMA_OPERATIVA' ? 'Envase Roto en Piso' : 'Caducado sin devolución',
+          reason: isNaturalShrink
+            ? 'Merma natural'
+            : type === 'MERMA_OPERATIVA'
+              ? 'Envase Roto en Piso'
+              : 'Caducado sin devolución',
           unitCost: line.unitCost,
           registeredBy: `Auditoría Ciega (${typeLabel}) - Aut: ${authorizedBy}`,
           hasPhoto: false,
@@ -4619,12 +4684,14 @@ export class MockInventoryService implements OnDestroy {
       items.map((i) => {
         const prod = catalog.find((p) => p.sku === i.sku);
         const retailPrice = prod ? prod.salePrice : i.unitPrice;
+        const unitCost = prod ? (prod.unitCost ?? prod.historicCost ?? 0) : 0;
         return {
           sku: i.sku,
           name: i.name,
           qty: i.qty,
           unitPrice: i.unitPrice,
           baseUnitPrice: Math.max(retailPrice, i.unitPrice),
+          unitCost,
           discountPct: i.discountPct ?? 0,
         };
       }),
@@ -4870,6 +4937,8 @@ export class MockInventoryService implements OnDestroy {
       isBulk,
       naturalShrinkTolerancePct: isBulk ? 3 : 0,
       isActive: true,
+      approvalStatus: 'PENDIENTE_APROBACION',
+      approvalRequestDate: new Date().toISOString(),
       supplier: 'Alta Móvil LAN',
     };
 
@@ -4882,9 +4951,9 @@ export class MockInventoryService implements OnDestroy {
         saldoAnterior: 0,
         saldoResultante: 0,
         usuario: this.activeUser(),
-        referencia: `Alta móvil PRODUCT_CREATE_REQUEST (${newProd.barcode})`,
+        referencia: `Alta móvil PRODUCT_CREATE_REQUEST (${newProd.barcode}) [PENDIENTE_APROBACION]`,
         amount: 0,
-        description: `Alta de producto desde escáner móvil: ${newProd.name} (${newProd.barcode})`,
+        description: `Alta de producto desde escáner móvil: ${newProd.name} (${newProd.barcode}) - Pendiente de aprobación`,
       },
       previousHash,
     );
@@ -4900,8 +4969,112 @@ export class MockInventoryService implements OnDestroy {
     return {
       ok: true,
       created: true,
-      message: `Producto "${newProd.name}" creado desde móvil con código ${newProd.barcode}.`,
+      message: `Producto "${newProd.name}" creado desde móvil con código ${newProd.barcode} (en espera de aprobación).`,
       product: newProd,
+    };
+  }
+
+  /**
+   * Aprueba un producto creado desde el móvil con PIN de administrador o encargado.
+   * Permite corregir precio de venta y costo antes de habilitarlo para la venta.
+   */
+  async approvePendingProduct(
+    sku: string,
+    options: {
+      pin: string;
+      newPrice?: number;
+      newCost?: number;
+      authorizerName?: string;
+    }
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const cleanSku = String(sku || '').trim().toUpperCase();
+    const prod = this.products().find((p) => p.sku.trim().toUpperCase() === cleanSku);
+    if (!prod) {
+      return { ok: false, message: `Producto con SKU ${sku} no encontrado.` };
+    }
+
+    const pinCheck = await this.verifyAdminPin(options.pin, options.authorizerName || 'Administrador');
+    if (!pinCheck.success) {
+      return { ok: false, message: pinCheck.message };
+    }
+
+    const authorizer = pinCheck.authorizedBy || options.authorizerName || 'Administrador (PIN)';
+    const resolvedPrice = options.newPrice !== undefined && options.newPrice > 0 ? options.newPrice : prod.salePrice;
+    const resolvedCost: number =
+      options.newCost !== undefined && options.newCost >= 0
+        ? options.newCost
+        : (prod.unitCost ?? prod.historicCost ?? 0);
+
+    this.products.update((list) =>
+      list.map((p) => {
+        if (p.sku.trim().toUpperCase() !== cleanSku) return p;
+        return {
+          ...p,
+          approvalStatus: 'APROBADO',
+          salePrice: resolvedPrice,
+          unitCost: resolvedCost,
+          historicCost: resolvedCost,
+          newCost: resolvedCost,
+          priceTiers: normalizePriceTiers(resolvedPrice, p.priceTiers),
+        };
+      })
+    );
+
+    const prevHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const entry = createKardexEntry(
+      {
+        type: 'AJUSTE_AUDITORIA',
+        producto: { sku: prod.sku, name: prod.name, saleUnit: prod.saleUnit },
+        cantidad: 0,
+        saldoAnterior: prod.stock,
+        saldoResultante: prod.stock,
+        usuario: authorizer,
+        referencia: `Aprobación móvil por ${authorizer}`,
+        amount: 0,
+        description: `Producto aprobado desde móvil: ${prod.name} (Precio: $${resolvedPrice.toFixed(2)}, Costo: $${resolvedCost.toFixed(2)})`,
+      },
+      prevHash
+    );
+    this.kardex.update((k) => [entry, ...k]);
+    await this.flushSave();
+
+    return {
+      ok: true,
+      message: `Producto "${prod.name}" aprobado y habilitado para la venta.`,
+    };
+  }
+
+  /**
+   * Rechaza un producto pendiente creado desde el móvil.
+   */
+  async rejectPendingProduct(
+    sku: string,
+    pin?: string
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const cleanSku = String(sku || '').trim().toUpperCase();
+    const prod = this.products().find((p) => p.sku.trim().toUpperCase() === cleanSku);
+    if (!prod) {
+      return { ok: false, message: `Producto con SKU ${sku} no encontrado.` };
+    }
+
+    this.products.update((list) =>
+      list.map((p) =>
+        p.sku.trim().toUpperCase() === cleanSku
+          ? { ...p, approvalStatus: 'RECHAZADO', isActive: false }
+          : p
+      )
+    );
+    await this.flushSave();
+
+    return {
+      ok: true,
+      message: `Producto "${prod.name}" rechazado.`,
     };
   }
 }

@@ -122,13 +122,17 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Accesos Rápidos en Carrusel ----------
   protected readonly quickAccessProducts = computed(() => {
     const pinnedSet = new Set(this.inv.pinnedQuickAccessSkus());
-    return this.inv.products().filter((p) => p.isActive !== false && pinnedSet.has(p.sku));
+    return this.inv
+      .products()
+      .filter((p) => p.isActive !== false && p.approvalStatus !== 'PENDIENTE_APROBACION' && pinnedSet.has(p.sku));
   });
 
   // ---------- Lista Completa de Productos Activos ----------
   protected readonly displayedProducts = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
-    const all = this.inv.products().filter((p) => p.isActive !== false);
+    const all = this.inv
+      .products()
+      .filter((p) => p.isActive !== false && p.approvalStatus !== 'PENDIENTE_APROBACION');
     if (!q) return all;
     return all.filter((p) => {
       const codes = getAllProductBarcodes(p);
@@ -323,6 +327,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   // ---------- Selección de Producto ----------
   onProductCardClick(product: Product): void {
+    if (product.approvalStatus === 'PENDIENTE_APROBACION') return;
     this.saleFeedback.set(null);
     if (product.isBulk && product.saleUnit === 'Kg') {
       this.openBulkCalculator(product);
@@ -388,6 +393,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   }
 
   addUnitToCart(product: Product, delta = 1): void {
+    if (product.approvalStatus === 'PENDIENTE_APROBACION') return;
     this.cart.update((list) => {
       const existing = list.find((i) => i.sku === product.sku);
       if (existing) {

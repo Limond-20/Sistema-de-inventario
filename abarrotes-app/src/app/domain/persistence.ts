@@ -22,8 +22,9 @@ export type ProductContinuityVerifier = (
   entries: any[]
 ) => { valid: boolean; error?: string; affectedSkus: string[] };
 
-export const CURRENT_SCHEMA_VERSION = 1;
-export const STATE_STORAGE_KEY = 'binnitech_pos_state_v1';
+export const CURRENT_SCHEMA_VERSION = 2;
+export const STATE_STORAGE_KEY = 'binnitech_pos_state_v2';
+export const LEGACY_STATE_STORAGE_KEY = 'binnitech_pos_state_v1';
 export const CORRUPT_STATE_KEY_PREFIX = 'binnitech_pos_state_corrupt_';
 export const MAX_CORRUPT_BACKUPS = 3;
 export const WRITER_LOCK_NAME = 'binnitech_pos_writer';
@@ -139,7 +140,109 @@ export interface MigrationResult {
 }
 
 /**
- * Realiza migraciones simples de versiones anteriores de esquema a la versión actual.
+ * Normaliza y complementa un producto guardado en versiones previas de esquema
+ * con todos los campos nuevos y sus valores por defecto (Bloque F1 seguimiento).
+ */
+export function migrateProductDefaults(p: any): any {
+  if (!p || typeof p !== 'object') return p;
+  const isBulk = Boolean(p.isBulk || p.saleUnit === 'Kg' || p.saleUnit === 'g' || p.saleUnit === 'L');
+  const salePrice = typeof p.salePrice === 'number' ? p.salePrice : 0;
+  const historicCost =
+    typeof p.historicCost === 'number'
+      ? p.historicCost
+      : typeof p.costPrice === 'number'
+      ? p.costPrice
+      : typeof p.cost === 'number'
+      ? p.cost
+      : 0;
+  const unitCost = typeof p.unitCost === 'number' ? p.unitCost : historicCost;
+  const unitsPerPurchase =
+    typeof p.unitsPerPurchase === 'number' && p.unitsPerPurchase > 0 ? p.unitsPerPurchase : 1;
+  const packageCost =
+    typeof p.packageCost === 'number'
+      ? p.packageCost
+      : Math.round(unitCost * unitsPerPurchase * 100) / 100;
+  const packageFactor =
+    typeof p.packageFactor === 'number' && p.packageFactor > 0 ? p.packageFactor : unitsPerPurchase;
+
+  const rawBarcodes: string[] = [];
+  if (p.barcode && String(p.barcode).trim()) {
+    rawBarcodes.push(String(p.barcode).trim());
+  }
+  if (Array.isArray(p.barcodes)) {
+    for (const b of p.barcodes) {
+      const clean = String(b || '').trim();
+      if (clean && !rawBarcodes.includes(clean)) rawBarcodes.push(clean);
+    }
+  }
+
+  const priceTiers =
+    Array.isArray(p.priceTiers) && p.priceTiers.length > 0
+      ? p.priceTiers
+      : [
+          {
+            tier: 'MENUDEO',
+            label: 'Menudeo',
+            minQty: 1,
+            unitPrice: salePrice,
+            appliedTier: 'MENUDEO',
+            tierLabel: 'Menudeo',
+          },
+        ];
+
+  return {
+    ...p,
+    barcode: p.barcode || (rawBarcodes[0] ?? ''),
+    barcodes: rawBarcodes.length > 0 ? rawBarcodes : p.barcode ? [p.barcode] : [],
+    hasInternalBarcode:
+      typeof p.hasInternalBarcode === 'boolean'
+        ? p.hasInternalBarcode
+        : Boolean(
+            (p.barcode && String(p.barcode).startsWith('200')) ||
+              rawBarcodes.some((c) => c.startsWith('200'))
+          ),
+    location: p.location || 'Pasillo General',
+    purchaseUnit: p.purchaseUnit || (isBulk ? 'Costal' : 'Pieza'),
+    unitsPerPurchase,
+    saleUnit: p.saleUnit || (isBulk ? 'Kg' : 'Pieza'),
+    historicCost,
+    unitCost,
+    purchaseCost: typeof p.purchaseCost === 'number' ? p.purchaseCost : unitCost,
+    newCost: typeof p.newCost === 'number' ? p.newCost : unitCost,
+    weightedAvgCost: typeof p.weightedAvgCost === 'number' ? p.weightedAvgCost : unitCost,
+    lastPurchaseCost: typeof p.lastPurchaseCost === 'number' ? p.lastPurchaseCost : unitCost,
+    packageCost,
+    packageFactor,
+    salePrice,
+    ivaRate: typeof p.ivaRate === 'number' ? p.ivaRate : 0,
+    iepsRate: typeof p.iepsRate === 'number' ? p.iepsRate : 0,
+    priceTiers,
+    targetMargin: typeof p.targetMargin === 'number' ? p.targetMargin : 20,
+    monthlySalesUnits: typeof p.monthlySalesUnits === 'number' ? p.monthlySalesUnits : 30,
+    expiry: p.expiry || '2027-12-31',
+    fefoExpiryDate: p.fefoExpiryDate || p.expiry || '2027-12-31',
+    acceptsPhysicalExchange: Boolean(p.acceptsPhysicalExchange),
+    minStock: typeof p.minStock === 'number' ? p.minStock : 5,
+    abcClass: p.abcClass || 'B',
+    dailySalesRate: typeof p.dailySalesRate === 'number' ? p.dailySalesRate : 1,
+    supplierLeadTimeDays: typeof p.supplierLeadTimeDays === 'number' ? p.supplierLeadTimeDays : 3,
+    safetyStock: typeof p.safetyStock === 'number' ? p.safetyStock : 2,
+    rop: typeof p.rop === 'number' ? p.rop : typeof p.minStock === 'number' ? p.minStock : 5,
+    isBulk,
+    naturalShrinkTolerancePct:
+      typeof p.naturalShrinkTolerancePct === 'number'
+        ? p.naturalShrinkTolerancePct
+        : isBulk
+        ? 3
+        : 0,
+    isActive: p.isActive !== false,
+    approvalStatus: p.approvalStatus || 'APROBADO',
+    supplier: p.supplier || 'Distribuidora General',
+  };
+}
+
+/**
+ * Realiza migraciones de versiones anteriores de esquema (v0, v1) a la versión actual (v2).
  */
 export function migrateState(data: any): MigrationResult {
   const rawVersion = typeof data?.schemaVersion === 'number' ? data.schemaVersion : 0;
@@ -155,14 +258,23 @@ export function migrateState(data: any): MigrationResult {
 
   let working = { ...data };
 
-  // Migración de versión 0 (datos antiguos sin schemaVersion explícito) a versión 1
-  if (rawVersion === 0) {
+  // Migración de versiones anteriores (v0 o v1) a CURRENT_SCHEMA_VERSION (v2)
+  if (rawVersion < CURRENT_SCHEMA_VERSION) {
+    const migratedProducts = Array.isArray(working.products)
+      ? working.products.map(migrateProductDefaults)
+      : working.products;
+
     working = {
+      ...working,
       schemaVersion: CURRENT_SCHEMA_VERSION,
       timestamp: working.timestamp || new Date().toISOString(),
       activeUser: working.activeUser || 'Don Lupe (Encargado)',
-      products: Array.isArray(working.products) ? working.products : [],
-      creditCustomers: Array.isArray(working.creditCustomers) ? working.creditCustomers : [],
+      products: migratedProducts,
+      creditCustomers: Array.isArray(working.creditCustomers)
+        ? working.creditCustomers
+        : working.creditCustomers !== undefined
+        ? working.creditCustomers
+        : [],
       cashShift: working.cashShift || {
         openingCash: 500,
         cashSalesTotal: 0,
@@ -184,6 +296,10 @@ export function migrateState(data: any): MigrationResult {
         ? working.internalConsumptionRecords
         : [],
       morningAlerts: Array.isArray(working.morningAlerts) ? working.morningAlerts : [],
+      maxDiscountPctWithoutPin:
+        typeof working.maxDiscountPctWithoutPin === 'number'
+          ? working.maxDiscountPctWithoutPin
+          : 10,
     };
   }
 

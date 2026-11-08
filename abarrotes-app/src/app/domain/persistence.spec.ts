@@ -182,6 +182,161 @@ test('Persistencia: Migración simple de versión 0/antigua a versión actual', 
   assert.equal(noMigration.fromVersion, CURRENT_SCHEMA_VERSION);
 });
 
+test('Persistencia (F1 seguimiento): Migración de estado y respaldo .bak de la versión anterior (v1 de main) a v2 conservando Kardex íntegro', async () => {
+  // 1. Estado v1 fiel al esquema anterior de main
+  const initialHash = 'GENESIS';
+  const kEntry1 = createKardexEntry(
+    {
+      type: 'ENTRADA_COMPRA',
+      producto: { sku: 'LAC-LAL-1L', name: 'Leche Lala Entera 1L', saleUnit: 'Pieza' },
+      cantidad: 20,
+      saldoAnterior: 0,
+      saldoResultante: 20,
+      usuario: 'Don Lupe (Encargado)',
+      referencia: 'Inventario inicial v1',
+      amount: 420.0,
+      description: 'Entrada inicial de catálogo v1',
+    },
+    initialHash
+  );
+
+  const kEntry2 = createKardexEntry(
+    {
+      type: 'VENTA_EFECTIVO',
+      producto: { sku: 'LAC-LAL-1L', name: 'Leche Lala Entera 1L', saleUnit: 'Pieza' },
+      cantidad: -2,
+      saldoAnterior: 20,
+      saldoResultante: 18,
+      usuario: 'Don Lupe (Encargado)',
+      referencia: 'Ticket #0101',
+      amount: 52.0,
+      description: 'Venta de mostrador en efectivo',
+    },
+    kEntry1.entryHash
+  );
+
+  const v1State = {
+    schemaVersion: 1, // Versión anterior en main
+    timestamp: '2026-11-01T12:00:00.000Z',
+    activeUser: 'Don Lupe (Encargado)',
+    products: [
+      {
+        sku: 'LAC-LAL-1L',
+        barcode: '7501020515350',
+        name: 'Leche Lala Entera 1L',
+        stock: 18,
+        costPrice: 21.0,
+        historicCost: 21.0,
+        salePrice: 26.0,
+        category: 'Lácteos',
+        isBulk: false,
+      },
+      {
+        sku: 'FRI-NEG-50K',
+        barcode: '2000001000014',
+        name: 'Frijol Negro Granel',
+        stock: 35.5,
+        costPrice: 28.0,
+        historicCost: 28.0,
+        salePrice: 36.0,
+        category: 'Granos',
+        isBulk: true,
+      },
+    ],
+    creditCustomers: [
+      { id: 'CLI-01', name: 'Doña Carmen', creditLimit: 500, currentBalance: 120, status: 'AL_CORRIENTE' },
+    ],
+    cashShift: {
+      openingCash: 500,
+      cashSalesTotal: 52,
+      creditPaymentsReceived: 0,
+      creditSalesTotal: 0,
+      internalConsumptionTotalCost: 0,
+      shrinkTotalCost: 0,
+    },
+    cashRegister: {
+      openingFloat: 500,
+      cashSalesTotal: 52,
+      creditSalesTotal: 0,
+      creditPaymentsReceived: 0,
+    },
+    kardex: [kEntry2, kEntry1], // Cronológico descendente (el más reciente primero)
+    shrinkRecords: [],
+    auditLines: [],
+    internalConsumptionRecords: [],
+    morningAlerts: [],
+  };
+
+  // Validar que la cadena previa de Kardex sea válida antes de migrar
+  const preCheck = verifyKardexChain(v1State.kardex, 'newest-first');
+  assert.equal(preCheck.valid, true);
+
+  // 2. Ejecutar migración de v1 a CURRENT_SCHEMA_VERSION (2)
+  const migrationResult = migrateState(v1State);
+  assert.equal(migrationResult.migrated, true);
+  assert.equal(migrationResult.fromVersion, 1);
+  assert.equal(migrationResult.toVersion, 2);
+
+  const migratedState = migrationResult.state;
+  assert.equal(migratedState.schemaVersion, 2);
+
+  // 3. Verificar que los productos adquirieron los campos nuevos con valores por defecto
+  const leche = migratedState.products.find((p) => p.sku === 'LAC-LAL-1L');
+  assert.ok(leche);
+  assert.equal(leche.approvalStatus, 'APROBADO', 'Productos preexistentes deben tener status APROBADO');
+  assert.deepEqual(leche.barcodes, ['7501020515350'], 'Debe tener arreglo de códigos de barras');
+  assert.equal(leche.hasInternalBarcode, false);
+  assert.equal(leche.saleUnit, 'Pieza');
+  assert.equal(leche.purchaseUnit, 'Pieza');
+  assert.equal(leche.unitsPerPurchase, 1);
+  assert.equal(leche.packageCost, 21.0);
+  assert.equal(leche.packageFactor, 1);
+  assert.ok(Array.isArray(leche.priceTiers));
+  assert.equal(leche.priceTiers[0].tier, 'MENUDEO');
+  assert.equal(leche.priceTiers[0].unitPrice, 26.0);
+  assert.equal(leche.isActive, true);
+  assert.equal(leche.naturalShrinkTolerancePct, 0);
+
+  const frijol = migratedState.products.find((p) => p.sku === 'FRI-NEG-50K');
+  assert.ok(frijol);
+  assert.equal(frijol.approvalStatus, 'APROBADO');
+  assert.equal(frijol.isBulk, true);
+  assert.equal(frijol.hasInternalBarcode, true, 'Prefijo 200 debe detectarse como interno');
+  assert.equal(frijol.naturalShrinkTolerancePct, 3, 'Granel por defecto debe tener 3% de tolerancia de merma natural');
+
+  // 4. Validar integridad de Kardex y continuidad tras migración
+  const chainPostCheck = verifyKardexChain(migratedState.kardex, 'newest-first');
+  assert.equal(chainPostCheck.valid, true, 'La cadena criptográfica del Kardex debe permanecer íntegra');
+
+  const contPostCheck = verifyProductContinuity(migratedState.products, migratedState.kardex, 'newest-first');
+  assert.equal(contPostCheck.valid, true, 'La continuidad de stock por producto debe mantenerse sin discrepancias');
+
+  const fullValidation = validateStoredState(
+    migratedState,
+    (k) => verifyKardexChain(k, 'newest-first'),
+    (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
+  );
+  assert.equal(fullValidation.valid, true, 'El estado migrado debe superar validateStoredState');
+
+  // 5. Simular respaldo .bak de v1 cifrado: encrypt -> decrypt -> migrate
+  const { encryptBackupBytes, decryptBackupBytes } = await import('./backup.ts');
+  const passphrase = 'frase-secreta-backup-2026';
+  const v1JsonBytes = new TextEncoder().encode(JSON.stringify(v1State));
+  const encryptedBakBytes = await encryptBackupBytes(v1JsonBytes, passphrase, 2000); // 2000 iters para test rápido
+
+  // Descifrar el archivo .bak
+  const decryptedBytes = await decryptBackupBytes(encryptedBakBytes, passphrase);
+  const parsedDecryptedState = JSON.parse(new TextDecoder().decode(decryptedBytes));
+  assert.equal(parsedDecryptedState.schemaVersion, 1);
+
+  // Migrar a v2
+  const bakMigration = migrateState(parsedDecryptedState);
+  assert.equal(bakMigration.migrated, true);
+  assert.equal(bakMigration.state.schemaVersion, 2);
+  assert.equal(bakMigration.state.products.length, 2);
+  assert.equal(verifyKardexChain(bakMigration.state.kardex, 'newest-first').valid, true);
+});
+
 test('Persistencia: DebouncedStorageSaver retrasa la ejecución y procesa última tarea', async () => {
   const saver = new DebouncedStorageSaver(50);
   let executeCount = 0;

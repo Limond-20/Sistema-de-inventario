@@ -56,8 +56,22 @@ export interface NaturalShrinkEvaluation {
   maxNaturalLossQty: number;
   isWithinNaturalTolerance: boolean;
   isWithinTolerance: boolean;
+  accumulatedPeriodShrinkQty?: number;
+  periodBaseQty?: number;
+  exceedsPeriodAccumulatedTolerance?: boolean;
 }
 export type ShrinkToleranceEvaluation = NaturalShrinkEvaluation;
+
+export interface CumulativeNaturalShrinkInput {
+  systemQty: number;
+  countedQty: number;
+  naturalShrinkTolerancePct?: number;
+  isBulk?: boolean;
+  periodSoldQty?: number;
+  priorCumulativeShrinkQty?: number;
+  accumulatedPeriodShrinkQty?: number;
+  periodBaseQty?: number;
+}
 
 export interface CatalogUpsertInput {
   sku?: string;
@@ -66,6 +80,8 @@ export interface CatalogUpsertInput {
   location?: string;
   barcode?: string;
   barcodes?: string[];
+  confirmInvalidBarcode?: boolean;
+  allowInvalidCheckDigit?: boolean;
   hasInternalBarcode?: boolean;
   useInternalBarcode?: boolean;
   generateInternalCodeIfMissing?: boolean;
@@ -75,6 +91,7 @@ export interface CatalogUpsertInput {
   cost?: number; // Costo por unidad de venta (o calculado desde paquete)
   unitCost?: number; // Alias de cost
   packageCost?: number; // Costo por unidad de compra opcional
+  packageFactor?: number;
   salePrice: number;
   targetMargin?: number;
   ivaRate?: number; // Ej. 0.16 o 16 para 16%
@@ -95,6 +112,7 @@ export interface CatalogUpsertInput {
   abcClass?: 'A' | 'B' | 'C';
   emoji?: string;
   pin?: string;
+  approvalStatus?: 'APROBADO' | 'PENDIENTE_APROBACION' | 'RECHAZADO';
 }
 export type CatalogProductInput = CatalogUpsertInput;
 
@@ -116,6 +134,10 @@ export interface CatalogValidationResult {
   normalizedBarcodes: string[];
   resolvedSku: string;
   hasInternalBarcode: boolean;
+  requiresBarcodeConfirmation?: boolean;
+  invalidBarcode?: string;
+  expectedCheckDigit?: string;
+  actualCheckDigit?: string;
 }
 
 export interface CartLineDiscountInput {
@@ -124,6 +146,7 @@ export interface CartLineDiscountInput {
   qty: number;
   unitPrice: number; // Precio unitario ya considerando el escalón (tier) activo
   baseUnitPrice?: number; // Precio Menudeo base original para evaluar el total descontado vs. menudeo
+  unitCost?: number; // Costo por unidad de venta para blindaje contra venta por debajo del costo
   discountPct?: number; // 0..100
   discountAmountPesos?: number; // Descuento fijo opcional en pesos para la línea
 }
@@ -133,6 +156,8 @@ export interface EvaluatedCartLine {
   qty: number;
   unitPrice: number;
   baseUnitPrice: number;
+  unitCost?: number;
+  isBelowCost?: boolean;
   grossSubtotal: number;
   grossCents: number;
   retailGrossCents: number;
@@ -170,7 +195,9 @@ export interface CartDiscountEvaluation {
   maxDiscountPctWithoutPin: number;
   requiresPin: boolean;
   reasons: string[];
+  pinReasons?: string[];
   pinReason?: string;
+  hasBelowCostLine?: boolean;
 }
 
 export interface MobileProductCreatePayload {
@@ -276,13 +303,160 @@ export function computeEan13CheckDigit(first12Digits: string): string {
 }
 
 /**
+ * Calcula el dígito verificador UPC-A (módulo 10 GS1) para los primeros 11 dígitos.
+ */
+export function computeUpcACheckDigit(first11Digits: string): string {
+  const clean = String(first11Digits).replace(/\D/g, '').slice(0, 11).padEnd(11, '0');
+  let sum = 0;
+  for (let i = 0; i < 11; i++) {
+    const digit = Number(clean[i]) || 0;
+    sum += i % 2 === 0 ? digit * 3 : digit;
+  }
+  const mod = sum % 10;
+  const check = mod === 0 ? 0 : 10 - mod;
+  return String(check);
+}
+
+/**
+ * Calcula el dígito verificador EAN-8 (módulo 10 GS1) para los primeros 7 dígitos.
+ */
+export function computeEan8CheckDigit(first7Digits: string): string {
+  const clean = String(first7Digits).replace(/\D/g, '').slice(0, 7).padEnd(7, '0');
+  let sum = 0;
+  for (let i = 0; i < 7; i++) {
+    const digit = Number(clean[i]) || 0;
+    sum += i % 2 === 0 ? digit * 3 : digit;
+  }
+  const mod = sum % 10;
+  const check = mod === 0 ? 0 : 10 - mod;
+  return String(check);
+}
+
+export type BarcodeFormat = 'EAN-13' | 'UPC-A' | 'EAN-8' | 'INTERNAL' | 'OTHER';
+
+export interface BarcodeNormalizationResult {
+  raw: string;
+  clean: string;
+  normalized: string;
+  canonicalLookupKeys: string[];
+  format: BarcodeFormat;
+  validCheckDigit: boolean;
+  expectedCheckDigit?: string;
+  actualCheckDigit?: string;
+}
+
+/**
+ * Normaliza códigos de barras UPC-A (12 dígitos), EAN-13 (13 dígitos) y EAN-8 (8 dígitos),
+ * valida su dígito de verificación GS1 y genera claves de búsqueda canónicas equivalentes
+ * (ej. UPC-A "012345678905" <-> EAN-13 "0012345678905").
+ */
+export function normalizeBarcode(rawBarcode: string | null | undefined): BarcodeNormalizationResult {
+  const raw = String(rawBarcode ?? '');
+  const clean = raw.trim();
+  const digitsOnly = clean.replace(/\D/g, '');
+  const isPureDigits = clean.length > 0 && digitsOnly.length === clean.length;
+
+  if (!isPureDigits) {
+    return {
+      raw,
+      clean,
+      normalized: clean,
+      canonicalLookupKeys: clean ? [clean] : [],
+      format: 'OTHER',
+      validCheckDigit: true,
+    };
+  }
+
+  // 1. EAN-8 (8 dígitos)
+  if (clean.length === 8) {
+    const body = clean.slice(0, 7);
+    const actual = clean[7];
+    const expected = computeEan8CheckDigit(body);
+    const validCheckDigit = actual === expected;
+    return {
+      raw,
+      clean,
+      normalized: clean,
+      canonicalLookupKeys: [clean],
+      format: 'EAN-8',
+      validCheckDigit,
+      expectedCheckDigit: expected,
+      actualCheckDigit: actual,
+    };
+  }
+
+  // 2. UPC-A (12 dígitos) -> Canonicaliza a EAN-13 anteponiendo '0'
+  if (clean.length === 12) {
+    const body = clean.slice(0, 11);
+    const actual = clean[11];
+    const expected = computeUpcACheckDigit(body);
+    const validCheckDigit = actual === expected;
+    const ean13Form = `0${clean}`;
+    return {
+      raw,
+      clean,
+      normalized: ean13Form,
+      canonicalLookupKeys: [ean13Form, clean],
+      format: 'UPC-A',
+      validCheckDigit,
+      expectedCheckDigit: expected,
+      actualCheckDigit: actual,
+    };
+  }
+
+  // 3. EAN-13 (13 dígitos)
+  if (clean.length === 13) {
+    const body = clean.slice(0, 12);
+    const actual = clean[12];
+    const expected = computeEan13CheckDigit(body);
+    const validCheckDigit = actual === expected;
+    const isInternal = clean.startsWith('200');
+    const isUpcEquivalent = clean.startsWith('0');
+    const format: BarcodeFormat = isInternal ? 'INTERNAL' : isUpcEquivalent ? 'UPC-A' : 'EAN-13';
+    const canonicalLookupKeys = isUpcEquivalent ? [clean, clean.slice(1)] : [clean];
+    return {
+      raw,
+      clean,
+      normalized: clean,
+      canonicalLookupKeys,
+      format,
+      validCheckDigit,
+      expectedCheckDigit: expected,
+      actualCheckDigit: actual,
+    };
+  }
+
+  // 4. Otras longitudes
+  return {
+    raw,
+    clean,
+    normalized: clean,
+    canonicalLookupKeys: clean ? [clean] : [],
+    format: 'OTHER',
+    validCheckDigit: true,
+  };
+}
+
+/**
+ * Comprueba si dos códigos de barras son equivalentes considerando normalización GS1
+ * (incluyendo equivalencia UPC-A de 12 dígitos y EAN-13 de 13 dígitos con '0').
+ */
+export function barcodesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const normA = normalizeBarcode(a);
+  const normB = normalizeBarcode(b);
+  if (normA.normalized === normB.normalized) return true;
+  return normA.canonicalLookupKeys.some((k) => normB.canonicalLookupKeys.includes(k));
+}
+
+/**
  * Genera un código de barras interno EAN-13 con prefijo 200 para productos sin código de fábrica.
  */
 export function generateInternalBarcode(
   existingBarcodes: Iterable<string> = [],
   sequenceStart = 1
 ): string {
-  const taken = new Set(Array.from(existingBarcodes, (b) => String(b).trim()));
+  const taken = new Set(Array.from(existingBarcodes, (b) => normalizeBarcode(b).normalized));
   for (let seq = Math.max(1, sequenceStart); seq <= 999_999; seq++) {
     const body = `200${String(seq).padStart(9, '0')}`; // 12 dígitos
     const full = `${body}${computeEan13CheckDigit(body)}`;
@@ -316,7 +490,8 @@ export function getAllProductBarcodes(product: {
 }
 
 /**
- * Valida que ningún código de barras de `candidateBarcodes` esté repetido en otro producto del catálogo.
+ * Valida que ningún código de barras de `candidateBarcodes` esté repetido en otro producto del catálogo,
+ * considerando equivalencia entre UPC-A (12 dígitos) y EAN-13 (13 dígitos con prefijo '0').
  */
 export function validateBarcodeUniqueness(
   candidateBarcodes: readonly string[],
@@ -329,24 +504,28 @@ export function validateBarcodeUniqueness(
   excludeSku?: string
 ): BarcodeValidationResult {
   const normalized: string[] = [];
-  const seenInSelf = new Set<string>();
+  const seenNormMap = new Map<string, string>();
   const normExclude = excludeSku ? excludeSku.trim().toUpperCase() : '';
 
   for (const raw of candidateBarcodes) {
     const clean = String(raw || '').trim();
     if (!clean) continue;
-    if (seenInSelf.has(clean)) {
-      const errMsg = `El código de barras duplicado ${clean} está repetido dentro del mismo producto.`;
-      return {
-        valid: false,
-        normalizedBarcodes: normalized,
-        duplicateBarcode: clean,
-        conflictingSku: excludeSku,
-        error: errMsg,
-        message: errMsg,
-      };
+    const norm = normalizeBarcode(clean);
+    for (const key of norm.canonicalLookupKeys) {
+      if (seenNormMap.has(key)) {
+        const prev = seenNormMap.get(key)!;
+        const errMsg = `El código de barras duplicado ${clean} equivale a ${prev} dentro del mismo producto.`;
+        return {
+          valid: false,
+          normalizedBarcodes: normalized,
+          duplicateBarcode: clean,
+          conflictingSku: excludeSku,
+          error: errMsg,
+          message: errMsg,
+        };
+      }
+      seenNormMap.set(key, clean);
     }
-    seenInSelf.add(clean);
     normalized.push(clean);
   }
 
@@ -357,17 +536,21 @@ export function validateBarcodeUniqueness(
     }
     const prodCodes = getAllProductBarcodes(prod);
     for (const candidate of normalized) {
-      if (prodCodes.includes(candidate)) {
-        const errMsg = `Código de barras duplicado: ${candidate} ya está asignado al producto "${prod.name}" (${prod.sku}).`;
-        return {
-          valid: false,
-          normalizedBarcodes: normalized,
-          duplicateBarcode: candidate,
-          conflictingSku: prod.sku,
-          conflictingName: prod.name,
-          error: errMsg,
-          message: errMsg,
-        };
+      for (const existingCode of prodCodes) {
+        if (barcodesMatch(candidate, existingCode)) {
+          const isEquiv = String(candidate).trim() !== String(existingCode).trim();
+          const equivNote = isEquiv ? ' (equivalencia UPC-A/EAN-13)' : '';
+          const errMsg = `Código de barras duplicado${equivNote}: ${candidate} ya está asignado al producto "${prod.name}" (${prod.sku}).`;
+          return {
+            valid: false,
+            normalizedBarcodes: normalized,
+            duplicateBarcode: candidate,
+            conflictingSku: prod.sku,
+            conflictingName: prod.name,
+            error: errMsg,
+            message: errMsg,
+          };
+        }
       }
     }
   }
@@ -431,6 +614,67 @@ export function calculateUnitCostFromPurchasePackage(
   if (factor <= 0) return 0;
   const packageCents = toCentsInt(packageCostPesos);
   return fromCentsInt(Math.round(packageCents / factor));
+}
+
+/**
+ * Costo en granel con redondeo documentado:
+ * Algoritmo: Redondeo por acumulación de centavos enteros (Bresenham / Cumulative Error-Carrying Allocation).
+ *
+ * Para cada venta incremental en granel a partir de un paquete/bulto (ej. bulto de 50 kg a $847.00):
+ * 1. Se calcula la cantidad acumulada vendida total del paquete:
+ *      newTotalSoldQty = priorSoldQty + saleQty
+ * 2. Se calcula el costo acumulado teórico en centavos enteros con redondeo estándar Half-Up:
+ *      newCumulativeCostCents = Math.round((packageCostCents * newTotalSoldQty) / packageFactor)
+ * 3. El costo asignado a esta venta particular es la diferencia exacta entre el nuevo costo acumulado
+ *    y el costo previamente reconocido:
+ *      saleCostCents = newCumulativeCostCents - priorRecognizedCostCents
+ *
+ * Garantía matemática documentada:
+ * La suma de los costos reconocidos a lo largo de cualquier partición de ventas (ej. bulto de 50 kg a $847.00
+ * vendido en tandas de 0.350 kg) converge de forma exacta al costo del paquete ($847.00 = 84,700 centavos)
+ * con una discrepancia máxima de 0 centavos (estrictamente <= 1 centavo).
+ */
+export function calculateBulkSaleCost(params: {
+  packageCost?: number; // Costo del paquete en pesos (ej. 847.00)
+  packageCostPesos?: number;
+  packageFactor: number; // Unidades del paquete (ej. 50 kg)
+  saleQty: number; // Cantidad vendida en esta tanda (ej. 0.350 kg)
+  priorSoldQty?: number; // Cantidad acumulada vendida antes de esta tanda
+  cumulativeSoldQtyPrior?: number;
+  priorRecognizedCostCents?: number; // Costo en centavos reconocido antes de esta tanda
+  cumulativeCostCentsPrior?: number;
+}): {
+  saleCostPesos: number;
+  saleCostCents: number;
+  newTotalSoldQty: number;
+  cumulativeSoldQtyAfter: number;
+  newCumulativeCostCents: number;
+  cumulativeCostCentsAfter: number;
+  unitCostPesos: number;
+} {
+  const resolvedPackageCost = params.packageCost !== undefined ? params.packageCost : (params.packageCostPesos ?? 0);
+  const packageCostCents = toCentsInt(resolvedPackageCost);
+  const factor = Number(params.packageFactor) > 0 ? Number(params.packageFactor) : 1;
+  const saleQty = Math.max(0, Number(params.saleQty) || 0);
+  const priorSoldQty = Math.max(0, Number(params.priorSoldQty ?? params.cumulativeSoldQtyPrior) || 0);
+  const priorCostCents = Math.max(0, Math.round(Number(params.priorRecognizedCostCents ?? params.cumulativeCostCentsPrior) || 0));
+
+  const rawNextSold = priorSoldQty + saleQty;
+  const newTotalSoldQty = Math.round(rawNextSold * 1000) / 1000;
+  // Capping at factor if slight floating excess
+  const effectiveSoldForCost = Math.min(factor, newTotalSoldQty);
+  const newCumulativeCostCents = Math.round((packageCostCents * effectiveSoldForCost) / factor);
+  const saleCostCents = Math.max(0, newCumulativeCostCents - priorCostCents);
+
+  return {
+    saleCostPesos: fromCentsInt(saleCostCents),
+    saleCostCents,
+    newTotalSoldQty,
+    cumulativeSoldQtyAfter: newTotalSoldQty,
+    newCumulativeCostCents,
+    cumulativeCostCentsAfter: newCumulativeCostCents,
+    unitCostPesos: fromCentsInt(Math.round(packageCostCents / factor)),
+  };
 }
 
 /**
@@ -594,11 +838,24 @@ export function resolveTierUnitPrice(
  * Determina si se rebasa el tope configurable (`maxDiscountPctWithoutPin`) para exigir PIN.
  */
 export function evaluateCartDiscounts(
-  lines: readonly CartLineDiscountInput[],
-  ticketDiscountPct = 0,
-  maxDiscountPctWithoutPin = DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN,
-  ticketDiscountAmountPesos = 0
+  linesOrOptions:
+    | readonly CartLineDiscountInput[]
+    | {
+        lines: readonly CartLineDiscountInput[];
+        ticketDiscountPct?: number;
+        maxDiscountPctWithoutPin?: number;
+        ticketDiscountAmountPesos?: number;
+      },
+  ticketDiscountPctArg = 0,
+  maxDiscountPctWithoutPinArg = DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN,
+  ticketDiscountAmountPesosArg = 0
 ): CartDiscountEvaluation {
+  const isObj = !Array.isArray(linesOrOptions) && typeof linesOrOptions === 'object' && linesOrOptions !== null;
+  const lines: readonly CartLineDiscountInput[] = isObj ? (linesOrOptions as any).lines || [] : (linesOrOptions as readonly CartLineDiscountInput[]) || [];
+  const ticketDiscountPct = isObj ? (linesOrOptions as any).ticketDiscountPct ?? 0 : ticketDiscountPctArg;
+  const maxDiscountPctWithoutPin = isObj ? (linesOrOptions as any).maxDiscountPctWithoutPin ?? DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN : maxDiscountPctWithoutPinArg;
+  const ticketDiscountAmountPesos = isObj ? (linesOrOptions as any).ticketDiscountAmountPesos ?? 0 : ticketDiscountAmountPesosArg;
+
   const safeCapPct = Math.max(0, Number(maxDiscountPctWithoutPin) || 0);
   const safeTicketPct = Math.min(100, Math.max(0, Number(ticketDiscountPct) || 0));
   const safeTicketFixedCents = Math.max(0, toCentsInt(Number(ticketDiscountAmountPesos) || 0));
@@ -653,9 +910,11 @@ export function evaluateCartDiscounts(
 
     return {
       sku: line.sku,
+      name: line.name,
       qty,
       unitPrice: fromCentsInt(unitCents),
       baseUnitPrice: fromCentsInt(baseUnitCents),
+      unitCost: line.unitCost,
       grossLineCents,
       retailLineCents,
       lineDiscountCents,
@@ -739,23 +998,40 @@ export function evaluateCartDiscounts(
     }
   }
 
-  const evaluatedLines: EvaluatedCartLine[] = intermediateLines.map((l, idx) => ({
-    sku: l.sku,
-    qty: l.qty,
-    unitPrice: l.unitPrice,
-    baseUnitPrice: l.baseUnitPrice,
-    grossSubtotal: fromCentsInt(l.grossLineCents),
-    grossCents: l.grossLineCents,
-    retailGrossCents: l.retailLineCents,
-    lineDiscountAmount: fromCentsInt(l.lineDiscountCents),
-    lineDiscountCents: l.lineDiscountCents,
-    lineDiscountPctEffective: l.effectiveLinePct,
-    netSubtotalAfterLineDiscount: fromCentsInt(l.netLineCents),
-    netAfterLineCents: l.netLineCents,
-    finalAllocatedAmount: fromCentsInt(allocatedCentsPerLine[idx]),
-    finalNetCents: allocatedCentsPerLine[idx],
-    exceedsLineCap: l.exceedsLineCap,
-  }));
+  // Verificar ventas por debajo del costo (requieren PIN de autorización obligatorio)
+  const evaluatedLines: EvaluatedCartLine[] = intermediateLines.map((l, idx) => {
+    const finalAllocatedCents = allocatedCentsPerLine[idx] ?? 0;
+    const finalAllocatedPesos = fromCentsInt(finalAllocatedCents);
+    const effectiveUnitPricePesos = l.qty > 0 ? (finalAllocatedCents / 100) / l.qty : l.unitPrice;
+    const unitCostPesos = typeof l.unitCost === 'number' ? Math.max(0, l.unitCost) : 0;
+    const isBelowCost = unitCostPesos > 0 && effectiveUnitPricePesos < unitCostPesos - 0.005;
+
+    if (isBelowCost) {
+      reasons.push(
+        `Venta por debajo del costo en "${l.name || l.sku}" ($${effectiveUnitPricePesos.toFixed(2)} < $${unitCostPesos.toFixed(2)}): requiere autorización con PIN.`
+      );
+    }
+
+    return {
+      sku: l.sku,
+      qty: l.qty,
+      unitPrice: l.unitPrice,
+      baseUnitPrice: l.baseUnitPrice,
+      unitCost: l.unitCost,
+      isBelowCost,
+      grossSubtotal: fromCentsInt(l.grossLineCents),
+      grossCents: l.grossLineCents,
+      retailGrossCents: l.retailLineCents,
+      lineDiscountAmount: fromCentsInt(l.lineDiscountCents),
+      lineDiscountCents: l.lineDiscountCents,
+      lineDiscountPctEffective: l.effectiveLinePct,
+      netSubtotalAfterLineDiscount: fromCentsInt(l.netLineCents),
+      netAfterLineCents: l.netLineCents,
+      finalAllocatedAmount: finalAllocatedPesos,
+      finalNetCents: finalAllocatedCents,
+      exceedsLineCap: l.exceedsLineCap || isBelowCost,
+    };
+  });
 
   return {
     lines: evaluatedLines,
@@ -781,7 +1057,9 @@ export function evaluateCartDiscounts(
     maxDiscountPctWithoutPin: safeCapPct,
     requiresPin: reasons.length > 0,
     reasons,
-    pinReason: reasons[0],
+    pinReasons: reasons,
+    pinReason: reasons.find((r) => r.includes('costo')) || reasons[0],
+    hasBelowCostLine: evaluatedLines.some((l) => l.isBelowCost),
   };
 }
 
@@ -792,40 +1070,42 @@ export function evaluateCartDiscounts(
 /**
  * Evalúa la diferencia de conteo físico en auditoría frente al porcentaje de tolerancia
  * de merma natural del producto (especialmente en granel por evaporación, corte o despunte).
- * Las diferencias negativas dentro de la tolerancia se clasifican como 'MERMA_NATURAL'
- * ("Merma natural") y NO como 'FALTANTE'.
+ * Soporta comparación acumulada por periodo frente a lo vendido o inventario base:
+ * Si la merma acumulada supera la tolerancia del periodo (ej. 3 conteos consecutivos de -2%
+ * acumulando 6% frente a 3% mensual), se clasifica y señala como 'FALTANTE'.
  */
 export function evaluateNaturalShrinkTolerance(
-  paramsOrSystemQty:
-    | {
-        isBulk?: boolean;
-        naturalShrinkTolerancePct?: number;
-        systemQty: number;
-        countedQty: number;
-      }
-    | number,
+  paramsOrSystemQty: CumulativeNaturalShrinkInput | number,
   countedQtyArg?: number,
   tolerancePctArg?: number
 ): NaturalShrinkEvaluation {
-  const systemQty =
-    typeof paramsOrSystemQty === 'number'
-      ? Number(paramsOrSystemQty) || 0
-      : Number(paramsOrSystemQty.systemQty) || 0;
-  const countedQty =
-    typeof paramsOrSystemQty === 'number'
-      ? Number(countedQtyArg) || 0
-      : Number(paramsOrSystemQty.countedQty) || 0;
+  const isObj = typeof paramsOrSystemQty === 'object' && paramsOrSystemQty !== null;
+  const systemQty = isObj ? Number(paramsOrSystemQty.systemQty) || 0 : Number(paramsOrSystemQty) || 0;
+  const countedQty = isObj ? Number(paramsOrSystemQty.countedQty) || 0 : Number(countedQtyArg) || 0;
   const tolerancePct = Math.max(
     0,
-    typeof paramsOrSystemQty === 'number'
-      ? Number(tolerancePctArg) || 0
-      : Number(paramsOrSystemQty.naturalShrinkTolerancePct) || 0
+    isObj
+      ? Number(paramsOrSystemQty.naturalShrinkTolerancePct) || 0
+      : Number(tolerancePctArg) || 0
   );
 
+  const priorAccum = isObj
+    ? Number(paramsOrSystemQty.accumulatedPeriodShrinkQty ?? paramsOrSystemQty.priorCumulativeShrinkQty) || 0
+    : 0;
+
   const diffQty = Math.round((countedQty - systemQty) * 1000) / 1000;
+  const missingQty = Math.max(0, Math.round((systemQty - countedQty) * 1000) / 1000);
+  const totalPeriodShrinkQty = Math.round((priorAccum + missingQty) * 1000) / 1000;
+
+  const periodBaseQty = isObj
+    ? Number(paramsOrSystemQty.periodBaseQty) ||
+      (systemQty + (Number(paramsOrSystemQty.periodSoldQty) || 0)) ||
+      systemQty
+    : systemQty;
+
   const maxAllowedShrinkQty =
-    systemQty > 0 && tolerancePct > 0
-      ? Math.round(systemQty * (tolerancePct / 100) * 1000) / 1000
+    periodBaseQty > 0 && tolerancePct > 0
+      ? Math.round(periodBaseQty * (tolerancePct / 100) * 1000) / 1000
       : 0;
 
   if (Math.abs(diffQty) < 0.0005) {
@@ -841,6 +1121,9 @@ export function evaluateNaturalShrinkTolerance(
       maxNaturalLossQty: maxAllowedShrinkQty,
       isWithinNaturalTolerance: true,
       isWithinTolerance: true,
+      accumulatedPeriodShrinkQty: totalPeriodShrinkQty,
+      periodBaseQty,
+      exceedsPeriodAccumulatedTolerance: false,
     };
   }
 
@@ -857,17 +1140,20 @@ export function evaluateNaturalShrinkTolerance(
       maxNaturalLossQty: maxAllowedShrinkQty,
       isWithinNaturalTolerance: false,
       isWithinTolerance: false,
+      accumulatedPeriodShrinkQty: totalPeriodShrinkQty,
+      periodBaseQty,
+      exceedsPeriodAccumulatedTolerance: false,
     };
   }
 
-  const missingQty = Math.round((systemQty - countedQty) * 1000) / 1000;
   const missingPct =
-    systemQty > 0 ? Math.round((missingQty / systemQty) * 10000) / 100 : 100;
+    periodBaseQty > 0 ? Math.round((missingQty / periodBaseQty) * 10000) / 100 : 100;
+  const cumulativePct =
+    periodBaseQty > 0 ? Math.round((totalPeriodShrinkQty / periodBaseQty) * 10000) / 100 : 100;
 
+  const exceedsCumulative = totalPeriodShrinkQty > maxAllowedShrinkQty + 1e-6;
   const isWithinNaturalTolerance =
-    tolerancePct > 0 &&
-    systemQty > 0 &&
-    missingQty <= maxAllowedShrinkQty + 1e-6;
+    tolerancePct > 0 && periodBaseQty > 0 && !exceedsCumulative;
 
   if (isWithinNaturalTolerance) {
     return {
@@ -882,13 +1168,21 @@ export function evaluateNaturalShrinkTolerance(
       maxNaturalLossQty: maxAllowedShrinkQty,
       isWithinNaturalTolerance: true,
       isWithinTolerance: true,
+      accumulatedPeriodShrinkQty: totalPeriodShrinkQty,
+      periodBaseQty,
+      exceedsPeriodAccumulatedTolerance: false,
     };
   }
 
+  const label =
+    priorAccum > 0 && exceedsCumulative
+      ? `Faltante (merma acumulada de ${cumulativePct.toFixed(1)}% supera tolerancia de ${tolerancePct}%)`
+      : 'Faltante';
+
   return {
     classification: 'FALTANTE',
-    label: 'Faltante',
-    classificationLabel: 'Faltante',
+    label,
+    classificationLabel: label,
     diffQty,
     missingQty,
     missingPct,
@@ -897,7 +1191,16 @@ export function evaluateNaturalShrinkTolerance(
     maxNaturalLossQty: maxAllowedShrinkQty,
     isWithinNaturalTolerance: false,
     isWithinTolerance: false,
+    accumulatedPeriodShrinkQty: totalPeriodShrinkQty,
+    periodBaseQty,
+    exceedsPeriodAccumulatedTolerance: exceedsCumulative,
   };
+}
+
+export function evaluateCumulativeNaturalShrink(
+  params: CumulativeNaturalShrinkInput
+): NaturalShrinkEvaluation {
+  return evaluateNaturalShrinkTolerance(params);
 }
 
 // =====================================================================
@@ -1066,6 +1369,30 @@ export function validateCatalogProductInput(
     hasInternalBarcode = rawBarcodes[0].startsWith('200');
   }
 
+  let invalidBarcodeInfo: { code: string; expected?: string; actual?: string } | undefined;
+  for (const b of rawBarcodes) {
+    const norm = normalizeBarcode(b);
+    if (!norm.validCheckDigit) {
+      invalidBarcodeInfo = {
+        code: b,
+        expected: norm.expectedCheckDigit,
+        actual: norm.actualCheckDigit,
+      };
+      break;
+    }
+  }
+
+  const requiresBarcodeConfirmation =
+    Boolean(invalidBarcodeInfo) &&
+    !input.confirmInvalidBarcode &&
+    !input.allowInvalidCheckDigit;
+
+  if (requiresBarcodeConfirmation && invalidBarcodeInfo) {
+    errors.push(
+      `El código de barras ${invalidBarcodeInfo.code} tiene un dígito de verificación inválido (esperado: ${invalidBarcodeInfo.expected}, recibido: ${invalidBarcodeInfo.actual}). Confirme para continuar.`
+    );
+  }
+
   const barcodeCheck = validateBarcodeUniqueness(
     rawBarcodes,
     existingProducts,
@@ -1083,6 +1410,10 @@ export function validateCatalogProductInput(
     normalizedBarcodes: barcodeCheck.normalizedBarcodes,
     resolvedSku,
     hasInternalBarcode,
+    requiresBarcodeConfirmation,
+    invalidBarcode: invalidBarcodeInfo?.code,
+    expectedCheckDigit: invalidBarcodeInfo?.expected,
+    actualCheckDigit: invalidBarcodeInfo?.actual,
   };
 }
 
