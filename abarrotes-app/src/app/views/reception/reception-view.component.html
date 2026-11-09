@@ -14,6 +14,35 @@
   
 </section>
 
+<!-- ===================== PESTAÑAS DE NAVEGACIÓN (BLOQUE F2) ===================== -->
+<nav class="flex gap-2 border-b border-slate-200 pb-3 mb-5" role="tablist">
+  <button type="button" (click)="activeSection.set('recepcion')"
+    class="px-4 py-2.5 text-sm font-bold rounded-xl transition-all"
+    [class]="activeSection() === 'recepcion' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'">
+    Recepción de Mercancía
+  </button>
+  <button type="button" (click)="activeSection.set('proveedores')"
+    class="px-4 py-2.5 text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+    [class]="activeSection() === 'proveedores' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'">
+    <span>Directorio de Proveedores</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+      [class]="activeSection() === 'proveedores' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-800'">
+      {{ inv.suppliers().length }}
+    </span>
+  </button>
+  <button type="button" (click)="activeSection.set('cxp')"
+    class="px-4 py-2.5 text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+    [class]="activeSection() === 'cxp' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'">
+    <span>Cuentas por Pagar (CxP)</span>
+    @if (inv.getPendingAccountsPayable().length > 0) {
+      <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950">
+        {{ inv.getPendingAccountsPayable().length }}
+      </span>
+    }
+  </button>
+</nav>
+
+@if (activeSection() === 'recepcion') {
 <!-- ===================== INDICADORES DE LA NOTA ACTIVA ===================== -->
 @if (lines().length > 0) {
   <section class="mb-5 grid gap-3 sm:grid-cols-3">
@@ -287,6 +316,40 @@
 
         <!-- ===================== BARRA INFERIOR DE GUARDADO BLINDADO ===================== -->
     <section class="flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-2xs sm:flex-row">
+      
+      <!-- Selector de Proveedor y Condiciones de Pago (Bloque F2) -->
+      <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto p-3 rounded-xl bg-slate-50 border border-slate-200">
+        <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+          <span>Proveedor:</span>
+          <select [value]="selectedSupplierId()" (change)="onSupplierSelectionChange($any($event.target).value)"
+            class="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-900">
+            @for (sup of inv.suppliers(); track sup.id) {
+              <option [value]="sup.id">{{ sup.name }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+          <span>Pago:</span>
+          <select [ngModel]="receptionPaymentType()" (ngModelChange)="receptionPaymentType.set($event)"
+            class="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-900">
+            <option value="CONTADO">Contado</option>
+            <option value="CREDITO">Crédito</option>
+          </select>
+        </label>
+
+        @if (receptionPaymentType() === 'CREDITO') {
+          <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+            <span>Plazo:</span>
+            <div class="flex items-center gap-1">
+              <input type="number" min="1" max="90" [ngModel]="receptionCreditDays()" (ngModelChange)="receptionCreditDays.set($event)"
+                class="h-9 w-16 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold font-mono text-slate-900" />
+              <span class="text-xs text-slate-600">días</span>
+            </div>
+          </label>
+        }
+      </div>
+  
       <div class="flex items-start gap-3">
         <span class="mt-2 h-2.5 w-2.5 shrink-0 rounded-full" [class]="canSave() ? 'bg-emerald-500' : 'bg-slate-400'"></span>
         <div>
@@ -315,6 +378,154 @@
   }
 }
 
+
+}
+
+@if (activeSection() === 'proveedores') {
+  <section class="flex flex-col gap-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="text-xl font-bold text-slate-900">Directorio de Proveedores</h2>
+        <p class="text-xs text-slate-600">Gestiona condiciones de pago, días de visita y políticas de cambio físico.</p>
+      </div>
+      <button type="button" (click)="openCreateSupplier()"
+        class="h-11 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs flex items-center gap-2">
+        + Nuevo Proveedor
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      @for (sup of inv.suppliers(); track sup.id) {
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs flex flex-col justify-between gap-4">
+          <div class="flex flex-col gap-2">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">{{ sup.name }}</h3>
+                <p class="text-xs text-slate-600">{{ sup.phone || 'Sin teléfono' }}</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-xs font-bold"
+                [class]="sup.currentBalance > 0 ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'">
+                {{ sup.currentBalance > 0 ? 'Con Saldo' : 'Al Corriente' }}
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-100 text-slate-700">
+              <div>
+                <span class="block text-slate-500 font-medium">Visita:</span>
+                <span class="font-bold">{{ sup.visitDays?.join(', ') || 'No registrado' }}</span>
+              </div>
+              <div>
+                <span class="block text-slate-500 font-medium">Condición:</span>
+                <span class="font-bold">{{ sup.paymentTerms === 'CREDITO' ? ('Crédito ' + sup.creditDays + 'd') : 'Contado' }}</span>
+              </div>
+              <div>
+                <span class="block text-slate-500 font-medium">Cambio Físico:</span>
+                <span class="font-bold" [class]="sup.physicalExchangePolicy ? 'text-emerald-700' : 'text-slate-500'">
+                  {{ sup.physicalExchangePolicy ? 'Sí acepta' : 'No acepta' }}
+                </span>
+              </div>
+              <div>
+                <span class="block text-slate-500 font-medium">Saldo por pagar:</span>
+                <span class="font-bold tabular-nums text-slate-900">{{ sup.currentBalance | currency:'MXN':'symbol-narrow' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+            <div class="flex gap-1.5">
+              <button type="button" (click)="openSupplierFicha(sup, $event)"
+                class="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800">
+                Ficha e Historial
+              </button>
+              <button type="button" (click)="openEditSupplier(sup, $event)"
+                class="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800">
+                Editar
+              </button>
+              <button type="button" (click)="deleteSupplier(sup, $event)"
+                class="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800">
+                Baja
+              </button>
+            </div>
+            @if (sup.currentBalance > 0) {
+              <button type="button" (click)="openPayDebtModal(sup.id, sup.currentBalance)"
+                class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-2xs">
+                Pagar
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+}
+
+@if (activeSection() === 'cxp') {
+  <section class="flex flex-col gap-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="text-xl font-bold text-slate-900">Cuentas por Pagar (Compras a Crédito)</h2>
+        <p class="text-xs text-slate-600">Monitorea los vencimientos de facturas y realiza pagos coordinados con caja.</p>
+      </div>
+      <button type="button" (click)="openPayDebtModal()"
+        class="h-11 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-2xs">
+        Registrar Pago a Proveedor
+      </button>
+    </div>
+
+    <div class="border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-2xs">
+      <table class="w-full text-xs text-left">
+        <thead class="bg-slate-100 text-slate-700 font-bold">
+          <tr>
+            <th class="p-3">Folio Recepción</th>
+            <th class="p-3">Proveedor</th>
+            <th class="p-3">Fecha Compra</th>
+            <th class="p-3">Vencimiento</th>
+            <th class="p-3 text-right">Monto Total</th>
+            <th class="p-3 text-right">Saldo Pendiente</th>
+            <th class="p-3">Estatus</th>
+            <th class="p-3 text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          @for (debt of inv.accountsPayable(); track debt.id) {
+            <tr class="hover:bg-slate-50">
+              <td class="p-3 font-mono font-bold">{{ debt.receptionFolio }}</td>
+              <td class="p-3 font-semibold text-slate-900">{{ debt.supplierName }}</td>
+              <td class="p-3 text-slate-600">{{ debt.date }}</td>
+              <td class="p-3 font-semibold" [class]="debt.remainingBalance > 0 && debt.status === 'VENCIDO' ? 'text-red-700' : 'text-slate-800'">
+                {{ debt.dueDate }}
+              </td>
+              <td class="p-3 text-right tabular-nums font-bold">{{ debt.totalAmount | currency:'MXN':'symbol-narrow' }}</td>
+              <td class="p-3 text-right tabular-nums font-bold text-slate-900">{{ debt.remainingBalance | currency:'MXN':'symbol-narrow' }}</td>
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded-full text-xs font-bold"
+                  [class]="debt.remainingBalance === 0 ? 'bg-emerald-100 text-emerald-800' : (debt.status === 'VENCIDO' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900')">
+                  {{ debt.remainingBalance === 0 ? 'PAGADA' : (debt.status === 'VENCIDO' ? 'VENCIDO' : 'PENDIENTE') }}
+                </span>
+              </td>
+              <td class="p-3 text-center">
+                @if (debt.remainingBalance > 0) {
+                  <button type="button" (click)="openPayDebtModal(debt.supplierId, debt.remainingBalance)"
+                    class="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs">
+                    Abonar
+                  </button>
+                } @else {
+                  <span class="text-xs font-semibold text-emerald-600">Saldado</span>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="8" class="p-8 text-center text-slate-400 font-semibold">
+                No hay deudas por pagar registradas. Las compras recibidas a crédito aparecerán aquí.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
 <!-- ===================== MODAL ALTA RÁPIDA DE PRODUCTO NUEVO ===================== -->
 @if (quickProductModalOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -402,6 +613,290 @@
           <button type="button" [disabled]="!quickName().trim() || !quickCost()" (click)="confirmQuickProduct()"
             class="h-11 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs shadow-2xs">
             Dar de Alta y Agregar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+<!-- ===================== MODAL FICHA DE PROVEEDOR E HISTORIAL DE PRECIOS ===================== -->
+@if (supplierFichaModalOpen()) {
+  @let s = selectedSupplier();
+  <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white text-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-slate-300">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div>
+          <h3 class="text-lg font-bold">Ficha de Proveedor: {{ s?.name }}</h3>
+          <p class="text-xs text-slate-400">Tel: {{ s?.phone || 'No registrado' }} · Condiciones: {{ s?.paymentTerms }} {{ s?.creditDays ? ('(' + s?.creditDays + ' días)') : '' }}</p>
+        </div>
+        <button type="button" (click)="closeSupplierFicha()" class="text-xs font-bold text-slate-400 hover:text-white">
+          Cerrar
+        </button>
+      </div>
+
+      <div class="p-6 flex flex-col gap-5">
+        <div class="grid grid-cols-4 gap-3">
+          <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl">
+            <span class="text-xs text-slate-500 font-bold block">Saldo por Pagar</span>
+            <span class="text-xl font-bold text-slate-900 tabular-nums">{{ s?.currentBalance | currency:'MXN':'symbol-narrow' }}</span>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl">
+            <span class="text-xs text-slate-500 font-bold block">Días de Visita</span>
+            <span class="text-sm font-bold text-slate-700 mt-1 block">{{ s?.visitDays?.join(', ') || 'Sin definir' }}</span>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl">
+            <span class="text-xs text-slate-500 font-bold block">Acepta Cambio Físico</span>
+            <span class="text-sm font-bold mt-1 block" [class]="s?.physicalExchangePolicy ? 'text-emerald-700' : 'text-slate-500'">
+              {{ s?.physicalExchangePolicy ? 'Sí (Acepta)' : 'No' }}
+            </span>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl">
+            <span class="text-xs text-slate-500 font-bold block">Condición Base</span>
+            <span class="text-sm font-bold text-slate-700 mt-1 block">{{ s?.paymentTerms }}</span>
+          </div>
+        </div>
+
+        @if (s?.notes) {
+          <div class="bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs text-amber-900">
+            <b>Notas del Proveedor:</b> {{ s?.notes }}
+          </div>
+        }
+
+        <!-- HISTORIAL DE PRECIOS POR PROVEEDOR Y PRODUCTO (ALERTA DE ALZA) -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-bold text-slate-700 uppercase">Historial de Costos y Precios por Producto (Alertas de Alza)</h4>
+            <span class="text-xs text-slate-500">Alimentado por recepciones de mercancía</span>
+          </div>
+          <div class="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-100 text-slate-700 font-bold">
+                <tr>
+                  <th class="p-2.5">Fecha</th>
+                  <th class="p-2.5">Folio</th>
+                  <th class="p-2.5">SKU / Producto</th>
+                  <th class="p-2.5 text-right">Costo Anterior</th>
+                  <th class="p-2.5 text-right">Costo Nuevo</th>
+                  <th class="p-2.5 text-center">Variación</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (h of getSupplierPriceHistory(s?.id); track h.id) {
+                  <tr [class]="h.priceHikeDetected ? 'bg-amber-50/70' : ''">
+                    <td class="p-2.5 text-slate-600">{{ h.date }}</td>
+                    <td class="p-2.5 font-mono">{{ h.receptionFolio }}</td>
+                    <td class="p-2.5 font-bold text-slate-900">{{ h.productName }}</td>
+                    <td class="p-2.5 text-right tabular-nums">{{ h.previousUnitCost | currency:'MXN':'symbol-narrow' }}</td>
+                    <td class="p-2.5 text-right tabular-nums font-bold">{{ h.unitCost | currency:'MXN':'symbol-narrow' }}</td>
+                    <td class="p-2.5 text-center font-bold"
+                      [class]="h.priceHikeDetected ? 'text-red-700' : 'text-slate-600'">
+                      @if (h.priceHikeDetected) {
+                        +{{ h.hikePct }}% ⚠️
+                      } @else {
+                        0%
+                      }
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="6" class="p-6 text-center text-slate-400">Sin historial de precios registrado para este proveedor</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- CUENTAS POR PAGAR ACTIVAS DE ESTE PROVEEDOR -->
+        <div>
+          <h4 class="text-xs font-bold text-slate-700 uppercase mb-2">Cuentas por Pagar Registradas</h4>
+          <div class="border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-100 text-slate-700 font-bold">
+                <tr>
+                  <th class="p-2.5">Folio</th>
+                  <th class="p-2.5">Fecha Compra</th>
+                  <th class="p-2.5">Vencimiento</th>
+                  <th class="p-2.5 text-right">Total</th>
+                  <th class="p-2.5 text-right">Saldo Pendiente</th>
+                  <th class="p-2.5">Estatus</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (d of getSupplierDebts(s?.id); track d.id) {
+                  <tr>
+                    <td class="p-2.5 font-mono font-bold">{{ d.receptionFolio }}</td>
+                    <td class="p-2.5">{{ d.date }}</td>
+                    <td class="p-2.5 font-semibold">{{ d.dueDate }}</td>
+                    <td class="p-2.5 text-right tabular-nums">{{ d.totalAmount | currency:'MXN':'symbol-narrow' }}</td>
+                    <td class="p-2.5 text-right tabular-nums font-bold">{{ d.remainingBalance | currency:'MXN':'symbol-narrow' }}</td>
+                    <td class="p-2.5 font-bold" [class]="d.remainingBalance === 0 ? 'text-emerald-700' : 'text-amber-800'">
+                      {{ d.remainingBalance === 0 ? 'PAGADA' : d.status }}
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="6" class="p-4 text-center text-slate-400">Sin cuentas por pagar para este proveedor</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== MODAL FORMULARIO DE PROVEEDOR ===================== -->
+@if (supplierModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white text-slate-900 rounded-2xl shadow-xl w-full max-w-md border border-slate-300 overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <h3 class="text-base font-bold">{{ supplierMode() === 'create' ? 'Nuevo Proveedor' : 'Editar Proveedor' }}</h3>
+        <button type="button" (click)="closeSupplierModal()" class="text-xs text-slate-400 hover:text-white">Cerrar</button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-3">
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-bold text-slate-700">Nombre de la Empresa o Proveedor *:</span>
+          <input type="text" [ngModel]="supplierName()" (ngModelChange)="supplierName.set($event)"
+            placeholder="Ej. Distribuidora del Bajío" class="h-10 rounded-lg border border-slate-300 px-3 text-xs font-bold" />
+        </label>
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Teléfono:</span>
+            <input type="text" [ngModel]="supplierPhone()" (ngModelChange)="supplierPhone.set($event)"
+              placeholder="951-555-0199" class="h-10 rounded-lg border border-slate-300 px-3 text-xs" />
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Días de Visita:</span>
+            <input type="text" [ngModel]="supplierVisitDays()" (ngModelChange)="supplierVisitDays.set($event)"
+              placeholder="Lunes, Jueves" class="h-10 rounded-lg border border-slate-300 px-3 text-xs" />
+          </label>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Condición de Pago:</span>
+            <select [ngModel]="supplierPaymentCondition()" (ngModelChange)="supplierPaymentCondition.set($event)"
+              class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold">
+              <option value="CONTADO">Contado</option>
+              <option value="CREDITO">Crédito</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">Plazo Crédito (días):</span>
+            <input type="number" min="0" max="90" [ngModel]="supplierCreditDays()" (ngModelChange)="supplierCreditDays.set($event)"
+              class="h-10 rounded-lg border border-slate-300 px-3 text-xs font-bold font-mono" />
+          </label>
+        </div>
+
+        <label class="flex items-center gap-2 pt-1 text-xs font-bold text-slate-800">
+          <input type="checkbox" [ngModel]="supplierAcceptsExchange()" (ngModelChange)="supplierAcceptsExchange.set($event)"
+            class="h-4 w-4 rounded border-slate-300" />
+          <span>Acepta cambio físico de mercancía caducada o dañada</span>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-bold text-slate-700">Notas / Contacto de Venta:</span>
+          <textarea [ngModel]="supplierNotes()" (ngModelChange)="supplierNotes.set($event)" rows="2"
+            placeholder="Nombre del preventista, frecuencia de reparto, etc." class="rounded-lg border border-slate-300 p-2 text-xs"></textarea>
+        </label>
+
+        @if (supplierError()) {
+          <div class="rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-800 text-xs font-semibold">
+            {{ supplierError() }}
+          </div>
+        }
+        @if (supplierFeedback()) {
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-800 text-xs font-semibold">
+            {{ supplierFeedback() }}
+          </div>
+        }
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" (click)="closeSupplierModal()"
+            class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100">
+            Cancelar
+          </button>
+          <button type="button" (click)="saveSupplier()"
+            class="h-10 px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs">
+            Guardar Proveedor
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== MODAL REGISTRAR PAGO A PROVEEDOR ===================== -->
+@if (paymentModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-white text-slate-900 rounded-2xl shadow-xl w-full max-w-md border border-slate-300 overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <h3 class="text-base font-bold">Registrar Pago a Proveedor</h3>
+        <button type="button" (click)="closePaymentModal()" class="text-xs text-slate-400 hover:text-white">Cerrar</button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-3">
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-bold text-slate-700">Proveedor a pagar:</span>
+          <select [ngModel]="paymentSupplierId()" (ngModelChange)="paymentSupplierId.set($event)"
+            class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold">
+            @for (s of inv.suppliers(); track s.id) {
+              <option [value]="s.id">{{ s.name }} (Saldo: {{ s.currentBalance | currency:'MXN':'symbol-narrow' }})</option>
+            }
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-bold text-slate-700">Monto a pagar ($):</span>
+          <input type="number" min="1" step="10" [ngModel]="paymentAmount()" (ngModelChange)="paymentAmount.set($event)"
+            class="h-10 rounded-lg border border-slate-300 px-3 text-base font-bold font-mono text-slate-900" />
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-bold text-slate-700">Método de pago:</span>
+          <select [ngModel]="paymentMethod()" (ngModelChange)="paymentMethod.set($event)"
+            class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold">
+            <option value="EFECTIVO">Efectivo (genera salida de caja en turno)</option>
+            <option value="TRANSFERENCIA">Transferencia bancaria / Cheque</option>
+          </select>
+        </label>
+
+        @if (paymentMethod() === 'EFECTIVO') {
+          <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900">
+            <b>Coordinación con caja:</b> Este pago descuenta físicamente el efectivo del cajón activo y queda asentado en el Kardex como <code>PAGO_PROVEEDOR</code>.
+          </div>
+        }
+
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-bold text-slate-700">Nota / Referencia de pago:</span>
+          <input type="text" [ngModel]="paymentNotes()" (ngModelChange)="paymentNotes.set($event)"
+            placeholder="Ej. Liquidación Nota DB-20931" class="h-10 rounded-lg border border-slate-300 px-3 text-xs" />
+        </label>
+
+        @if (paymentError()) {
+          <div class="rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-800 text-xs font-semibold">
+            {{ paymentError() }}
+          </div>
+        }
+        @if (paymentFeedback()) {
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-800 text-xs font-semibold">
+            {{ paymentFeedback() }}
+          </div>
+        }
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" (click)="closePaymentModal()"
+            class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100">
+            Cancelar
+          </button>
+          <button type="button" (click)="submitSupplierPayment()"
+            class="h-10 px-5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-2xs">
+            Confirmar y Aplicar Pago
           </button>
         </div>
       </div>

@@ -428,7 +428,11 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     const isOcr = this.mode() === 'ocr';
     const src = isOcr ? this.ocrLines() : this.manualLines();
     const folio = isOcr ? (this.inv.ocrNote()?.folio ?? 'OCR-LAB') : `MAN-${String(Date.now()).slice(-5)}`;
-    this.inv.saveReception(src, folio);
+    this.inv.saveReception(src, folio, {
+      paymentType: this.receptionPaymentType(),
+      supplierId: this.selectedSupplierId(),
+      creditDays: this.receptionCreditDays(),
+    });
     this.savedSummary.set({
       folio,
       lines: src.length,
@@ -437,5 +441,178 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     });
     if (isOcr) this.ocrLines.set([]);
     else this.manualLines.set([]);
+  }
+
+  // ---------- Sub-secciones y Gestión de Proveedores (Bloque F2) ----------
+  protected readonly activeSection = signal<'recepcion' | 'proveedores' | 'cxp'>('recepcion');
+
+  protected readonly selectedSupplierId = signal<string>('SUP-01');
+  protected readonly receptionPaymentType = signal<'CONTADO' | 'CREDITO'>('CONTADO');
+  protected readonly receptionCreditDays = signal<number>(15);
+
+  protected readonly supplierModalOpen = signal<boolean>(false);
+  protected readonly supplierMode = signal<'create' | 'edit'>('create');
+  protected readonly supplierId = signal<string>('');
+  protected readonly supplierName = signal<string>('');
+  protected readonly supplierPhone = signal<string>('');
+  protected readonly supplierVisitDays = signal<string>('Lunes, Jueves');
+  protected readonly supplierPaymentCondition = signal<'CONTADO' | 'CREDITO'>('CREDITO');
+  protected readonly supplierCreditDays = signal<number>(15);
+  protected readonly supplierAcceptsExchange = signal<boolean>(true);
+  protected readonly supplierNotes = signal<string>('');
+  protected readonly supplierError = signal<string>('');
+  protected readonly supplierFeedback = signal<string>('');
+
+  protected readonly supplierFichaModalOpen = signal<boolean>(false);
+  protected readonly selectedSupplier = signal<any | null>(null);
+
+  protected readonly paymentModalOpen = signal<boolean>(false);
+  protected readonly paymentSupplierId = signal<string>('');
+  protected readonly paymentAmount = signal<number>(0);
+  protected readonly paymentMethod = signal<'EFECTIVO' | 'TRANSFERENCIA'>('EFECTIVO');
+  protected readonly paymentNotes = signal<string>('');
+  protected readonly paymentError = signal<string>('');
+  protected readonly paymentFeedback = signal<string>('');
+
+  onSupplierSelectionChange(supId: string): void {
+    this.selectedSupplierId.set(supId);
+    const sup = this.inv.suppliers().find((s) => s.id === supId);
+    if (sup) {
+      this.receptionPaymentType.set(sup.paymentTerms || 'CONTADO');
+      this.receptionCreditDays.set(sup.creditDays || 15);
+    }
+  }
+
+  openCreateSupplier(): void {
+    this.supplierMode.set('create');
+    this.supplierId.set('');
+    this.supplierName.set('');
+    this.supplierPhone.set('');
+    this.supplierVisitDays.set('Lunes, Jueves');
+    this.supplierPaymentCondition.set('CREDITO');
+    this.supplierCreditDays.set(15);
+    this.supplierAcceptsExchange.set(true);
+    this.supplierNotes.set('');
+    this.supplierError.set('');
+    this.supplierFeedback.set('');
+    this.supplierModalOpen.set(true);
+  }
+
+  openEditSupplier(s: any, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.supplierMode.set('edit');
+    this.supplierId.set(s.id);
+    this.supplierName.set(s.name);
+    this.supplierPhone.set(s.phone || '');
+    this.supplierVisitDays.set(Array.isArray(s.visitDays) ? s.visitDays.join(', ') : (s.visitDays || ''));
+    this.supplierPaymentCondition.set(s.paymentTerms || 'CONTADO');
+    this.supplierCreditDays.set(s.creditDays || 15);
+    this.supplierAcceptsExchange.set(s.physicalExchangePolicy !== false);
+    this.supplierNotes.set(s.notes || '');
+    this.supplierError.set('');
+    this.supplierFeedback.set('');
+    this.supplierModalOpen.set(true);
+  }
+
+  closeSupplierModal(): void {
+    this.supplierModalOpen.set(false);
+  }
+
+  saveSupplier(): void {
+    this.supplierError.set('');
+    this.supplierFeedback.set('');
+    const visitDaysArray = this.supplierVisitDays().split(',').map((d) => d.trim()).filter(Boolean);
+    const input = {
+      name: this.supplierName(),
+      phone: this.supplierPhone(),
+      visitDays: visitDaysArray,
+      paymentTerms: this.supplierPaymentCondition(),
+      creditDays: Number(this.supplierCreditDays()) || 0,
+      physicalExchangePolicy: this.supplierAcceptsExchange(),
+      notes: this.supplierNotes(),
+    };
+
+    if (this.supplierMode() === 'create') {
+      const res = this.inv.createSupplier(input);
+      if (!res.ok) {
+        this.supplierError.set(res.message);
+        return;
+      }
+      this.supplierFeedback.set(res.message);
+      setTimeout(() => this.closeSupplierModal(), 600);
+    } else {
+      const res = this.inv.updateSupplier(this.supplierId(), input);
+      if (!res.ok) {
+        this.supplierError.set(res.message);
+        return;
+      }
+      this.supplierFeedback.set(res.message);
+      setTimeout(() => this.closeSupplierModal(), 600);
+    }
+  }
+
+  deleteSupplier(s: any, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    const ok = confirm(`¿Dar de baja lógica al proveedor ${s.name}?`);
+    if (!ok) return;
+    const res = this.inv.deleteSupplierLogical(s.id);
+    if (!res.ok) {
+      alert(res.message);
+    }
+  }
+
+  openSupplierFicha(s: any, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.selectedSupplier.set(s);
+    this.supplierFichaModalOpen.set(true);
+  }
+
+  closeSupplierFicha(): void {
+    this.supplierFichaModalOpen.set(false);
+  }
+
+  getSupplierPriceHistory(supplierId: string): any[] {
+    return this.inv.getProductPriceHistory(supplierId);
+  }
+
+  getSupplierDebts(supplierId: string): any[] {
+    return this.inv.accountsPayable().filter((d) => d.supplierId === supplierId);
+  }
+
+  openPayDebtModal(supplierId?: string, debtAmount?: number): void {
+    this.paymentSupplierId.set(supplierId || this.inv.suppliers()[0]?.id || '');
+    this.paymentAmount.set(debtAmount || 0);
+    this.paymentMethod.set('EFECTIVO');
+    this.paymentNotes.set('');
+    this.paymentError.set('');
+    this.paymentFeedback.set('');
+    this.paymentModalOpen.set(true);
+  }
+
+  closePaymentModal(): void {
+    this.paymentModalOpen.set(false);
+  }
+
+  submitSupplierPayment(): void {
+    this.paymentError.set('');
+    this.paymentFeedback.set('');
+    const supId = this.paymentSupplierId();
+    const amount = Number(this.paymentAmount()) || 0;
+    if (amount <= 0) {
+      this.paymentError.set('El monto de pago debe ser mayor a cero.');
+      return;
+    }
+    const res = this.inv.registerSupplierPayment(
+      supId,
+      amount,
+      this.paymentMethod(),
+      this.paymentNotes() || undefined
+    );
+    if (!res.ok) {
+      this.paymentError.set(res.message);
+      return;
+    }
+    this.paymentFeedback.set(res.message);
+    setTimeout(() => this.closePaymentModal(), 700);
   }
 }

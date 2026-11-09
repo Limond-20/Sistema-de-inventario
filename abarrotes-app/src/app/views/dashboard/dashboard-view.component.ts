@@ -25,6 +25,19 @@ export class DashboardViewComponent {
     ),
   );
 
+  // ---------- Alertas de Pagos a Proveedores y Alzas de Costo (Bloque F2) ----------
+  protected readonly supplierDebtAlerts = computed(() =>
+    this.inv.morningAlerts().filter(
+      (a) => a.kind === 'vencimiento_proveedor' || a.id.startsWith('alert-cxp-'),
+    ),
+  );
+
+  protected readonly priceHikeAlerts = computed(() =>
+    this.inv.morningAlerts().filter(
+      (a) => a.id.startsWith('alert-hike-'),
+    ),
+  );
+
   protected readonly resolveModalOpen = signal<boolean>(false);
   protected readonly selectedShortageAlert = signal<MorningAlert | null>(null);
   protected readonly resolveCountedQty = signal<number>(0);

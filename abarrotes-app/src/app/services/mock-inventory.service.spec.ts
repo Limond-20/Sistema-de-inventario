@@ -1,6 +1,7 @@
+import { calculateDueDate } from '../domain/suppliers';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { MockInventoryService, ShrinkRecord, ReceptionLine } from './mock-inventory.service';
+import { MockInventoryService, ShrinkRecord, ReceptionLine, PosSaleItem } from './mock-inventory.service';
 import { PosViewComponent } from '../views/pos/pos-view.component';
 import { createKardexEntry, verifyProductContinuity } from '../domain/kardex';
 import {
@@ -133,7 +134,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
           barcode: prodMod.barcode,
           name: prodMod.name,
           emoji: '🍝',
-          saleUnit: 'Pieza',
+          saleUnit: 'Pieza' as const,
           isBulk: false,
           qty: prodMod.stock + 5,
           unitPrice: prodMod.salePrice,
@@ -193,7 +194,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
       name: prod.name,
       emoji: prod.emoji,
       qty: initialStock + 10, // supera existencia
-      saleUnit: 'Pieza',
+      saleUnit: 'Pieza' as const,
       reason: 'Envase Roto en Piso',
       unitCost: prod.historicCost,
       registeredBy: 'Pedro (Cajero)',
@@ -1418,7 +1419,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
 
     // 5. Simulamos recargar la aplicación desde IndexedDB / storageAdapter
     const reloadedService = new MockInventoryService();
-    reloadedService.storageAdapter = memoryAdapter;
+    reloadedService.storageAdapter = service.storageAdapter;
     const restoreRes = await reloadedService.restorePersistedState();
     expect(restoreRes.success).toBeTrue();
 
@@ -2464,4 +2465,343 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
 
     comp.ngOnDestroy();
   });
+  it('41. Bloque F2: Cliente nuevo, fiado en POS, abono amortizado por FIFO y actualización de estatus', async () => {
+    // 1. Alta de cliente nuevo
+    const createRes = service.createCustomer({
+      name: 'Doña Silvia - Tiendita La Esquina',
+      alias: 'Doña Silvia',
+      phone: '477-555-1234',
+      creditLimit: 800.0,
+      creditDays: 15,
+      notes: 'Vecina de confianza',
+    });
+    expect(createRes.ok).toBeTrue();
+    expect(createRes.customer).toBeDefined();
+    const custId = createRes.customer!.id;
+
+    // Verificar estado inicial
+    const custInitial = service.getCustomerDetail(custId);
+    expect(custInitial).toBeDefined();
+    expect(custInitial!.currentBalance).toBe(0);
+    expect(custInitial!.status).toBe('AL_CORRIENTE');
+    expect(custInitial!.isActive).toBeTrue();
+
+    // 2. Cargar venta a fiado por $300.00
+    const saleItems: PosSaleItem[] = [
+      {
+        sku: 'AB-PAN-01',
+        barcode: '75010001',
+        name: 'Pan Dulce Artesanal',
+        emoji: '🥐',
+                unitPrice: 30.0,
+        saleUnit: 'Pieza',
+        isBulk: false,
+        qty: 10,
+        subtotal: 300.0,
+      },
+    ];
+    const fiadoRes1 = service.processCreditSale(saleItems, custId);
+    expect(fiadoRes1.ok).toBeTrue();
+
+    const custAfterSale1 = service.getCustomerDetail(custId)!;
+    expect(custAfterSale1.currentBalance).toBe(300.0);
+    expect(custAfterSale1.status).toBe('AL_CORRIENTE'); // 300 / 800 = 37.5% (< 90%)
+    expect(custAfterSale1.debts?.length).toBe(1);
+    expect(custAfterSale1.debts?.[0].remainingBalance).toBe(300.0);
+
+    // 3. Segunda venta a fiado por $450.00 -> Total saldo: $750.00 (750 / 800 = 93.75% >= 90%) -> LIMITE_ALCANZADO
+    const saleItems2: PosSaleItem[] = [
+      {
+        sku: 'AB-HUE-01',
+        barcode: '75010002',
+        name: 'Huevo Blanco 1Kg',
+        emoji: '🥚',
+                unitPrice: 45.0,
+        saleUnit: 'Pieza',
+        isBulk: false,
+        qty: 10,
+        subtotal: 450.0,
+      },
+    ];
+    const fiadoRes2 = service.processCreditSale(saleItems2, custId);
+    expect(fiadoRes2.ok).toBeTrue();
+
+    const custAfterSale2 = service.getCustomerDetail(custId)!;
+    expect(custAfterSale2.currentBalance).toBe(750.0);
+    expect(custAfterSale2.status).toBe('LIMITE_ALCANZADO');
+    expect(custAfterSale2.debts?.length).toBe(2);
+
+    // 4. Abono deudor en efectivo por $400.00: liquida los $300 de la 1ra deuda y amortiza $100 de la 2da
+    const payRes = service.registerCreditPayment(custId, 400.0);
+    expect(payRes.ok).toBeTrue();
+    expect(payRes.applied).toBe(400.0);
+
+    const custAfterPay = service.getCustomerDetail(custId)!;
+    expect(custAfterPay.currentBalance).toBe(350.0); // 750 - 400 = 350
+    expect(custAfterPay.status).toBe('AL_CORRIENTE'); // 350 / 800 = 43.75% (< 90%)
+    expect(custAfterPay.debts?.[0].remainingBalance).toBe(0); // 1ra partida liquidada
+    expect(custAfterPay.debts?.[1].remainingBalance).toBe(350.0); // 2da partida amortizada ($450 - $100 = $350)
+    expect(custAfterPay.payments?.length).toBe(1);
+    expect(custAfterPay.payments?.[0].amount).toBe(400.0);
+
+    // 5. Verificar Kardex encadenado (ABONO_FIADO)
+    const abonoKardex = service.kardex().find((k) => k.type === 'ABONO_FIADO' && (typeof k.producto === 'string' ? k.producto : k.producto.sku) === custId);
+    expect(abonoKardex).toBeDefined();
+    expect(abonoKardex?.amount).toBe(400.0);
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+
+    // 6. Verificar persistencia tras flush y restore
+    await service.flushSave();
+    const reloadedService = new MockInventoryService();
+    reloadedService.storageAdapter = service.storageAdapter;
+    const restoreRes = await reloadedService.restorePersistedState();
+    expect(restoreRes.success).toBeTrue();
+
+    const reloadedCust = reloadedService.getCustomerDetail(custId);
+    expect(reloadedCust).toBeDefined();
+    expect(reloadedCust!.currentBalance).toBe(350.0);
+    expect(reloadedCust!.status).toBe('AL_CORRIENTE');
+  });
+
+  it('42. Bloque F2: Edición de límite o plazo de cliente exige PIN (rechaza sin PIN o erróneo, aplica con PIN)', async () => {
+    await service.setupInitialPin('984312');
+
+    const createRes = service.createCustomer({
+      name: 'Don Rogelio Mecánico',
+      creditLimit: 500.0,
+      creditDays: 15,
+    });
+    expect(createRes.ok).toBeTrue();
+    const custId = createRes.customer!.id;
+
+    // 1. Modificar sólo notas/nombre sin tocar límite ni plazo -> NO exige PIN
+    const updateNameRes = await service.updateCustomerWithPinCheck(custId, {
+      name: 'Don Rogelio Taller Istmo',
+      creditLimit: 500.0,
+      creditDays: 15,
+      notes: 'Cambio de nombre comercial',
+    });
+    expect(updateNameRes.ok).toBeTrue();
+    expect(updateNameRes.customer?.name).toBe('Don Rogelio Taller Istmo');
+
+    // 2. Modificar límite a $1,000.00 sin PIN -> Bloqueado
+    const updateLimitNoPin = await service.updateCustomerWithPinCheck(custId, {
+      name: 'Don Rogelio Taller Istmo',
+      creditLimit: 1000.0,
+      creditDays: 15,
+    });
+    expect(updateLimitNoPin.ok).toBeFalse();
+    expect(updateLimitNoPin.message).toContain('PIN de encargado');
+
+    // 3. Modificar con PIN erróneo -> Bloqueado
+    const updateLimitWrongPin = await service.updateCustomerWithPinCheck(
+      custId,
+      {
+        name: 'Don Rogelio Taller Istmo',
+        creditLimit: 1000.0,
+        creditDays: 15,
+      },
+      '000000',
+    );
+    expect(updateLimitWrongPin.ok).toBeFalse();
+    expect(updateLimitWrongPin.message).toContain('incorrecto');
+
+    // 4. Modificar plazo a 30 días con PIN correcto -> Exitoso
+    const updateSuccess = await service.updateCustomerWithPinCheck(
+      custId,
+      {
+        name: 'Don Rogelio Taller Istmo',
+        creditLimit: 1000.0,
+        creditDays: 30,
+      },
+      '984312',
+    );
+    expect(updateSuccess.ok).toBeTrue();
+    expect(updateSuccess.customer?.creditLimit).toBe(1000.0);
+    expect(updateSuccess.customer?.creditDays).toBe(30);
+  });
+
+  it('43. Bloque F2: Baja lógica de cliente y proveedor bloqueada si tienen saldo pendiente; permitida si saldo es 0', async () => {
+    // --- CLIENTE ---
+    const custRes = service.createCustomer({
+      name: 'Cliente Para Baja',
+      creditLimit: 500.0,
+      creditDays: 15,
+    });
+    const custId = custRes.customer!.id;
+
+    // Con saldo 0 se puede dar de baja
+    const deact1 = service.deleteCustomerLogical(custId);
+    expect(deact1.ok).toBeTrue();
+    expect(service.getCustomerDetail(custId)!.isActive).toBeFalse();
+
+    // Reactivar para probar bloqueo con deuda
+    service.creditCustomers.update((list) =>
+      list.map((c) => (c.id === custId ? { ...c, isActive: true, currentBalance: 150.0 } : c)),
+    );
+
+    const deactBlocked = service.deleteCustomerLogical(custId);
+    expect(deactBlocked.ok).toBeFalse();
+    expect(deactBlocked.message).toContain('saldo pendiente');
+
+    // --- PROVEEDOR ---
+    const suppRes = service.createSupplier({
+      name: 'Proveedor Para Baja',
+      phone: '477-111-2222',
+      paymentTerms: 'CREDITO',
+      creditDays: 15,
+    });
+    expect(suppRes.ok).toBeTrue();
+    const suppId = suppRes.supplier!.id;
+
+    // Sin saldo se da de baja
+    const deactSuppClean = service.deleteSupplierLogical(suppId);
+    expect(deactSuppClean.ok).toBeTrue();
+
+    // Reactivar y asignar saldo por pagar
+    service.suppliers.update((list) =>
+      list.map((s) => (s.id === suppId ? { ...s, isActive: true, currentBalance: 320.0 } : s)),
+    );
+    const deactSuppBlocked = service.deleteSupplierLogical(suppId);
+    expect(deactSuppBlocked.ok).toBeFalse();
+    expect(deactSuppBlocked.message).toContain('saldo pendiente');
+  });
+
+  it('44. Bloque F2: Proveedor nuevo, recepción de compra a crédito genera cuenta por pagar con vencimiento y alerta en tablero', async () => {
+    // 1. Alta de proveedor nuevo
+    const suppRes = service.createSupplier({
+      name: 'Distribuidora Lácteos Santa Clara',
+      phone: '800-726-8225',
+      visitDays: ['Martes', 'Viernes'],
+      paymentTerms: 'CREDITO',
+      creditDays: 15,
+      physicalExchangePolicy: true,
+      notes: 'Leches y yogures gourmet',
+    });
+    expect(suppRes.ok).toBeTrue();
+    const suppId = suppRes.supplier!.id;
+
+    // 2. Crear recepción de compra a crédito
+    const receptionLines = [
+      service.createManualLine('LAC-LAL-1L', 5, 18.0), // 5 cajas x 12 pzas = 60 pzas a $18 = $1,080.00
+    ];
+
+    service.saveReception(receptionLines, 'REC-SC-1001', {
+      paymentType: 'CREDITO',
+      supplierId: suppId,
+      creditDays: 15,
+    });
+
+    // 3. Verificar cuenta por pagar (CxP)
+    const pendingDebts = service.getPendingAccountsPayable(suppId);
+    expect(pendingDebts.length).toBe(1);
+    const debt = pendingDebts[0];
+    expect(debt.receptionFolio).toBe('REC-SC-1001');
+    expect(debt.totalAmount).toBe(receptionLines[0].lineTotal);
+    expect(debt.remainingBalance).toBe(receptionLines[0].lineTotal);
+    expect(debt.status).toBe('PENDIENTE');
+
+    // Verificar vencimiento calculado a 15 días
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const expectedDueDate = calculateDueDate(todayStr, 15);
+    expect(debt.dueDate).toBe(expectedDueDate);
+
+    // 4. Saldo del proveedor actualizado
+    const supp = service.suppliers().find((s) => s.id === suppId)!;
+    expect(supp.currentBalance).toBe(receptionLines[0].lineTotal);
+
+    // 5. Alerta en tablero de pago próximo a vencer
+    const alert = service.morningAlerts().find((a) => a.kind === 'vencimiento_proveedor' && a.id.includes('REC-SC-1001'));
+    expect(alert).toBeDefined();
+    expect(alert?.detail).toContain(expectedDueDate);
+
+    // 6. Kardex encadenado con ENTRADA_COMPRA
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+  });
+
+  it('45. Bloque F2: Pago a proveedor en efectivo genera salida de caja (cashPayoutsTotal), movimiento en Kardex y liquida CxP', async () => {
+    // 1. Crear proveedor y cuenta por pagar
+    const suppRes = service.createSupplier({
+      name: 'Abarrotes Don Pepe',
+      phone: '477-333-4444',
+      paymentTerms: 'CREDITO',
+      creditDays: 7,
+    });
+    const suppId = suppRes.supplier!.id;
+
+    const lines = [service.createManualLine('ACE-NUT-850', 24, 35.0)]; // 2 cajas x 12 = 24 pzas x $35 = $840.00
+    service.saveReception(lines, 'REC-PEP-2002', {
+      paymentType: 'CREDITO',
+      supplierId: suppId,
+      creditDays: 7,
+    });
+
+    const initialDrawerCash = service.getRealDrawerCash();
+    const initialPayouts = service.cashShift().cashPayoutsTotal || 0;
+
+    // 2. Realizar pago en efectivo de $500.00
+    const payRes1 = service.registerSupplierPayment(suppId, 500.0, 'EFECTIVO', 'Don Lupe (Encargado)');
+    expect(payRes1.ok).toBeTrue();
+    expect(payRes1.appliedAmount).toBe(500.0);
+    expect(payRes1.remainingBalance).toBe(340.0); // 840 - 500 = 340
+
+    // 3. Comprobar salida de caja y reducción del efectivo en cajón
+    expect(service.cashShift().cashPayoutsTotal).toBe(initialPayouts + 500.0);
+    expect(service.cashRegister().cashPayoutsTotal).toBe(initialPayouts + 500.0);
+    expect(service.getRealDrawerCash()).toBe(initialDrawerCash - 500.0);
+
+    // 4. Comprobar movimiento en Kardex de tipo PAGO_PROVEEDOR
+    const kardexPayout = service.kardex().find((k) => k.type === 'PAGO_PROVEEDOR' && (typeof k.producto === 'string' ? k.producto : k.producto.sku) === suppId);
+    expect(kardexPayout).toBeDefined();
+    expect(kardexPayout?.amount).toBe(500.0);
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+
+    // 5. Liquidar el restante $340.00
+    const payRes2 = service.registerSupplierPayment(suppId, 340.0, 'EFECTIVO', 'Don Lupe');
+    expect(payRes2.ok).toBeTrue();
+    expect(payRes2.remainingBalance).toBe(0);
+
+    const pendingDebts = service.getPendingAccountsPayable(suppId);
+    expect(pendingDebts.length).toBe(0); // Totalmente liquidada
+  });
+
+  it('46. Bloque F2: Historial de precios por proveedor y producto registra entradas y detecta alzas de costo', () => {
+    const suppRes = service.createSupplier({
+      name: 'Distribuidora Frijoles',
+      phone: '477-999-8888',
+      paymentTerms: 'CONTADO',
+    });
+    const suppId = suppRes.supplier!.id;
+
+    // 1. Primera recepción a costo base de $22.00
+    const line1 = service.createManualLine('FRI-NEG-50K', 2, 22.0);
+    service.saveReception([line1], 'REC-FRI-01', {
+      paymentType: 'CONTADO',
+      supplierId: suppId,
+    });
+
+    const history1 = service.getProductPriceHistory('FRI-NEG-50K', suppId);
+    expect(history1.length).toBeGreaterThanOrEqual(1);
+    expect(history1[0].unitCost).toBe(22.0);
+    expect(history1[0].priceHikeDetected).toBeFalse();
+
+    // 2. Segunda recepción con incremento a $26.40 (+20%)
+    const line2 = service.createManualLine('FRI-NEG-50K', 2, 26.4);
+    service.saveReception([line2], 'REC-FRI-02', {
+      paymentType: 'CONTADO',
+      supplierId: suppId,
+    });
+
+    const history2 = service.getProductPriceHistory('FRI-NEG-50K', suppId);
+    expect(history2[0].unitCost).toBe(26.4);
+    expect(history2[0].previousUnitCost).toBe(22.0);
+    expect(history2[0].priceHikeDetected).toBeTrue();
+    expect(history2[0].hikePct).toBe(20);
+
+    // 3. Comprobar que se generó alerta de alza en el tablero
+    const hikeAlert = service.morningAlerts().find((a) => a.kind === 'margen' && a.id.includes('FRI-NEG-50K'));
+    expect(hikeAlert).toBeDefined();
+    expect(hikeAlert?.title).toContain('+20%');
+  });
+
 });

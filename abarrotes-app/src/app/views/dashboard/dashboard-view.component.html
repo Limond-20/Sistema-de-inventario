@@ -30,6 +30,63 @@
     </section>
   }
 
+  
+  @if (supplierDebtAlerts().length > 0) {
+    <section class="rounded-2xl border border-amber-300 bg-amber-50/80 p-5 shadow-xs flex flex-col gap-3 shrink-0">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+          <span class="grid h-8 w-8 place-items-center rounded-lg bg-amber-100 text-amber-900">
+            <app-icon name="alert" [size]="18" />
+          </span>
+          <span>Pagos a Proveedores Próximos a Vencer ({{ supplierDebtAlerts().length }})</span>
+        </div>
+        <a routerLink="/recepcion" class="text-xs text-amber-900 font-bold underline">Gestionar en Recepción</a>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        @for (alert of supplierDebtAlerts(); track alert.id) {
+          <div class="bg-white rounded-xl border border-amber-200 p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <p class="font-bold text-xs text-slate-900">{{ alert.title }}</p>
+              <p class="text-[11px] text-slate-600 mt-0.5">{{ alert.detail }}</p>
+            </div>
+            <a routerLink="/recepcion"
+              class="h-9 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shrink-0 grid place-items-center">
+              Pagar
+            </a>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  @if (priceHikeAlerts().length > 0) {
+    <section class="rounded-2xl border border-sky-200 bg-sky-50/70 p-5 shadow-xs flex flex-col gap-3 shrink-0">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+          <span class="grid h-8 w-8 place-items-center rounded-lg bg-sky-100 text-sky-800">
+            <app-icon name="alert" [size]="18" />
+          </span>
+          <span>Alzas de Costo de Proveedor Detectadas ({{ priceHikeAlerts().length }})</span>
+        </div>
+        <a routerLink="/catalogo" class="text-xs text-sky-900 font-bold underline">Revisar Catálogo</a>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        @for (alert of priceHikeAlerts(); track alert.id) {
+          <div class="bg-white rounded-xl border border-sky-200 p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <p class="font-bold text-xs text-slate-900">{{ alert.title }}</p>
+              <p class="text-[11px] text-slate-600 mt-0.5">{{ alert.detail }}</p>
+            </div>
+            <a routerLink="/catalogo"
+              class="h-9 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shrink-0 grid place-items-center">
+              Revisar
+            </a>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
   <div class="grid min-h-0 flex-1 grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 xl:grid-rows-2">
 
     <!-- 1. PUNTO DE VENTA -->

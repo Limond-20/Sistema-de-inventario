@@ -14,7 +14,28 @@ import {
   applyCreditPaymentPure,
   applyCreditSalePure,
   type CreditCustomerStatus,
+  type CustomerInput,
+  type CreditPaymentRecord,
+  type CreditDebtItem,
+  validateCustomerInput,
+  canDeactivateCustomer,
+  requiresPinForCreditTermsChange,
+  searchCreditCustomers,
+  calculateCustomerDueDate,
 } from '../domain/credit';
+import {
+  type Supplier,
+  type SupplierInput,
+  type AccountsPayableDebt,
+  type ProductPriceHistoryRecord,
+  calculateDueDate,
+  isDebtOverdue,
+  isDebtDueSoon,
+  canDeactivateSupplier,
+  allocateSupplierPaymentToDebts,
+  detectPriceHike,
+  validateSupplierInput,
+} from '../domain/suppliers';
 import {
   createKardexEntry,
   generateKardexId,
@@ -228,10 +249,14 @@ export interface CreditCustomer {
   alias?: string;
   phone: string;
   creditLimit: number;
+  creditDays?: number;
   currentBalance: number;
   dueDate: string;
   status: CreditCustomerStatus;
   notes?: string;
+  isActive?: boolean;
+  debts?: CreditDebtItem[];
+  payments?: CreditPaymentRecord[];
 }
 
 export interface InternalConsumptionRecord {
@@ -255,6 +280,7 @@ export interface CashShiftSummary {
   creditSalesTotal: number;
   internalConsumptionTotalCost: number;
   shrinkTotalCost: number;
+  cashPayoutsTotal?: number;
 }
 
 export interface CashRegisterSummary {
@@ -266,6 +292,7 @@ export interface CashRegisterSummary {
   creditSalesTotal: number;
   /** Abonos en efectivo recibidos hoy de deudas anteriores (sí entran al cajón). */
   creditPaymentsReceived: number;
+  cashPayoutsTotal?: number;
 }
 
 export interface PosSaleItem {
@@ -304,7 +331,7 @@ export interface CreditResult {
 
 export type { KardexEntry, KardexType } from '../domain/kardex';
 
-export type AlertKind = 'cambio-fisico' | 'por-agotarse' | 'margen' | 'auditoria';
+export type AlertKind = 'cambio-fisico' | 'por-agotarse' | 'margen' | 'auditoria' | 'vencimiento_proveedor' | 'alza_precio';
 
 export interface MorningAlert {
   id: string;
@@ -1073,6 +1100,45 @@ const PRODUCTS: Product[] = PRODUCT_SEEDS.map((seed) => {
     rop: calculateROP(seed.dailySalesRate, seed.supplierLeadTimeDays, seed.safetyStock),
   };
 });
+
+export const INITIAL_SUPPLIERS: Supplier[] = [
+  {
+    id: 'SUP-01',
+    name: 'Distribuidora del Bajío',
+    phone: '477-123-4567',
+    visitDays: ['Lunes', 'Jueves'],
+    paymentTerms: 'CREDITO',
+    creditDays: 15,
+    physicalExchangePolicy: true,
+    notes: 'Proveedor principal de abarrotes secos y granos.',
+    isActive: true,
+    currentBalance: 0,
+  },
+  {
+    id: 'SUP-02',
+    name: 'Grupo Lala',
+    phone: '800-433-5252',
+    visitDays: ['Martes', 'Viernes'],
+    paymentTerms: 'CONTADO',
+    creditDays: 0,
+    physicalExchangePolicy: true,
+    notes: 'Lácteos y derivados. Pago contra entrega.',
+    isActive: true,
+    currentBalance: 0,
+  },
+  {
+    id: 'SUP-03',
+    name: 'Grupo Bimbo',
+    phone: '800-246-2600',
+    visitDays: ['Miércoles', 'Sábado'],
+    paymentTerms: 'CREDITO',
+    creditDays: 7,
+    physicalExchangePolicy: true,
+    notes: 'Pan empacado y repostería.',
+    isActive: true,
+    currentBalance: 0,
+  },
+];
 
 const CREDIT_CUSTOMERS: CreditCustomer[] = [
   {
@@ -2451,6 +2517,9 @@ export class MockInventoryService implements OnDestroy {
     this.morningAlerts.set(structuredClone(MORNING_ALERTS));
     this.auditLines.set(structuredClone(AUDIT_LINES));
     this.shrinkRecords.set(structuredClone(SHRINK_RECORDS));
+    this.suppliers.set(structuredClone(INITIAL_SUPPLIERS));
+    this.accountsPayable.set([]);
+    this.productPriceHistory.set([]);
     this.activeUser.set('Don Lupe (Encargado)');
     this.maxDiscountPctWithoutPin.set(DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN);
     this.processedMobileProductRequests.clear();
@@ -2566,6 +2635,9 @@ export class MockInventoryService implements OnDestroy {
   readonly auditLines = signal<AuditLine[]>(structuredClone(AUDIT_LINES));
   readonly shrinkRecords = signal<ShrinkRecord[]>(structuredClone(SHRINK_RECORDS));
   readonly supplierRoutes = signal<SupplierRoute[]>(structuredClone(SUPPLIER_ROUTES));
+  readonly suppliers = signal<Supplier[]>(structuredClone(INITIAL_SUPPLIERS));
+  readonly accountsPayable = signal<AccountsPayableDebt[]>([]);
+  readonly productPriceHistory = signal<ProductPriceHistoryRecord[]>([]);
   readonly perishableBatches = signal<PerishableBatch[]>(structuredClone(PERISHABLE_BATCHES));
   readonly blindAuditMission = signal<BlindAuditItem[]>([]);
 
@@ -2852,7 +2924,9 @@ export class MockInventoryService implements OnDestroy {
    */
   getRealDrawerCash(): number {
     const s = this.cashShift();
-    return sumMoney([s.openingCash, s.cashSalesTotal, s.creditPaymentsReceived]);
+    const totalIn = sumMoney([s.openingCash, s.cashSalesTotal, s.creditPaymentsReceived]);
+    const totalOut = s.cashPayoutsTotal || 0;
+    return subtractMoney(totalIn, totalOut);
   }
 
   /** Alias para compatibilidad con vistas y componentes existentes. */
@@ -3021,7 +3095,9 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: 'Selecciona un cliente para cargar el fiado.', total };
     }
 
-    const saleResult = applyCreditSalePure(customer, total, new Date());
+    const saleResult = applyCreditSalePure(customer, total, new Date(), {
+      description: `Fiado POS: ${items.map((i) => `${i.qty}x ${i.name}`).join(', ').slice(0, 80)}`,
+    });
     if (!saleResult.ok) {
       return {
         ok: false,
@@ -3356,7 +3432,7 @@ export class MockInventoryService implements OnDestroy {
    * - Suma el dinero recibido a creditPaymentsReceived (¡SÍ ENTRA EFECTIVO FÍSICO AL CAJÓN!).
    * - Registra entrada en Kardex encadenada.
    */
-  registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string } {
+  registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string; applied?: number } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
@@ -3368,7 +3444,7 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: 'Cliente no encontrado.' };
     }
 
-    const paymentResult = applyCreditPaymentPure(customer, amount, new Date());
+    const paymentResult = applyCreditPaymentPure(customer, amount, new Date(), `Abono deudor: ${customer.name}`);
     const applied = paymentResult.appliedAmount;
     if (applied <= 0) {
       return { ok: false, message: `${customer.name} no tiene deuda pendiente.` };
@@ -3407,7 +3483,8 @@ export class MockInventoryService implements OnDestroy {
 
     return {
       ok: true,
-      message: `Se registró abono de $${applied.toFixed(2)} en efectivo de ${customer.name}.`,
+      applied,
+      message: `Se registró abono de ${applied.toFixed(2)} en efectivo de ${customer.name}.`,
     };
   }
 
@@ -3516,7 +3593,15 @@ export class MockInventoryService implements OnDestroy {
   }
 
   /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado, actualiza reposición y genera Kardex encadenado. */
-  saveReception(lines: ReceptionLine[], folio: string): void {
+  saveReception(
+    lines: ReceptionLine[],
+    folio: string,
+    options?: {
+      paymentType?: 'CONTADO' | 'CREDITO';
+      supplierId?: string;
+      creditDays?: number;
+    }
+  ): void {
     if (!this.assertWritable()) return;
     const catalog = this.products();
     const pendingLine = lines.find((l) => {
@@ -3531,6 +3616,110 @@ export class MockInventoryService implements OnDestroy {
     const nowIso = new Date().toISOString();
     let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
     const currentUser = this.activeUser();
+
+    // 1. Resolver proveedor y términos
+    const targetSupplierId = options?.supplierId || (this.suppliers().find((s) => lines.some((l) => l.name.includes(s.name)))?.id) || 'SUP-01';
+    const supplier = this.suppliers().find((s) => s.id === targetSupplierId);
+    const isCredit = options?.paymentType === 'CREDITO' || (options?.paymentType === undefined && supplier?.paymentTerms === 'CREDITO');
+
+    // 2. Registrar historial de precios por proveedor y producto y detectar alzas
+    const newPriceRecords: ProductPriceHistoryRecord[] = [];
+    for (const line of lines) {
+      const existingHistory = this.productPriceHistory().filter(
+        (h) => h.productId === line.sku && (!targetSupplierId || h.supplierId === targetSupplierId)
+      );
+      const previousUnitCost = existingHistory[0]?.unitCost ?? line.historicCost;
+      const hike = detectPriceHike(line.newCost, previousUnitCost);
+
+      newPriceRecords.push({
+        id: `HIST-${line.sku}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        date: nowIso,
+        productId: line.sku,
+        productName: line.name,
+        supplierId: supplier?.id || 'SUP-01',
+        supplierName: supplier?.name || 'Distribuidora del Bajío',
+        receptionFolio: folio,
+        purchaseUnit: line.purchaseUnit,
+        unitsPerPurchase: line.unitsPerPurchase,
+        costPerPurchaseUnit: line.packageCost ?? fromCents(toCents(line.newCost * line.unitsPerPurchase)),
+        unitCost: line.newCost,
+        previousUnitCost,
+        priceHikeDetected: hike.isHike,
+        hikePct: hike.hikePct,
+      });
+
+      if (hike.isHike) {
+        this.morningAlerts.update((alerts) => [
+          ...alerts.filter((a) => a.id !== `alert-hike-${line.sku}`),
+          {
+            id: `alert-hike-${line.sku}`,
+            kind: 'margen',
+            icon: '⚠️',
+            title: `Alza de costo en ${line.name} (+${hike.hikePct}%)`,
+            detail: `El costo unitario subió de ${previousUnitCost.toFixed(2)} a ${line.newCost.toFixed(2)} en Nota #${folio}.`,
+            actionLabel: 'Ver Catálogo',
+            route: '/catalogo',
+          },
+        ]);
+      }
+    }
+
+    if (newPriceRecords.length > 0) {
+      this.productPriceHistory.update((hist) => [...newPriceRecords, ...hist]);
+    }
+
+    // 3. Si la compra es a crédito, generar cuenta por pagar (CxP) con vencimiento
+    if (isCredit) {
+      const receptionTotal = sumMoney(lines.map((l) => l.lineTotal));
+      const creditDays = options?.creditDays || supplier?.creditDays || 15;
+      const dueDate = calculateDueDate(nowIso.slice(0, 10), creditDays);
+      const debtId = `CXP-${folio}-${Date.now().toString().slice(-4)}`;
+
+      const newDebt: AccountsPayableDebt = {
+        id: debtId,
+        supplierId: supplier?.id || 'SUP-01',
+        supplierName: supplier?.name || 'Distribuidora del Bajío',
+        receptionFolio: folio,
+        date: nowIso.slice(0, 10),
+        dueDate,
+        totalAmount: receptionTotal,
+        remainingBalance: receptionTotal,
+        status: 'PENDIENTE',
+        linesSummary: lines.map((l) => ({
+          sku: l.sku,
+          productName: l.name,
+          qty: l.qtyPurchase * l.unitsPerPurchase,
+          unitCost: l.newCost,
+          subtotal: l.lineTotal,
+        })),
+      };
+
+      this.accountsPayable.update((list) => [newDebt, ...list]);
+
+      if (supplier) {
+        this.suppliers.update((list) =>
+          list.map((s) =>
+            s.id === supplier.id
+              ? { ...s, currentBalance: sumMoney([s.currentBalance, receptionTotal]) }
+              : s
+          )
+        );
+      }
+
+      // Alerta de pago próximo a vencer en el tablero
+      this.morningAlerts.update((alerts) => [
+        ...alerts.filter((a) => a.id !== `alert-cxp-${debtId}`),
+        {
+          id: `alert-cxp-${debtId}`,
+          kind: 'vencimiento_proveedor',
+          icon: '⏰',
+          title: `Pago a proveedor por vencer: ${receptionTotal.toFixed(2)} (${newDebt.supplierName})`,
+          detail: `Nota #${folio} vence el ${dueDate}. Prepara el pago para mantener condiciones de crédito.`,
+          actionLabel: 'Ver Proveedores',
+          route: '/proveedores',
+        },
+      ]);
+    }
 
     this.products.update((list) =>
       list.map((p) => {
@@ -3588,6 +3777,353 @@ export class MockInventoryService implements OnDestroy {
     }
     this.lastSavedNote.set(folio);
     void this.flushSave();
+  }
+
+  // =====================================================================
+  //  BLOQUE F2: CLIENTES Y CRÉDITOS (ALTA, EDICIÓN, BAJA, BÚSQUEDA)
+  // =====================================================================
+
+  createCustomer(input: CustomerInput): { ok: boolean; message: string; customer?: CreditCustomer } {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const validation = validateCustomerInput(input);
+    if (!validation.valid || !validation.normalized) {
+      return { ok: false, message: validation.error || 'Datos de cliente inválidos.' };
+    }
+    const norm = validation.normalized;
+    const newId = `CLI-${Date.now().toString().slice(-4)}`;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dueDateStr = calculateCustomerDueDate(todayStr, norm.creditDays);
+
+    const newCustomer: CreditCustomer = {
+      id: newId,
+      name: norm.name,
+      alias: norm.alias,
+      phone: norm.phone || '',
+      creditLimit: norm.creditLimit,
+      creditDays: norm.creditDays,
+      currentBalance: 0,
+      dueDate: dueDateStr,
+      status: 'AL_CORRIENTE',
+      notes: norm.notes,
+      isActive: true,
+      debts: [],
+      payments: [],
+    };
+
+    this.creditCustomers.update((list) => [newCustomer, ...list]);
+    void this.flushSave();
+    return { ok: true, message: 'Cliente registrado exitosamente.', customer: newCustomer };
+  }
+
+  async updateCustomerWithPinCheck(
+    customerId: string,
+    input: CustomerInput,
+    pin?: string
+  ): Promise<{ ok: boolean; message: string; customer?: CreditCustomer }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const existing = this.creditCustomers().find((c) => c.id === customerId);
+    if (!existing) {
+      return { ok: false, message: 'Cliente no encontrado.' };
+    }
+
+    const needsPin = requiresPinForCreditTermsChange(existing, {
+      creditLimit: input.creditLimit,
+      creditDays: input.creditDays,
+    });
+
+    if (needsPin) {
+      if (!pin) {
+        return { ok: false, message: 'Se requiere PIN de encargado para modificar el límite de crédito o el plazo en días.' };
+      }
+      const pinRes = await this.verifyAdminPin(pin);
+      if (!pinRes.success) {
+        return { ok: false, message: 'PIN de encargado incorrecto.' };
+      }
+    }
+
+    const validation = validateCustomerInput(input);
+    if (!validation.valid || !validation.normalized) {
+      return { ok: false, message: validation.error || 'Datos de cliente inválidos.' };
+    }
+    const norm = validation.normalized;
+
+    const updated: CreditCustomer = {
+      ...existing,
+      name: norm.name,
+      alias: norm.alias,
+      phone: norm.phone || '',
+      creditLimit: norm.creditLimit,
+      creditDays: norm.creditDays,
+      notes: norm.notes,
+    };
+    updated.status = computeCreditStatus(updated, new Date());
+
+    this.creditCustomers.update((list) =>
+      list.map((c) => (c.id === customerId ? updated : c))
+    );
+    void this.flushSave();
+    return { ok: true, message: 'Cliente actualizado exitosamente.', customer: updated };
+  }
+
+  deleteCustomerLogical(customerId: string): { ok: boolean; message: string } {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const existing = this.creditCustomers().find((c) => c.id === customerId);
+    if (!existing) {
+      return { ok: false, message: 'Cliente no encontrado.' };
+    }
+
+    const check = canDeactivateCustomer(existing);
+    if (!check.canDeactivate) {
+      return { ok: false, message: check.reason || 'No se puede dar de baja al cliente porque tiene saldo pendiente.' };
+    }
+
+    this.creditCustomers.update((list) =>
+      list.map((c) => (c.id === customerId ? { ...c, isActive: false } : c))
+    );
+    void this.flushSave();
+    return { ok: true, message: `Cliente "${existing.name}" dado de baja exitosamente.` };
+  }
+
+  searchCustomers(query: string): CreditCustomer[] {
+    return searchCreditCustomers(query, this.creditCustomers());
+  }
+
+  getCustomerDetail(customerId: string): CreditCustomer | undefined {
+    return this.creditCustomers().find((c) => c.id === customerId);
+  }
+
+  // =====================================================================
+  //  BLOQUE F2: PROVEEDORES, CUENTAS POR PAGAR (CxP) E HISTORIAL DE PRECIOS
+  // =====================================================================
+
+  createSupplier(input: SupplierInput): { ok: boolean; message: string; supplier?: Supplier } {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const validation = validateSupplierInput(input);
+    if (!validation.valid || !validation.normalized) {
+      return { ok: false, message: validation.error || 'Datos de proveedor inválidos.' };
+    }
+    const norm = validation.normalized;
+    const newId = `SUP-${Date.now().toString().slice(-4)}`;
+    const newSupplier: Supplier = {
+      id: newId,
+      name: norm.name,
+      phone: norm.phone,
+      visitDays: norm.visitDays || [],
+      paymentTerms: norm.paymentTerms || 'CONTADO',
+      creditDays: norm.creditDays || 0,
+      physicalExchangePolicy: norm.physicalExchangePolicy || false,
+      notes: norm.notes,
+      isActive: true,
+      currentBalance: 0,
+    };
+
+    this.suppliers.update((list) => [newSupplier, ...list]);
+    void this.flushSave();
+    return { ok: true, message: 'Proveedor registrado exitosamente.', supplier: newSupplier };
+  }
+
+  updateSupplier(supplierId: string, input: SupplierInput): { ok: boolean; message: string; supplier?: Supplier } {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const existing = this.suppliers().find((s) => s.id === supplierId);
+    if (!existing) {
+      return { ok: false, message: 'Proveedor no encontrado.' };
+    }
+    const validation = validateSupplierInput(input);
+    if (!validation.valid || !validation.normalized) {
+      return { ok: false, message: validation.error || 'Datos de proveedor inválidos.' };
+    }
+    const norm = validation.normalized;
+
+    const updated: Supplier = {
+      ...existing,
+      name: norm.name,
+      phone: norm.phone,
+      visitDays: norm.visitDays || [],
+      paymentTerms: norm.paymentTerms || 'CONTADO',
+      creditDays: norm.creditDays || 0,
+      physicalExchangePolicy: norm.physicalExchangePolicy || false,
+      notes: norm.notes,
+    };
+
+    this.suppliers.update((list) =>
+      list.map((s) => (s.id === supplierId ? updated : s))
+    );
+    void this.flushSave();
+    return { ok: true, message: 'Proveedor actualizado exitosamente.', supplier: updated };
+  }
+
+  deleteSupplierLogical(supplierId: string): { ok: boolean; message: string } {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const existing = this.suppliers().find((s) => s.id === supplierId);
+    if (!existing) {
+      return { ok: false, message: 'Proveedor no encontrado.' };
+    }
+
+    const check = canDeactivateSupplier(existing, this.accountsPayable());
+    if (!check.canDeactivate) {
+      return { ok: false, message: check.reason || 'No se puede dar de baja al proveedor porque tiene saldo pendiente.' };
+    }
+
+    this.suppliers.update((list) =>
+      list.map((s) => (s.id === supplierId ? { ...s, isActive: false } : s))
+    );
+    void this.flushSave();
+    return { ok: true, message: `Proveedor "${existing.name}" dado de baja exitosamente.` };
+  }
+
+  registerSupplierPayment(
+    supplierId: string,
+    amount: number,
+    paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA' = 'EFECTIVO',
+    authorizer?: string
+  ): {
+    ok: boolean;
+    message: string;
+    appliedAmount: number;
+    remainingBalance: number;
+    excessAmount: number;
+  } {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+        appliedAmount: 0,
+        remainingBalance: 0,
+        excessAmount: 0,
+      };
+    }
+
+    const supplier = this.suppliers().find((s) => s.id === supplierId);
+    if (!supplier) {
+      return {
+        ok: false,
+        message: 'Proveedor no encontrado.',
+        appliedAmount: 0,
+        remainingBalance: 0,
+        excessAmount: 0,
+      };
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      return {
+        ok: false,
+        message: 'Ingresa un monto de pago válido mayor a $0.00.',
+        appliedAmount: 0,
+        remainingBalance: supplier.currentBalance,
+        excessAmount: 0,
+      };
+    }
+
+    const debts = this.accountsPayable().filter((d) => d.supplierId === supplierId);
+    const allocation = allocateSupplierPaymentToDebts(debts, amount, new Date());
+
+    if (allocation.totalApplied <= 0) {
+      return {
+        ok: false,
+        message: `${supplier.name} no tiene cuentas por pagar pendientes.`,
+        appliedAmount: 0,
+        remainingBalance: supplier.currentBalance,
+        excessAmount: amount,
+      };
+    }
+
+    // Actualizar cuentas por pagar
+    this.accountsPayable.update((allDebts) =>
+      allDebts.map((d) => {
+        if (d.supplierId !== supplierId) return d;
+        const updated = allocation.updatedDebts.find((ud: AccountsPayableDebt) => ud.id === d.id);
+        return updated ? updated : d;
+      })
+    );
+
+    // Actualizar saldo del proveedor
+    this.suppliers.update((list) =>
+      list.map((s) =>
+        s.id === supplierId
+          ? { ...s, currentBalance: allocation.totalRemainingBalance }
+          : s
+      )
+    );
+
+    // Si es en efectivo, genera salida de caja en el corte de turno (bloque H)
+    if (paymentMethod === 'EFECTIVO') {
+      this.cashShift.update((s) => ({
+        ...s,
+        cashPayoutsTotal: sumMoney([s.cashPayoutsTotal || 0, allocation.totalApplied]),
+      }));
+      this.cashRegister.update((r) => ({
+        ...r,
+        cashPayoutsTotal: sumMoney([r.cashPayoutsTotal || 0, allocation.totalApplied]),
+      }));
+    }
+
+    // Generar movimiento en Kardex
+    const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const entry = createKardexEntry({
+      type: 'PAGO_PROVEEDOR',
+      producto: { sku: supplier.id, name: supplier.name },
+      cantidad: 0,
+      saldoAnterior: supplier.currentBalance,
+      saldoResultante: allocation.totalRemainingBalance,
+      usuario: authorizer || this.activeUser(),
+      referencia: `Pago CxP ${paymentMethod}: ${supplier.name}`,
+      amount: allocation.totalApplied,
+      description: `Pago a proveedor ${supplier.name} por ${allocation.totalApplied.toFixed(2)} (${paymentMethod}). Saldo pendiente: ${allocation.totalRemainingBalance.toFixed(2)}`,
+    }, previousHash);
+
+    this.kardex.update((k) => [entry, ...k]);
+
+    // Actualizar alertas del tablero: retirar alertas de deudas pagadas
+    this.morningAlerts.update((alerts) =>
+      alerts.filter((a) => {
+        const match = a.id.match(/^alert-cxp-(.+)$/);
+        if (!match) return true;
+        const debtId = match[1];
+        const debt = this.accountsPayable().find((d) => d.id === debtId);
+        return debt ? debt.status !== 'PAGADO' : false;
+      })
+    );
+
+    void this.flushSave();
+
+    return {
+      ok: true,
+      message: `Pago de ${allocation.totalApplied.toFixed(2)} registrado correctamente. Saldo restante: ${allocation.totalRemainingBalance.toFixed(2)}.`,
+      appliedAmount: allocation.totalApplied,
+      remainingBalance: allocation.totalRemainingBalance,
+      excessAmount: allocation.excessAmount,
+    };
+  }
+
+  getPendingAccountsPayable(supplierId?: string): AccountsPayableDebt[] {
+    const debts = this.accountsPayable().filter((d) => d.status !== 'PAGADO');
+    if (supplierId) {
+      return debts.filter((d) => d.supplierId === supplierId);
+    }
+    return debts;
+  }
+
+  getProductPriceHistory(productId?: string, supplierId?: string): ProductPriceHistoryRecord[] {
+    let hist = this.productPriceHistory();
+    if (productId) {
+      hist = hist.filter((h) => h.productId === productId);
+    }
+    if (supplierId) {
+      hist = hist.filter((h) => h.supplierId === supplierId);
+    }
+    return hist;
   }
 
   // ---------- Auditoría ----------

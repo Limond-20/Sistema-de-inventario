@@ -13,7 +13,8 @@ export type KardexType =
   | 'BAJA_MERMA'
   | 'CONSUMO_INTERNO'
   | 'FALTANTE_SISTEMA'
-  | 'CAMBIO_USUARIO';
+  | 'CAMBIO_USUARIO'
+  | 'PAGO_PROVEEDOR';
 
 export interface KardexProductInfo {
   sku: string;

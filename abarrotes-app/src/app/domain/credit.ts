@@ -23,6 +23,13 @@
  *    - Los $20 restantes amortizan la deuda vigente (saldo vigente remanente = $130).
  *    - Como ya no existe deuda con fecha vencida, el cliente sale inmediatamente de VENCIDO.
  *    - Su ratio es $130 / $500 = 26% (< 90%), por lo que su estatus resultante es AL_CORRIENTE.
+ *
+ * 4. REGLAS DE GESTIÓN (BLOQUE F2):
+ *    - Alta y edición de clientes (nombre, teléfono, límite de crédito, plazo en días, notas).
+ *    - Modificar límite de crédito o plazo en días exige PIN de administrador o encargado.
+ *    - Baja lógica bloqueada si el cliente tiene saldo pendiente (> 0).
+ *    - Búsqueda rápida por nombre, alias, teléfono o ID en el POS (omite clientes inactivos).
+ *    - Ficha de cliente con historial de compras a crédito, abonos y saldo.
  * =====================================================================================
  */
 
@@ -47,16 +54,151 @@ export interface CreditDebtItem {
   description?: string;
 }
 
+export interface CreditPaymentRecord {
+  id: string;
+  date: string; // ISO YYYY-MM-DDTHH:mm:ss
+  amount: number;
+  previousBalance: number;
+  remainingBalance: number;
+  note?: string;
+}
+
+export interface CustomerInput {
+  name: string;
+  phone?: string;
+  alias?: string;
+  creditLimit: number;
+  creditDays?: number;
+  notes?: string;
+}
+
 export interface CreditCustomerLike {
   id?: string;
   name?: string;
+  alias?: string;
+  phone?: string;
   creditLimit: number;
+  creditDays?: number;
   currentBalance: number;
   dueDate?: string | Date;
   status?: CreditCustomerStatus;
   overdueBalance?: number;
+  notes?: string;
+  isActive?: boolean;
   debts?: CreditDebtItem[];
+  payments?: CreditPaymentRecord[];
   [key: string]: any;
+}
+
+/**
+ * Calcula la fecha de vencimiento sumando N días calendario a una fecha base (formato YYYY-MM-DD).
+ */
+export function calculateCustomerDueDate(baseDate: string | Date, days: number): string {
+  const d = typeof baseDate === 'string'
+    ? new Date(baseDate.includes('T') ? baseDate : `${baseDate}T12:00:00`)
+    : new Date(baseDate);
+  if (isNaN(d.getTime())) {
+    const today = new Date();
+    today.setDate(today.getDate() + Math.max(0, days));
+    return today.toISOString().slice(0, 10);
+  }
+  const cleanDays = Math.max(0, Math.round(Number(days) || 0));
+  d.setDate(d.getDate() + cleanDays);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Valida los datos de entrada para alta o edición de un cliente de fiado.
+ */
+export function validateCustomerInput(input: CustomerInput): {
+  valid: boolean;
+  error?: string;
+  normalized?: CustomerInput & { creditDays: number; creditLimit: number };
+} {
+  const name = String(input.name || '').trim();
+  if (!name || name.length < 2) {
+    return { valid: false, error: 'El nombre del cliente debe tener al menos 2 caracteres.' };
+  }
+  const limitCents = toCents(input.creditLimit);
+  if (limitCents < 0 || isNaN(limitCents)) {
+    return { valid: false, error: 'El límite de crédito no puede ser negativo.' };
+  }
+  const creditDays = input.creditDays !== undefined ? Math.max(1, Math.round(Number(input.creditDays))) : 15;
+  const phone = input.phone ? String(input.phone).trim() : '';
+  const alias = input.alias ? String(input.alias).trim() : undefined;
+  const notes = input.notes ? String(input.notes).trim() : undefined;
+
+  return {
+    valid: true,
+    normalized: {
+      name,
+      phone,
+      alias,
+      creditLimit: fromCents(limitCents),
+      creditDays,
+      notes,
+    },
+  };
+}
+
+/**
+ * Valida si un cliente puede darse de baja lógica.
+ * Regla: No se puede dar de baja si tiene saldo pendiente (> 0).
+ */
+export function canDeactivateCustomer(customer: CreditCustomerLike): { canDeactivate: boolean; reason?: string } {
+  const balanceCents = toCents(customer.currentBalance);
+  if (balanceCents > 0) {
+    return {
+      canDeactivate: false,
+      reason: `No se puede dar de baja al cliente "${customer.name || 'Sin nombre'}" porque tiene un saldo pendiente de $${customer.currentBalance.toFixed(2)}.`,
+    };
+  }
+  return { canDeactivate: true };
+}
+
+/**
+ * Verifica si la modificación de datos del cliente requiere PIN de administrador/encargado.
+ * Regla: Cambiar límite de crédito o plazo en días exige PIN.
+ */
+export function requiresPinForCreditTermsChange(
+  oldCustomer: CreditCustomerLike,
+  newTerms: { creditLimit?: number; creditDays?: number }
+): boolean {
+  if (newTerms.creditLimit !== undefined) {
+    if (toCents(newTerms.creditLimit) !== toCents(oldCustomer.creditLimit)) {
+      return true;
+    }
+  }
+  if (newTerms.creditDays !== undefined) {
+    const oldDays = oldCustomer.creditDays !== undefined ? Math.round(Number(oldCustomer.creditDays)) : 15;
+    const newDays = Math.round(Number(newTerms.creditDays));
+    if (oldDays !== newDays) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Búsqueda rápida de clientes para el POS:
+ * Busca por coincidencia insensible a mayúsculas en nombre, alias, teléfono o ID.
+ * Omite clientes inactivos (baja lógica).
+ */
+export function searchCreditCustomers<T extends CreditCustomerLike>(
+  query: string,
+  customers: readonly T[]
+): T[] {
+  const q = (query || '').toLowerCase().trim();
+  const activeCustomers = customers.filter((c) => c.isActive !== false);
+  if (!q) return activeCustomers;
+
+  return activeCustomers.filter((c) => {
+    const nameMatch = (c.name || '').toLowerCase().includes(q);
+    const aliasMatch = (c.alias || '').toLowerCase().includes(q);
+    const phoneMatch = (c.phone || '').replace(/[\s-]/g, '').includes(q.replace(/[\s-]/g, ''));
+    const idMatch = (c.id || '').toLowerCase().includes(q);
+    return nameMatch || aliasMatch || phoneMatch || idMatch;
+  });
 }
 
 /**
@@ -226,7 +368,8 @@ export function allocatePaymentToDebts(
 export function applyCreditPaymentPure<T extends CreditCustomerLike>(
   cliente: T,
   paymentAmount: number,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  paymentNote?: string
 ): { updatedCustomer: T; appliedAmount: number; changeOrExcess: number } {
   const balanceCents = toCents(cliente.currentBalance);
   const payCents = toCents(paymentAmount);
@@ -244,7 +387,6 @@ export function applyCreditPaymentPure<T extends CreditCustomerLike>(
     const excessCents = Math.max(0, payCents - toCents(allocation.totalApplied));
 
     // Determinar la fecha de vencimiento más representativa restante:
-    // Si queda vencido, la fecha vencida más antigua; si solo queda vigente, la fecha vigente más próxima
     let nextDueDate = cliente.dueDate;
     const remainingDebts = allocation.updatedDebts.filter((d) => toCents(d.remainingBalance) > 0);
     if (remainingDebts.length > 0) {
@@ -265,6 +407,21 @@ export function applyCreditPaymentPure<T extends CreditCustomerLike>(
       dueDate: nextDueDate,
       debts: allocation.updatedDebts,
     };
+
+    if (allocation.totalApplied > 0) {
+      const paymentRecord: CreditPaymentRecord = {
+        id: `PAG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        date: hoy.toISOString(),
+        amount: allocation.totalApplied,
+        previousBalance: fromCents(balanceCents),
+        remainingBalance: allocation.totalRemainingBalance,
+        note: paymentNote || 'Abono en efectivo',
+      };
+      candidate.payments = Array.isArray(cliente.payments)
+        ? [paymentRecord, ...cliente.payments]
+        : [paymentRecord];
+    }
+
     candidate.status = computeCreditStatus(candidate, hoy);
 
     return {
@@ -291,6 +448,20 @@ export function applyCreditPaymentPure<T extends CreditCustomerLike>(
     overdueBalance: newOverdueBalance,
   };
 
+  if (appliedCents > 0) {
+    const paymentRecord: CreditPaymentRecord = {
+      id: `PAG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      date: hoy.toISOString(),
+      amount: fromCents(appliedCents),
+      previousBalance: fromCents(balanceCents),
+      remainingBalance: newBalance,
+      note: paymentNote || 'Abono en efectivo',
+    };
+    candidate.payments = Array.isArray(cliente.payments)
+      ? [paymentRecord, ...cliente.payments]
+      : [paymentRecord];
+  }
+
   const nextStatus = computeCreditStatus(candidate, hoy);
   candidate.status = nextStatus;
 
@@ -307,7 +478,8 @@ export function applyCreditPaymentPure<T extends CreditCustomerLike>(
 export function applyCreditSalePure<T extends CreditCustomerLike>(
   cliente: T,
   saleAmount: number,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  saleDetails?: { id?: string; date?: string; dueDate?: string; description?: string }
 ): { ok: boolean; message: string; updatedCustomer?: T; availableCredit: number } {
   const balanceCents = toCents(cliente.currentBalance);
   const limitCents = toCents(cliente.creditLimit);
@@ -332,9 +504,29 @@ export function applyCreditSalePure<T extends CreditCustomerLike>(
   }
 
   const newBalanceCents = balanceCents + saleCents;
+  const newDebts = Array.isArray(cliente.debts) ? [...cliente.debts] : (saleDetails ? [] : undefined);
+  let saleDueDateStr: string | undefined;
+
+  if (saleDetails) {
+    const defaultDays = cliente.creditDays || 15;
+    const saleDateStr = saleDetails.date || hoy.toISOString().slice(0, 10);
+    saleDueDateStr = saleDetails.dueDate || calculateCustomerDueDate(saleDateStr, defaultDays);
+
+    newDebts?.push({
+      id: saleDetails.id || `FIADO-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      date: saleDateStr,
+      dueDate: saleDueDateStr,
+      originalAmount: fromCents(saleCents),
+      remainingBalance: fromCents(saleCents),
+      description: saleDetails.description || 'Compra a crédito POS',
+    });
+  }
+
   const candidate: T = {
     ...cliente,
     currentBalance: fromCents(newBalanceCents),
+    ...(newDebts !== undefined ? { debts: newDebts } : {}),
+    ...(saleDueDateStr && (!cliente.dueDate || cliente.currentBalance === 0) ? { dueDate: saleDueDateStr } : {}),
   };
   candidate.status = computeCreditStatus(candidate, hoy);
 

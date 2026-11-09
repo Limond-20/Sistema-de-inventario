@@ -44,6 +44,9 @@ export interface PersistedAppState {
   internalConsumptionRecords?: any[];
   morningAlerts?: any[];
   maxDiscountPctWithoutPin?: number;
+  suppliers?: any[];
+  accountsPayable?: any[];
+  priceHistory?: any[];
 }
 
 export interface ValidationResult {
@@ -85,6 +88,15 @@ export function validateStoredState(
   }
   if (!Array.isArray(data.auditLines)) {
     return { valid: false, reason: 'La colección de auditorías está dañada o no es un arreglo.' };
+  }
+  if (data.suppliers !== undefined && !Array.isArray(data.suppliers)) {
+    return { valid: false, reason: 'La colección de proveedores está dañada o no es un arreglo.' };
+  }
+  if (data.accountsPayable !== undefined && !Array.isArray(data.accountsPayable)) {
+    return { valid: false, reason: 'La colección de cuentas por pagar está dañada o no es un arreglo.' };
+  }
+  if (data.priceHistory !== undefined && !Array.isArray(data.priceHistory)) {
+    return { valid: false, reason: 'La colección de historial de precios está dañada o no es un arreglo.' };
   }
 
   // 3. Validar consistencia básica de productos
@@ -143,6 +155,16 @@ export interface MigrationResult {
  * Normaliza y complementa un producto guardado en versiones previas de esquema
  * con todos los campos nuevos y sus valores por defecto (Bloque F1 seguimiento).
  */
+export function migrateCustomerDefaults(c: any): any {
+  return {
+    ...c,
+    creditDays: typeof c?.creditDays === 'number' ? c.creditDays : 15,
+    isActive: c?.isActive !== false,
+    debts: Array.isArray(c?.debts) ? c.debts : [],
+    payments: Array.isArray(c?.payments) ? c.payments : [],
+  };
+}
+
 export function migrateProductDefaults(p: any): any {
   if (!p || typeof p !== 'object') return p;
   const isBulk = Boolean(p.isBulk || p.saleUnit === 'Kg' || p.saleUnit === 'g' || p.saleUnit === 'L');
@@ -279,7 +301,7 @@ export function migrateState(data: any): MigrationResult {
       creditCustomers: Array.isArray(working.creditCustomers)
         ? working.creditCustomers
         : working.creditCustomers !== undefined
-        ? working.creditCustomers
+        ? working.creditCustomers.map(migrateCustomerDefaults)
         : [],
       cashShift: working.cashShift || {
         openingCash: 500,
@@ -306,6 +328,9 @@ export function migrateState(data: any): MigrationResult {
         typeof working.maxDiscountPctWithoutPin === 'number'
           ? working.maxDiscountPctWithoutPin
           : 10,
+      suppliers: Array.isArray(working.suppliers) ? working.suppliers : [],
+      accountsPayable: Array.isArray(working.accountsPayable) ? working.accountsPayable : [],
+      priceHistory: Array.isArray(working.priceHistory) ? working.priceHistory : [],
     };
   }
 

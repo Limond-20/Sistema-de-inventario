@@ -85,6 +85,10 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Modal Libreta Digital de Fiado y Abonos ----------
   protected readonly creditModalOpen = signal<boolean>(false);
   protected readonly selectedCustomerId = signal<string>('CLI-01');
+  protected readonly customerSearchQuery = signal<string>('');
+  protected readonly filteredCreditCustomers = computed(() =>
+    this.inv.searchCustomers(this.customerSearchQuery()),
+  );
   protected readonly abonoCustomerId = signal<string>('CLI-03');
   protected readonly abonoAmount = signal<number>(200);
   protected readonly abonoFeedback = signal<string | null>(null);
@@ -732,5 +736,121 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   submitCustomerAbono(): void {
     this.executeAbono();
+  }
+
+  // ---------- Gestión de Clientes (Bloque F2) ----------
+  protected readonly customerFormModalOpen = signal<boolean>(false);
+  protected readonly customerFormMode = signal<'create' | 'edit'>('create');
+  protected readonly customerFormId = signal<string>('');
+  protected readonly customerFormName = signal<string>('');
+  protected readonly customerFormPhone = signal<string>('');
+  protected readonly customerFormAlias = signal<string>('');
+  protected readonly customerFormLimit = signal<number>(500);
+  protected readonly customerFormCreditDays = signal<number>(15);
+  protected readonly customerFormNotes = signal<string>('');
+  protected readonly customerFormPin = signal<string>('');
+  protected readonly customerFormError = signal<string>('');
+  protected readonly customerFormFeedback = signal<string>('');
+
+  protected readonly customerFichaModalOpen = signal<boolean>(false);
+  protected readonly customerFicha = signal<CreditCustomer | null>(null);
+
+  openCreateCustomerModal(): void {
+    this.customerFormMode.set('create');
+    this.customerFormId.set('');
+    this.customerFormName.set('');
+    this.customerFormPhone.set('');
+    this.customerFormAlias.set('');
+    this.customerFormLimit.set(500);
+    this.customerFormCreditDays.set(15);
+    this.customerFormNotes.set('');
+    this.customerFormPin.set('');
+    this.customerFormError.set('');
+    this.customerFormFeedback.set('');
+    this.customerFormModalOpen.set(true);
+  }
+
+  openEditCustomerModal(c: CreditCustomer, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.customerFormMode.set('edit');
+    this.customerFormId.set(c.id);
+    this.customerFormName.set(c.name);
+    this.customerFormPhone.set(c.phone || '');
+    this.customerFormAlias.set(c.alias || '');
+    this.customerFormLimit.set(c.creditLimit);
+    this.customerFormCreditDays.set(c.creditDays || 15);
+    this.customerFormNotes.set(c.notes || '');
+    this.customerFormPin.set('');
+    this.customerFormError.set('');
+    this.customerFormFeedback.set('');
+    this.customerFormModalOpen.set(true);
+  }
+
+  closeCustomerFormModal(): void {
+    this.customerFormModalOpen.set(false);
+  }
+
+  async saveCustomerForm(): Promise<void> {
+    this.customerFormError.set('');
+    this.customerFormFeedback.set('');
+    const input = {
+      name: this.customerFormName(),
+      phone: this.customerFormPhone(),
+      alias: this.customerFormAlias(),
+      creditLimit: Number(this.customerFormLimit()) || 0,
+      creditDays: Number(this.customerFormCreditDays()) || 15,
+      notes: this.customerFormNotes(),
+    };
+
+    if (this.customerFormMode() === 'create') {
+      const res = this.inv.createCustomer(input);
+      if (!res.ok) {
+        this.customerFormError.set(res.message);
+        return;
+      }
+      this.customerFormFeedback.set(res.message);
+      if (res.customer) {
+        this.selectedCustomerId.set(res.customer.id);
+      }
+      setTimeout(() => this.closeCustomerFormModal(), 600);
+    } else {
+      const res = await this.inv.updateCustomerWithPinCheck(
+        this.customerFormId(),
+        input,
+        this.customerFormPin()
+      );
+      if (!res.ok) {
+        this.customerFormError.set(res.message);
+        return;
+      }
+      this.customerFormFeedback.set(res.message);
+      setTimeout(() => this.closeCustomerFormModal(), 600);
+    }
+  }
+
+  deleteCustomer(c: CreditCustomer, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    const ok = confirm(`¿Dar de baja lógica al cliente ${c.name}? No se perderá su historial.`);
+    if (!ok) return;
+    const res = this.inv.deleteCustomerLogical(c.id);
+    if (!res.ok) {
+      alert(res.message);
+      return;
+    }
+    if (this.selectedCustomerId() === c.id) {
+      const remaining = this.inv.creditCustomers().filter((x) => x.id !== c.id);
+      this.selectedCustomerId.set(remaining[0]?.id || '');
+    }
+  }
+
+  viewCustomerFicha(c: CreditCustomer, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    const detail = this.inv.getCustomerDetail(c.id);
+    this.customerFicha.set(detail || c);
+    this.customerFichaModalOpen.set(true);
+  }
+
+  closeCustomerFichaModal(): void {
+    this.customerFichaModalOpen.set(false);
   }
 }
