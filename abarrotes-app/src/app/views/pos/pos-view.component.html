@@ -165,10 +165,17 @@
           </div>
         } @empty {
           <div class="p-8 text-center text-slate-500">
-            <p class="text-sm font-semibold">No se encontraron productos con "{{ searchQuery() }}"</p>
-            <button type="button" (click)="searchQuery.set('')" class="mt-2 text-xs font-bold text-blue-600 hover:underline">
-              Mostrar lista completa
-            </button>
+            @if (pendingApprovalFound()) {
+              <div class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+                <p class="text-sm font-bold">Producto pendiente de aprobación: avisa al encargado</p>
+                <p class="text-xs text-amber-700 mt-1">El código "{{ searchQuery() }}" está registrado pero requiere aprobación antes de poder venderse.</p>
+              </div>
+            } @else {
+              <p class="text-sm font-semibold">No se encontraron productos con "{{ searchQuery() }}"</p>
+              <button type="button" (click)="searchQuery.set('')" class="mt-2 text-xs font-bold text-blue-600 hover:underline">
+                Mostrar lista completa
+              </button>
+            }
           </div>
         }
       </div>

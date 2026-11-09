@@ -515,15 +515,14 @@ test('Catálogo (F1 seguimiento 2): Bloqueo de venta bajo costo aplica a cada es
   assert.equal(evalHealthy.hasBelowCostLine, false);
 });
 
-test('Catálogo (F1 seguimiento 2): Residuo de redondeo en costo a granel persiste y cuadra bulto de 50 kg vendido en dos mitades', () => {
+test('Catálogo (F1 seguimiento 2): Aritmética entera en granel: bulto de 50 kg a $847.00 en tandas de 0.350 kg con recarga a la mitad suma exacto 84,700 centavos guardando solo acumulado', () => {
   const packageCost = 847.0; // $847.00 = 84,700 centavos
   const packageFactor = 50; // 50 kg
   const portionQty = 0.35; // 350 gramos
   const halfKg = 25.0; // Mitad del bulto
 
   let cumulativeSold = 0;
-  let cumulativeCostCents = 0;
-  let lastResidualCents = 0;
+  let totalCostFirstHalf = 0;
 
   // Primera mitad: vender hasta 25 kg en tandas de 0.350 kg
   while (cumulativeSold < halfKg) {
@@ -533,28 +532,19 @@ test('Catálogo (F1 seguimiento 2): Residuo de redondeo en costo a granel persis
       packageFactor,
       saleQty,
       priorSoldQty: cumulativeSold,
-      priorRecognizedCostCents: cumulativeCostCents,
     });
-    cumulativeSold = step.cumulativeSoldQtyAfter;
-    cumulativeCostCents = step.cumulativeCostCentsAfter;
-    lastResidualCents = step.bulkCostResidualCents;
+    totalCostFirstHalf += step.saleCostCents;
+    cumulativeSold = step.newTotalSoldQty;
   }
 
-  assert.equal(cumulativeSold, 25);
-  // El residuo existe y está calculado exactamente
-  assert.ok(typeof lastResidualCents === 'number');
+  assert.equal(cumulativeSold, 25.0);
 
-  // Simular persistencia del residuo y de las cantidades acumuladas:
-  // Se "apaga y recarga" la app a la mitad del bulto conservando cumulativeSold, cumulativeCostCents y lastResidualCents
-  const persistedState = {
-    bulkSoldQtyCurrentPackage: cumulativeSold,
-    bulkCostCentsCurrentPackage: cumulativeCostCents,
-    bulkCostResidualCents: lastResidualCents,
-  };
+  // Simular recarga a la mitad: GUARDAR SOLO EL ACUMULADO VENDIDO (sin residuos flotantes)
+  const persistedAccumulatedSold = cumulativeSold; // 25.0 kg
 
-  // Segunda mitad: reanudar ventas a partir del estado persistido hasta los 50 kg
-  let resumedSold = persistedState.bulkSoldQtyCurrentPackage;
-  let resumedCostCents = persistedState.bulkCostCentsCurrentPackage;
+  // Segunda mitad: reanudar ventas a partir únicamente del acumulado vendido hasta los 50 kg
+  let resumedSold = persistedAccumulatedSold;
+  let totalCostSecondHalf = 0;
 
   while (resumedSold < packageFactor) {
     const remaining = Math.round((packageFactor - resumedSold) * 1000) / 1000;
@@ -564,12 +554,42 @@ test('Catálogo (F1 seguimiento 2): Residuo de redondeo en costo a granel persis
       packageFactor,
       saleQty,
       priorSoldQty: resumedSold,
-      priorRecognizedCostCents: resumedCostCents,
     });
-    resumedSold = step.cumulativeSoldQtyAfter;
-    resumedCostCents = step.cumulativeCostCentsAfter;
+    totalCostSecondHalf += step.saleCostCents;
+    resumedSold = step.newTotalSoldQty;
   }
 
-  assert.equal(resumedSold, 50);
-  assert.equal(resumedCostCents, 84700); // 84,700 centavos exactos ($847.00)
+  assert.equal(resumedSold, 50.0);
+  const totalCostWholeBulto = totalCostFirstHalf + totalCostSecondHalf;
+  assert.equal(totalCostWholeBulto, 84700); // 84,700 centavos exactos ($847.00)
+});
+
+test('Catálogo (F1 seguimiento 2): Ventas irregulares (0.125, 0.730, 1.005 kg) suman el costo exacto de 84,700 centavos al terminar el bulto', () => {
+  const packageCost = 847.0;
+  const packageFactor = 50;
+  const portions = [0.125, 0.730, 1.005];
+
+  let cumulativeSold = 0;
+  let totalCostCents = 0;
+  let stepIndex = 0;
+
+  while (cumulativeSold < packageFactor) {
+    const portion = portions[stepIndex % portions.length];
+    stepIndex++;
+    const remaining = Math.round((packageFactor - cumulativeSold) * 1000) / 1000;
+    const saleQty = Math.min(portion, remaining);
+
+    const step = calculateBulkSaleCost({
+      packageCost,
+      packageFactor,
+      saleQty,
+      priorSoldQty: cumulativeSold,
+    });
+
+    totalCostCents += step.saleCostCents;
+    cumulativeSold = step.newTotalSoldQty;
+  }
+
+  assert.equal(cumulativeSold, 50.0);
+  assert.equal(totalCostCents, 84700); // Exactamente 84,700 centavos ($847.00)
 });

@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { MockInventoryService, ShrinkRecord, ReceptionLine } from './mock-inventory.service';
+import { PosViewComponent } from '../views/pos/pos-view.component';
 import { createKardexEntry, verifyProductContinuity } from '../domain/kardex';
 import {
   CORRUPT_STATE_KEY_PREFIX,
@@ -8,6 +10,7 @@ import {
   LEGACY_STATE_STORAGE_KEY,
   IndexedDbStateStorageAdapter,
   MemoryStateStorageAdapter,
+  migrateProductDefaults,
   type StateStorageAdapter,
 } from '../domain/persistence';
 import {
@@ -29,7 +32,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
       // ignore if IndexedDB is unavailable
     }
     TestBed.configureTestingModule({
-      providers: [MockInventoryService],
+      providers: [MockInventoryService, provideRouter([])],
     });
     service = TestBed.inject(MockInventoryService);
     service.storageAdapter = new MemoryStateStorageAdapter();
@@ -2282,5 +2285,183 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
       receivedAmount: 250,
     });
     expect(mayoreoWithPin.ok).toBeTrue();
+  });
+
+  it('38. Seguimiento F1: Persistencia: con ambas claves (v1 y v2) presentes, la app carga v2 y no migra v1 sobre v2', async () => {
+    const memoryAdapter = new MemoryStateStorageAdapter();
+    service['storageAdapter'] = memoryAdapter;
+
+    // Crear un estado v1 con un producto distintivo
+    const v1State = {
+      schemaVersion: 1,
+      products: [
+        {
+          sku: 'PROD-V1-ONLY',
+          barcode: '750100000001',
+          name: 'Producto Antiguo v1',
+          stock: 10,
+          historicCost: 15.0,
+          salePrice: 20.0,
+          saleUnit: 'Pieza',
+        },
+      ],
+      kardex: [],
+      shrinkRecords: [],
+      auditLines: [],
+      creditCustomers: [],
+      cashShift: { openingCash: 500, cashSalesTotal: 0, creditPaymentsReceived: 0 },
+      cashRegister: { currentBalance: 500, cashSalesTotal: 0, cashPayoutsTotal: 0 },
+    };
+
+    // Crear un estado v2 con un producto moderno distintivo
+    const v2State = {
+      schemaVersion: 2,
+      timestamp: new Date().toISOString(),
+      activeUser: 'Don Lupe (Encargado)',
+      products: [
+        {
+          sku: 'PROD-V2-CURRENT',
+          barcode: '750200000002',
+          name: 'Producto Vigente v2',
+          stock: 45,
+          historicCost: 25.0,
+          salePrice: 35.0,
+          saleUnit: 'Pieza',
+          barcodes: ['750200000002'],
+          isActive: true,
+          approvalStatus: 'APROBADO',
+        },
+      ],
+      kardex: [],
+      shrinkRecords: [],
+      auditLines: [],
+      creditCustomers: [],
+      cashShift: { openingCash: 1000, cashSalesTotal: 0, creditPaymentsReceived: 0 },
+      cashRegister: { currentBalance: 1000, cashSalesTotal: 0, cashPayoutsTotal: 0 },
+    };
+
+    // Guardar ambas claves simultáneamente en el almacenamiento
+    await memoryAdapter.save(LEGACY_STATE_STORAGE_KEY, v1State);
+    await memoryAdapter.save(STATE_STORAGE_KEY, v2State);
+
+    // Restaurar estado
+    const restoreResult = await service.restorePersistedState();
+    expect(restoreResult.success).toBeTrue();
+
+    // Comprobar que cargó v2
+    const currentProds = service.products();
+    expect(currentProds.some((p) => p.sku === 'PROD-V2-CURRENT')).toBeTrue();
+    expect(currentProds.some((p) => p.sku === 'PROD-V1-ONLY')).toBeFalse();
+    expect(service.cashShift().openingCash).toBe(1000);
+
+    // Comprobar que en el storage adapter, v2 sigue intacto y v1 no migró sobre v2
+    const loadedV2 = (await memoryAdapter.load(STATE_STORAGE_KEY)) as any;
+    expect(loadedV2.products.some((p: any) => p.sku === 'PROD-V2-CURRENT')).toBeTrue();
+    expect(loadedV2.products.some((p: any) => p.sku === 'PROD-V1-ONLY')).toBeFalse();
+
+    // La clave v1 permanece guardada e intacta
+    const loadedV1 = (await memoryAdapter.load(LEGACY_STATE_STORAGE_KEY)) as any;
+    expect(loadedV1).toBeTruthy();
+    expect(loadedV1.products[0].sku).toBe('PROD-V1-ONLY');
+  });
+
+  it('39. Seguimiento F1: POS: escaneo de producto PENDIENTE_APROBACION devuelve "Producto pendiente de aprobación: avisa al encargado" y no "no encontrado"', () => {
+    // 1. Registrar producto en estado PENDIENTE_APROBACION con código de barras específico
+    const pendingBarcode = '7509988112233';
+    service.products.update((list) => [
+      ...list,
+      migrateProductDefaults({
+        sku: 'PEND-POS-01',
+        barcode: pendingBarcode,
+        barcodes: [pendingBarcode],
+        name: 'Galletas Pendientes Aprobación',
+        category: 'Abarrotes',
+        emoji: '🍪',
+        purchaseUnit: 'Pieza',
+        unitsPerPurchase: 1,
+        saleUnit: 'Pieza',
+        historicCost: 15.0,
+        unitCost: 15.0,
+        salePrice: 22.0,
+        stock: 10,
+        minStock: 2,
+        isBulk: false,
+        isActive: true,
+        approvalStatus: 'PENDIENTE_APROBACION',
+      }),
+    ]);
+
+    // 2. Escanear el código del producto pendiente en el POS
+    const scanPending = service.scanBarcodeForPos(pendingBarcode);
+    expect(scanPending.ok).toBeFalse();
+    expect(scanPending.isPendingApproval).toBeTrue();
+    expect(scanPending.isNotFound).toBeFalse();
+    expect(scanPending.message).toBe('Producto pendiente de aprobación: avisa al encargado');
+    expect(scanPending.message).not.toMatch(/no encontrado/i);
+
+    // 3. Contrastar con un código genuinamente inexistente ("no encontrado")
+    const scanUnknown = service.scanBarcodeForPos('0000000000000');
+    expect(scanUnknown.ok).toBeFalse();
+    expect(scanUnknown.isPendingApproval).toBeFalse();
+    expect(scanUnknown.isNotFound).toBeTrue();
+    expect(scanUnknown.message).toMatch(/no encontrado/i);
+
+    // 4. Contrastar con un producto aprobado y activo ("encontrado")
+    const scanApproved = service.scanBarcodeForPos('7501020515350'); // Leche Lala
+    expect(scanApproved.ok).toBeTrue();
+    expect(scanApproved.isPendingApproval).toBeFalse();
+    expect(scanApproved.isNotFound).toBeFalse();
+    expect(scanApproved.product?.sku).toBe('LAC-LAL-1L');
+  });
+
+  it('40. Seguimiento F1: POS integración (PosViewComponent): escaneo de producto PENDIENTE_APROBACION muestra "Producto pendiente de aprobación: avisa al encargado" y no "no encontrado"', () => {
+    const pendingBarcode = '7509988112233';
+    service.products.update((list) => [
+      ...list,
+      migrateProductDefaults({
+        sku: 'PEND-POS-01',
+        barcode: pendingBarcode,
+        barcodes: [pendingBarcode],
+        name: 'Galletas Pendientes Aprobación',
+        category: 'Abarrotes',
+        emoji: '🍪',
+        purchaseUnit: 'Pieza',
+        unitsPerPurchase: 1,
+        saleUnit: 'Pieza',
+        historicCost: 15.0,
+        unitCost: 15.0,
+        salePrice: 22.0,
+        stock: 10,
+        minStock: 2,
+        isBulk: false,
+        isActive: true,
+        approvalStatus: 'PENDIENTE_APROBACION',
+      }),
+    ]);
+
+    // Crear componente dentro del contexto de inyección de TestBed
+    const comp = TestBed.runInInjectionContext(() => new PosViewComponent());
+    comp.ngOnInit();
+
+    // 1. Simular escaneo en input de búsqueda
+    comp['searchQuery'].set(pendingBarcode);
+    expect(comp['pendingApprovalFound']()).toBeTrue();
+
+    // 2. Ejecutar búsqueda / escaneo (onSearchOrBarcodeSubmit)
+    comp.onSearchOrBarcodeSubmit();
+    const feedback = comp['saleFeedback']();
+    expect(feedback).not.toBeNull();
+    expect(feedback?.ok).toBeFalse();
+    expect(feedback?.text).toBe('Producto pendiente de aprobación: avisa al encargado');
+    expect(feedback?.text).not.toMatch(/no encontrado/i);
+
+    // 3. Simular escaneo desde celular / LAN (onExternalBarcodeEvent)
+    comp['onExternalBarcodeEvent']({
+      type: 'BARCODE_SCANNED',
+      barcode: pendingBarcode,
+    });
+    expect(comp['syncNotification']()).toBe('Producto pendiente de aprobación: avisa al encargado');
+
+    comp.ngOnDestroy();
   });
 });

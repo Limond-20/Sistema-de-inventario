@@ -3461,6 +3461,51 @@ export class MockInventoryService implements OnDestroy {
     return prod;
   }
 
+  /**
+   * Resuelve el resultado de escaneo de un código de barras en el POS:
+   * - Si el producto está PENDIENTE_APROBACION: retorna error específico avisando al encargado.
+   * - Si el producto está aprobado y activo: retorna el producto.
+   * - Si no existe: retorna no encontrado.
+   */
+  scanBarcodeForPos(barcode: string): {
+    ok: boolean;
+    product?: Product;
+    isPendingApproval: boolean;
+    isNotFound: boolean;
+    message: string;
+  } {
+    const clean = String(barcode || '').trim();
+    if (!clean) {
+      return { ok: false, isPendingApproval: false, isNotFound: true, message: 'Código de barras vacío.' };
+    }
+    const pendingProd = this.findProductByBarcode(clean, true, true);
+    if (pendingProd && pendingProd.approvalStatus === 'PENDIENTE_APROBACION') {
+      return {
+        ok: false,
+        product: pendingProd,
+        isPendingApproval: true,
+        isNotFound: false,
+        message: 'Producto pendiente de aprobación: avisa al encargado',
+      };
+    }
+    const activeProd = this.findProductByBarcode(clean, false, false);
+    if (activeProd) {
+      return {
+        ok: true,
+        product: activeProd,
+        isPendingApproval: false,
+        isNotFound: false,
+        message: `Producto encontrado: ${activeProd.name}`,
+      };
+    }
+    return {
+      ok: false,
+      isPendingApproval: false,
+      isNotFound: true,
+      message: `Código ${clean} no encontrado en catálogo.`,
+    };
+  }
+
   /** Crea una línea manual a partir de un producto del catálogo. */
   createManualLine(sku: string, qtyPurchase: number, costPerPurchaseUnit: number): ReceptionLine {
     const line = buildLine(sku, qtyPurchase, multiplyMoney(costPerPurchaseUnit, qtyPurchase));

@@ -288,11 +288,33 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.inv.dismissQuickAccessSuggestion(sku);
   }
 
+  protected readonly pendingApprovalFound = computed(() => {
+    const q = this.searchQuery().trim();
+    if (!q) return false;
+    const scan = this.inv.scanBarcodeForPos(q);
+    return scan.isPendingApproval;
+  });
+
   private onExternalBarcodeEvent(data: Record<string, unknown>): void {
     if (!data || data['type'] !== 'BARCODE_SCANNED') return;
     const code = String(data['barcode'] ?? '').trim();
-    const product = this.inv.findProductByBarcode(code);
-    if (!product) return;
+    if (!code) return;
+
+    const scanResult = this.inv.scanBarcodeForPos(code);
+    if (scanResult.isPendingApproval) {
+      this.syncNotification.set('Producto pendiente de aprobación: avisa al encargado');
+      this.saleFeedback.set({
+        ok: false,
+        text: 'Producto pendiente de aprobación: avisa al encargado',
+      });
+      return;
+    }
+
+    const product = scanResult.product;
+    if (!product) {
+      this.syncNotification.set(`Código ${code} no encontrado.`);
+      return;
+    }
 
     this.inv.phoneLinked.set(true);
     if (product.isBulk && product.saleUnit === 'Kg') {
@@ -312,16 +334,34 @@ export class PosViewComponent implements OnInit, OnDestroy {
   onSearchOrBarcodeSubmit(): void {
     const q = this.searchQuery().trim();
     if (!q) return;
-    const exactBarcode = this.inv.findProductByBarcode(q);
-    if (exactBarcode) {
-      this.onProductCardClick(exactBarcode);
+
+    const scanResult = this.inv.scanBarcodeForPos(q);
+    if (scanResult.isPendingApproval) {
+      this.saleFeedback.set({
+        ok: false,
+        text: 'Producto pendiente de aprobación: avisa al encargado',
+      });
+      return;
+    }
+
+    if (scanResult.ok && scanResult.product) {
+      this.onProductCardClick(scanResult.product);
       this.searchQuery.set('');
       return;
     }
+
     const matches = this.displayedProducts();
     if (matches.length === 1) {
       this.onProductCardClick(matches[0]);
       this.searchQuery.set('');
+      return;
+    }
+
+    if (matches.length === 0) {
+      this.saleFeedback.set({
+        ok: false,
+        text: `No se encontraron productos con "${q}".`,
+      });
     }
   }
 

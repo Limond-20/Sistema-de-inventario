@@ -622,30 +622,26 @@ export function calculateUnitCostFromPurchasePackage(
 
 /**
  * Costo en granel con redondeo documentado:
- * Algoritmo: Redondeo por acumulación de centavos enteros (Bresenham / Cumulative Error-Carrying Allocation).
+ * Algoritmo: Aritmética entera exacta en gramos (o unidad mínima) con conservación estricta:
  *
- * Para cada venta incremental en granel a partir de un paquete/bulto (ej. bulto de 50 kg a $847.00):
- * 1. Se calcula la cantidad acumulada vendida total del paquete:
- *      newTotalSoldQty = priorSoldQty + saleQty
- * 2. Se calcula el costo acumulado teórico en centavos enteros con redondeo estándar Half-Up:
- *      newCumulativeCostCents = Math.round((packageCostCents * newTotalSoldQty) / packageFactor)
- * 3. El costo asignado a esta venta particular es la diferencia exacta entre el nuevo costo acumulado
- *    y el costo previamente reconocido:
- *      saleCostCents = newCumulativeCostCents - priorRecognizedCostCents
+ * Fórmula:
+ *   costoVenta = redondeo(costoPaqueteCentavos * vendidoAcumuladoActual / tamañoPaquete)
+ *              - redondeo(costoPaqueteCentavos * vendidoAcumuladoAnterior / tamañoPaquete)
  *
- * Garantía matemática documentada:
- * La suma de los costos reconocidos a lo largo de cualquier partición de ventas (ej. bulto de 50 kg a $847.00
- * vendido en tandas de 0.350 kg) converge de forma exacta al costo del paquete ($847.00 = 84,700 centavos)
- * con una discrepancia máxima de 0 centavos (estrictamente <= 1 centavo).
+ * Al trabajar en gramos (o la unidad mínima) y centavos:
+ * 1. Sustituye cualquier residuo de punto flotante por aritmética entera exacta.
+ * 2. Guarda únicamente el acumulado vendido (bulkSoldQtyCurrentPackage).
+ * 3. La suma telescópica garantiza que cualquier partición (0.350 kg, o ventas irregulares como 0.125, 0.730, 1.005 kg),
+ *    incluso con recargas o reinicios a la mitad, sume EXACTAMENTE el costo total del paquete (ej. 84,700 centavos) al terminar.
  */
 export function calculateBulkSaleCost(params: {
   packageCost?: number; // Costo del paquete en pesos (ej. 847.00)
   packageCostPesos?: number;
   packageFactor: number; // Unidades del paquete (ej. 50 kg)
   saleQty: number; // Cantidad vendida en esta tanda (ej. 0.350 kg)
-  priorSoldQty?: number; // Cantidad acumulada vendida antes de esta tanda
+  priorSoldQty?: number; // Cantidad acumulada vendida antes de esta tanda (ej. 0 o 25.0)
   cumulativeSoldQtyPrior?: number;
-  priorRecognizedCostCents?: number; // Costo en centavos reconocido antes de esta tanda
+  priorRecognizedCostCents?: number; // Conservado por compatibilidad de firma
   cumulativeCostCentsPrior?: number;
 }): {
   saleCostPesos: number;
@@ -661,30 +657,33 @@ export function calculateBulkSaleCost(params: {
   const resolvedPackageCost = params.packageCost !== undefined ? params.packageCost : (params.packageCostPesos ?? 0);
   const packageCostCents = toCentsInt(resolvedPackageCost);
   const factor = Number(params.packageFactor) > 0 ? Number(params.packageFactor) : 1;
+  const packageSizeGrams = Math.round(factor * 1000);
+
   const saleQty = Math.max(0, Number(params.saleQty) || 0);
   const priorSoldQty = Math.max(0, Number(params.priorSoldQty ?? params.cumulativeSoldQtyPrior) || 0);
-  const priorCostCents = Math.max(0, Math.round(Number(params.priorRecognizedCostCents ?? params.cumulativeCostCentsPrior) || 0));
 
-  const rawNextSold = priorSoldQty + saleQty;
-  const newTotalSoldQty = Math.round(rawNextSold * 1000) / 1000;
-  // Capping at factor if slight floating excess
-  const effectiveSoldForCost = Math.min(factor, newTotalSoldQty);
-  const newCumulativeCostCents = Math.round((packageCostCents * effectiveSoldForCost) / factor);
-  const saleCostCents = Math.max(0, newCumulativeCostCents - priorCostCents);
+  const priorSoldGrams = Math.round(priorSoldQty * 1000);
+  const saleGrams = Math.round(saleQty * 1000);
+  const currentSoldGrams = priorSoldGrams + saleGrams;
 
-  const theoreticalCostCents = (packageCostCents * effectiveSoldForCost) / factor;
-  const residualCents = Math.round((theoreticalCostCents - newCumulativeCostCents) * 1000) / 1000;
+  // Paso anterior y paso actual con redondeo Half-Up en centavos enteros
+  const priorCostCents = Math.round((packageCostCents * priorSoldGrams) / packageSizeGrams);
+  const currentCostCents = Math.round((packageCostCents * currentSoldGrams) / packageSizeGrams);
+
+  // El costo de cada venta es estrictamente la diferencia entre el paso actual y el anterior
+  const saleCostCents = Math.max(0, currentCostCents - priorCostCents);
+  const newTotalSoldQty = Math.round(currentSoldGrams) / 1000;
 
   return {
     saleCostPesos: fromCentsInt(saleCostCents),
     saleCostCents,
     newTotalSoldQty,
     cumulativeSoldQtyAfter: newTotalSoldQty,
-    newCumulativeCostCents,
-    cumulativeCostCentsAfter: newCumulativeCostCents,
+    newCumulativeCostCents: currentCostCents,
+    cumulativeCostCentsAfter: currentCostCents,
     unitCostPesos: fromCentsInt(Math.round(packageCostCents / factor)),
-    bulkCostResidualCents: residualCents,
-    costResidualCents: residualCents,
+    bulkCostResidualCents: 0,
+    costResidualCents: 0,
   };
 }
 
