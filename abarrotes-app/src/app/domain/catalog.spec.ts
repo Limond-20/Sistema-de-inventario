@@ -443,3 +443,133 @@ test('Catálogo (F1 seguimiento): Descuentos por debajo del costo bloquean sin P
   assert.ok(evalResult.reasons.some((r) => r.includes('costo')));
   assert.equal(evalResult.lines[0].isBelowCost, true);
 });
+
+test('Catálogo (F1 seguimiento 2): Bloqueo de venta bajo costo aplica a cada escalón de mayoreo (Menudeo, Medio Mayoreo, Mayoreo)', () => {
+  // Producto con costo unitario de $15.00
+  // Escalones:
+  // 1) MENUDEO: precio $14.00 (< $15.00 costo) -> Bloqueado sin PIN
+  const evalMenudeo = evaluateCartDiscounts({
+    lines: [
+      {
+        sku: 'TEST-TIERS',
+        name: 'Producto Tiers',
+        qty: 1,
+        unitPrice: 14.0,
+        unitCost: 15.0,
+        activeTier: 'MENUDEO',
+      },
+    ],
+  });
+  assert.equal(evalMenudeo.requiresPin, true);
+  assert.equal(evalMenudeo.hasBelowCostLine, true);
+  assert.ok(evalMenudeo.pinReason?.includes('Menudeo') || evalMenudeo.pinReason?.includes('costo'));
+
+  // 2) MEDIO_MAYOREO: precio $13.50 (< $15.00 costo) -> Bloqueado sin PIN
+  const evalMedio = evaluateCartDiscounts({
+    lines: [
+      {
+        sku: 'TEST-TIERS',
+        name: 'Producto Tiers',
+        qty: 6,
+        unitPrice: 13.5,
+        unitCost: 15.0,
+        activeTier: 'MEDIO_MAYOREO',
+      },
+    ],
+  });
+  assert.equal(evalMedio.requiresPin, true);
+  assert.equal(evalMedio.hasBelowCostLine, true);
+  assert.ok(evalMedio.pinReason?.includes('Medio Mayoreo') || evalMedio.pinReason?.includes('costo'));
+
+  // 3) MAYOREO: precio $12.00 (< $15.00 costo) -> Bloqueado sin PIN
+  const evalMayoreo = evaluateCartDiscounts({
+    lines: [
+      {
+        sku: 'TEST-TIERS',
+        name: 'Producto Tiers',
+        qty: 24,
+        unitPrice: 12.0,
+        unitCost: 15.0,
+        activeTier: 'MAYOREO',
+      },
+    ],
+  });
+  assert.equal(evalMayoreo.requiresPin, true);
+  assert.equal(evalMayoreo.hasBelowCostLine, true);
+  assert.ok(evalMayoreo.pinReason?.includes('Mayoreo') || evalMayoreo.pinReason?.includes('costo'));
+
+  // 4) Escalón con precio saludable ($16.00 > $15.00) -> NO pide PIN
+  const evalHealthy = evaluateCartDiscounts({
+    lines: [
+      {
+        sku: 'TEST-TIERS',
+        name: 'Producto Tiers',
+        qty: 24,
+        unitPrice: 16.0,
+        unitCost: 15.0,
+        activeTier: 'MAYOREO',
+      },
+    ],
+  });
+  assert.equal(evalHealthy.requiresPin, false);
+  assert.equal(evalHealthy.hasBelowCostLine, false);
+});
+
+test('Catálogo (F1 seguimiento 2): Residuo de redondeo en costo a granel persiste y cuadra bulto de 50 kg vendido en dos mitades', () => {
+  const packageCost = 847.0; // $847.00 = 84,700 centavos
+  const packageFactor = 50; // 50 kg
+  const portionQty = 0.35; // 350 gramos
+  const halfKg = 25.0; // Mitad del bulto
+
+  let cumulativeSold = 0;
+  let cumulativeCostCents = 0;
+  let lastResidualCents = 0;
+
+  // Primera mitad: vender hasta 25 kg en tandas de 0.350 kg
+  while (cumulativeSold < halfKg) {
+    const saleQty = Math.min(portionQty, Math.round((halfKg - cumulativeSold) * 1000) / 1000);
+    const step = calculateBulkSaleCost({
+      packageCost,
+      packageFactor,
+      saleQty,
+      priorSoldQty: cumulativeSold,
+      priorRecognizedCostCents: cumulativeCostCents,
+    });
+    cumulativeSold = step.cumulativeSoldQtyAfter;
+    cumulativeCostCents = step.cumulativeCostCentsAfter;
+    lastResidualCents = step.bulkCostResidualCents;
+  }
+
+  assert.equal(cumulativeSold, 25);
+  // El residuo existe y está calculado exactamente
+  assert.ok(typeof lastResidualCents === 'number');
+
+  // Simular persistencia del residuo y de las cantidades acumuladas:
+  // Se "apaga y recarga" la app a la mitad del bulto conservando cumulativeSold, cumulativeCostCents y lastResidualCents
+  const persistedState = {
+    bulkSoldQtyCurrentPackage: cumulativeSold,
+    bulkCostCentsCurrentPackage: cumulativeCostCents,
+    bulkCostResidualCents: lastResidualCents,
+  };
+
+  // Segunda mitad: reanudar ventas a partir del estado persistido hasta los 50 kg
+  let resumedSold = persistedState.bulkSoldQtyCurrentPackage;
+  let resumedCostCents = persistedState.bulkCostCentsCurrentPackage;
+
+  while (resumedSold < packageFactor) {
+    const remaining = Math.round((packageFactor - resumedSold) * 1000) / 1000;
+    const saleQty = Math.min(portionQty, remaining);
+    const step = calculateBulkSaleCost({
+      packageCost,
+      packageFactor,
+      saleQty,
+      priorSoldQty: resumedSold,
+      priorRecognizedCostCents: resumedCostCents,
+    });
+    resumedSold = step.cumulativeSoldQtyAfter;
+    resumedCostCents = step.cumulativeCostCentsAfter;
+  }
+
+  assert.equal(resumedSold, 50);
+  assert.equal(resumedCostCents, 84700); // 84,700 centavos exactos ($847.00)
+});

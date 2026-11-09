@@ -149,15 +149,19 @@ export interface CartLineDiscountInput {
   unitCost?: number; // Costo por unidad de venta para blindaje contra venta por debajo del costo
   discountPct?: number; // 0..100
   discountAmountPesos?: number; // Descuento fijo opcional en pesos para la línea
+  activeTier?: PriceTierCode;
+  selectedTier?: PriceTierCode;
 }
 
 export interface EvaluatedCartLine {
   sku: string;
+  name?: string;
   qty: number;
   unitPrice: number;
   baseUnitPrice: number;
   unitCost?: number;
   isBelowCost?: boolean;
+  activeTier?: PriceTierCode;
   grossSubtotal: number;
   grossCents: number;
   retailGrossCents: number;
@@ -651,6 +655,8 @@ export function calculateBulkSaleCost(params: {
   newCumulativeCostCents: number;
   cumulativeCostCentsAfter: number;
   unitCostPesos: number;
+  bulkCostResidualCents: number;
+  costResidualCents: number;
 } {
   const resolvedPackageCost = params.packageCost !== undefined ? params.packageCost : (params.packageCostPesos ?? 0);
   const packageCostCents = toCentsInt(resolvedPackageCost);
@@ -666,6 +672,9 @@ export function calculateBulkSaleCost(params: {
   const newCumulativeCostCents = Math.round((packageCostCents * effectiveSoldForCost) / factor);
   const saleCostCents = Math.max(0, newCumulativeCostCents - priorCostCents);
 
+  const theoreticalCostCents = (packageCostCents * effectiveSoldForCost) / factor;
+  const residualCents = Math.round((theoreticalCostCents - newCumulativeCostCents) * 1000) / 1000;
+
   return {
     saleCostPesos: fromCentsInt(saleCostCents),
     saleCostCents,
@@ -674,6 +683,8 @@ export function calculateBulkSaleCost(params: {
     newCumulativeCostCents,
     cumulativeCostCentsAfter: newCumulativeCostCents,
     unitCostPesos: fromCentsInt(Math.round(packageCostCents / factor)),
+    bulkCostResidualCents: residualCents,
+    costResidualCents: residualCents,
   };
 }
 
@@ -915,6 +926,7 @@ export function evaluateCartDiscounts(
       unitPrice: fromCentsInt(unitCents),
       baseUnitPrice: fromCentsInt(baseUnitCents),
       unitCost: line.unitCost,
+      activeTier: line.activeTier || line.selectedTier,
       grossLineCents,
       retailLineCents,
       lineDiscountCents,
@@ -1007,18 +1019,28 @@ export function evaluateCartDiscounts(
     const isBelowCost = unitCostPesos > 0 && effectiveUnitPricePesos < unitCostPesos - 0.005;
 
     if (isBelowCost) {
+      const tierTag =
+        l.activeTier === 'MAYOREO'
+          ? ' [Mayoreo]'
+          : l.activeTier === 'MEDIO_MAYOREO'
+          ? ' [Medio Mayoreo]'
+          : l.activeTier === 'MENUDEO'
+          ? ' [Menudeo]'
+          : '';
       reasons.push(
-        `Venta por debajo del costo en "${l.name || l.sku}" ($${effectiveUnitPricePesos.toFixed(2)} < $${unitCostPesos.toFixed(2)}): requiere autorización con PIN.`
+        `Venta por debajo del costo en "${l.name || l.sku}"${tierTag} ($${effectiveUnitPricePesos.toFixed(2)} < $${unitCostPesos.toFixed(2)}): requiere autorización con PIN.`
       );
     }
 
     return {
       sku: l.sku,
+      name: l.name,
       qty: l.qty,
       unitPrice: l.unitPrice,
       baseUnitPrice: l.baseUnitPrice,
       unitCost: l.unitCost,
       isBelowCost,
+      activeTier: l.activeTier,
       grossSubtotal: fromCentsInt(l.grossLineCents),
       grossCents: l.grossLineCents,
       retailGrossCents: l.retailLineCents,

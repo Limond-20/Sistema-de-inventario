@@ -215,6 +215,9 @@ export interface Product {
   packageFactor?: number;
   cumulativeBulkSoldQty?: number;
   cumulativeBulkCostCents?: number;
+  bulkSoldQtyCurrentPackage?: number;
+  bulkCostCentsCurrentPackage?: number;
+  bulkCostResidualCents?: number;
 }
 
 export type { CreditCustomerStatus } from '../domain/credit';
@@ -2232,8 +2235,10 @@ export class MockInventoryService implements OnDestroy {
   }> {
     try {
       let raw = await this.storageAdapter.load(STATE_STORAGE_KEY);
+      let loadedFromLegacy = false;
       if (!raw) {
         raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY);
+        if (raw) loadedFromLegacy = true;
       }
       if (!raw) {
         this.isHydrated.set(true);
@@ -2321,8 +2326,23 @@ export class MockInventoryService implements OnDestroy {
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
 
-      if (migration.migrated) {
-        await this.flushSave();
+      if (migration.migrated || loadedFromLegacy) {
+        try {
+          await this.flushSave();
+          // REGLA MIGRACIÓN: no borres la clave binnitech_pos_state_v1 hasta verificar
+          // que el estado v2 recién escrito se puede leer y pasa validateStoredState
+          const writtenV2 = await this.storageAdapter.load(STATE_STORAGE_KEY);
+          const v2Validation = validateStoredState(
+            writtenV2,
+            (k) => verifyKardexChain(k, 'newest-first'),
+            (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
+          );
+          if (v2Validation.valid && this.storageAdapter.delete) {
+            await this.storageAdapter.delete(LEGACY_STATE_STORAGE_KEY);
+          }
+        } catch (saveErr) {
+          console.warn('[MockInventoryService] Falló el guardado/verificación de v2 durante migración; v1 permanece intacto:', saveErr);
+        }
       }
 
       return { success: true };
@@ -2607,12 +2627,12 @@ export class MockInventoryService implements OnDestroy {
 
   /** Productos Clase A que están en o por debajo de su Punto de Reorden (ROP). */
   readonly criticalRopProducts = computed(() =>
-    this.products().filter((p) => p.abcClass === 'A' && p.stock <= p.rop),
+    this.products().filter((p) => p.approvalStatus !== 'PENDIENTE_APROBACION' && p.abcClass === 'A' && p.stock <= p.rop),
   );
 
   /** Lotes próximos a caducar para semáforo FEFO y Cambio Físico. */
   readonly fefoExchangeProducts = computed(() =>
-    this.products().filter((p) => p.acceptsPhysicalExchange),
+    this.products().filter((p) => p.approvalStatus !== 'PENDIENTE_APROBACION' && p.acceptsPhysicalExchange),
   );
 
   /** Total acumulado de deuda por cobrar en la libreta de fiado. */
@@ -2644,7 +2664,7 @@ export class MockInventoryService implements OnDestroy {
   }
 
   readonly abcSuggestions = computed<AbcResult[]>(() => {
-    const products = this.products();
+    const products = this.products().filter((p) => p.approvalStatus !== 'PENDIENTE_APROBACION');
     const rankings = calculateAbcRankings(products);
     const pinned = this.abcPinned();
 
@@ -2685,7 +2705,7 @@ export class MockInventoryService implements OnDestroy {
     let count = 0;
     this.products.update((list) =>
       list.map((p) => {
-        if (!targetSkus.has(p.sku)) return p;
+        if (!targetSkus.has(p.sku) || p.approvalStatus === 'PENDIENTE_APROBACION') return p;
         const res = results.find((r) => r.sku === p.sku);
         if (res && res.finalClass !== p.abcClass) {
           count++;
@@ -2701,7 +2721,9 @@ export class MockInventoryService implements OnDestroy {
 
   previewGuided(answers: GuidedAnswer[]): AbcResult[] {
     const answerMap = new Map(answers.map((a) => [a.sku, a]));
-    return this.products().map((p, idx) => {
+    return this.products()
+      .filter((p) => p.approvalStatus !== 'PENDIENTE_APROBACION')
+      .map((p, idx) => {
       const ans = answerMap.get(p.sku);
       let computedClass: AbcClass = p.abcClass;
       if (ans) {
@@ -2783,7 +2805,9 @@ export class MockInventoryService implements OnDestroy {
   readonly quickAccessSuggestions = computed(() => {
     const pinned = new Set(this.pinnedQuickAccessSkus());
     const dismissed = new Set(this.dismissedQuickAccessSuggestions());
-    return this.products().filter((p) => p.abcClass === 'A' && !pinned.has(p.sku) && !dismissed.has(p.sku));
+    return this.products().filter(
+      (p) => p.approvalStatus !== 'PENDIENTE_APROBACION' && p.abcClass === 'A' && !pinned.has(p.sku) && !dismissed.has(p.sku)
+    );
   });
 
   // ---------- Badges de Alerta Operativa para el Dashboard ----------
@@ -2851,6 +2875,20 @@ export class MockInventoryService implements OnDestroy {
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0, change: 0 };
     }
+
+    const pendingItem = items.find((i) => {
+      const p = this.products().find((prod) => prod.sku === i.sku);
+      return p?.approvalStatus === 'PENDIENTE_APROBACION';
+    });
+    if (pendingItem) {
+      return {
+        ok: false,
+        message: `El producto ${pendingItem.name || pendingItem.sku} está pendiente de aprobación y no puede venderse.`,
+        total: 0,
+        change: 0,
+      };
+    }
+
     const total = sumMoney(items.map((item) => item.subtotal));
     if (cashReceived < total) {
       return {
@@ -2897,7 +2935,28 @@ export class MockInventoryService implements OnDestroy {
           shortageAlerts.push(deduction.shortageAlert);
         }
 
-        return deduction.updatedProduct;
+        let bulkUpdatedFields = {};
+        if (p.isBulk) {
+          const bulkCalc = calculateBulkSaleCost({
+            packageCost: p.packageCost,
+            packageFactor: p.packageFactor || p.unitsPerPurchase || 1,
+            saleQty: soldItem.qty,
+            priorSoldQty: p.bulkSoldQtyCurrentPackage || 0,
+            priorRecognizedCostCents: p.bulkCostCentsCurrentPackage || 0,
+          });
+          bulkUpdatedFields = {
+            bulkSoldQtyCurrentPackage: bulkCalc.newTotalSoldQty,
+            bulkCostCentsCurrentPackage: bulkCalc.newCumulativeCostCents,
+            bulkCostResidualCents: bulkCalc.bulkCostResidualCents,
+            cumulativeBulkSoldQty: (p.cumulativeBulkSoldQty || 0) + soldItem.qty,
+            cumulativeBulkCostCents: (p.cumulativeBulkCostCents || 0) + bulkCalc.saleCostCents,
+          };
+        }
+
+        return {
+          ...deduction.updatedProduct,
+          ...bulkUpdatedFields,
+        };
       }),
     );
 
@@ -2943,6 +3002,19 @@ export class MockInventoryService implements OnDestroy {
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0 };
     }
+
+    const pendingItem = items.find((i) => {
+      const p = this.products().find((prod) => prod.sku === i.sku);
+      return p?.approvalStatus === 'PENDIENTE_APROBACION';
+    });
+    if (pendingItem) {
+      return {
+        ok: false,
+        message: `El producto ${pendingItem.name || pendingItem.sku} está pendiente de aprobación y no puede venderse a crédito.`,
+        total: 0,
+      };
+    }
+
     const total = sumMoney(items.map((item) => item.subtotal));
     const customer = this.creditCustomers().find((c) => c.id === customerId);
     if (!customer) {
@@ -3009,7 +3081,28 @@ export class MockInventoryService implements OnDestroy {
           shortageAlerts.push(deduction.shortageAlert);
         }
 
-        return deduction.updatedProduct;
+        let bulkUpdatedFields = {};
+        if (p.isBulk) {
+          const bulkCalc = calculateBulkSaleCost({
+            packageCost: p.packageCost,
+            packageFactor: p.packageFactor || p.unitsPerPurchase || 1,
+            saleQty: soldItem.qty,
+            priorSoldQty: p.bulkSoldQtyCurrentPackage || 0,
+            priorRecognizedCostCents: p.bulkCostCentsCurrentPackage || 0,
+          });
+          bulkUpdatedFields = {
+            bulkSoldQtyCurrentPackage: bulkCalc.newTotalSoldQty,
+            bulkCostCentsCurrentPackage: bulkCalc.newCumulativeCostCents,
+            bulkCostResidualCents: bulkCalc.bulkCostResidualCents,
+            cumulativeBulkSoldQty: (p.cumulativeBulkSoldQty || 0) + soldItem.qty,
+            cumulativeBulkCostCents: (p.cumulativeBulkCostCents || 0) + bulkCalc.saleCostCents,
+          };
+        }
+
+        return {
+          ...deduction.updatedProduct,
+          ...bulkUpdatedFields,
+        };
       }),
     );
 
@@ -3356,6 +3449,18 @@ export class MockInventoryService implements OnDestroy {
     });
   }
 
+  /**
+   * Resuelve un código escaneado (desde el celular o mostrador) a un producto operativo.
+   * Si el producto está pendiente de aprobación o inactivo, retorna null (no se resuelve en móvil).
+   */
+  resolveScannedBarcode(barcode: string): Product | null {
+    const prod = this.findProductByBarcode(barcode, false, false);
+    if (!prod || prod.approvalStatus === 'PENDIENTE_APROBACION') {
+      return null;
+    }
+    return prod;
+  }
+
   /** Crea una línea manual a partir de un producto del catálogo. */
   createManualLine(sku: string, qtyPurchase: number, costPerPurchaseUnit: number): ReceptionLine {
     const line = buildLine(sku, qtyPurchase, multiplyMoney(costPerPurchaseUnit, qtyPurchase));
@@ -3368,6 +3473,15 @@ export class MockInventoryService implements OnDestroy {
   /** Guarda la entrada: suma existencias, recalcula Costo Promedio Ponderado, actualiza reposición y genera Kardex encadenado. */
   saveReception(lines: ReceptionLine[], folio: string): void {
     if (!this.assertWritable()) return;
+    const catalog = this.products();
+    const pendingLine = lines.find((l) => {
+      const prod = catalog.find((p) => p.sku === l.sku);
+      return prod?.approvalStatus === 'PENDIENTE_APROBACION';
+    });
+    if (pendingLine) {
+      throw new Error(`El producto ${pendingLine.sku} está pendiente de aprobación y no puede recibirse en inventario.`);
+    }
+
     const newKardexEntries: KardexEntry[] = [];
     const nowIso = new Date().toISOString();
     let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
@@ -3863,7 +3977,11 @@ export class MockInventoryService implements OnDestroy {
   submitBlindAuditResults(counts: { sku: string; countedQty: number }[]): void {
     if (!this.assertWritable()) return;
     const catalog = this.products();
-    const newAuditLines: AuditLine[] = counts.map((c) => {
+    const validCounts = counts.filter((c) => {
+      const p = catalog.find((x) => x.sku === c.sku);
+      return p?.approvalStatus !== 'PENDIENTE_APROBACION';
+    });
+    const newAuditLines: AuditLine[] = validCounts.map((c) => {
       const p = catalog.find((x) => x.sku === c.sku);
       const systemQty = p ? p.stock : 0;
       const unitCost = p ? p.historicCost : 10;
@@ -3917,6 +4035,9 @@ export class MockInventoryService implements OnDestroy {
     if (!line) return { ok: false, message: 'Producto no encontrado en auditoría' };
 
     const prod = this.products().find((p) => p.sku === productId);
+    if (prod?.approvalStatus === 'PENDIENTE_APROBACION') {
+      return { ok: false, message: `El producto ${prod.sku} está pendiente de aprobación y no puede auditarse ni ajustarse.` };
+    }
     const actualPreviousStock = prod ? prod.stock : line.systemQty;
     const diffQty = Math.round((line.countedQty - actualPreviousStock) * 1000) / 1000;
     const diffMoney = multiplyMoney(line.unitCost, diffQty);

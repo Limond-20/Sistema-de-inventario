@@ -238,6 +238,12 @@ export function migrateProductDefaults(p: any): any {
     isActive: p.isActive !== false,
     approvalStatus: p.approvalStatus || 'APROBADO',
     supplier: p.supplier || 'Distribuidora General',
+    bulkCostResidualCents:
+      typeof p.bulkCostResidualCents === 'number' ? p.bulkCostResidualCents : 0,
+    bulkSoldQtyCurrentPackage:
+      typeof p.bulkSoldQtyCurrentPackage === 'number' ? p.bulkSoldQtyCurrentPackage : 0,
+    bulkCostCentsCurrentPackage:
+      typeof p.bulkCostCentsCurrentPackage === 'number' ? p.bulkCostCentsCurrentPackage : 0,
   };
 }
 

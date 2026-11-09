@@ -1862,4 +1862,425 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const latestKardex = service.kardex()[0];
     expect(latestKardex.referencia).toContain('[MAYOREO]');
   });
+
+  it('33. Seguimiento F1: Migración: no borra binnitech_pos_state_v1 si falla la escritura de v2, y la elimina al verificar con éxito', async () => {
+    const validV1State = {
+      schemaVersion: 1,
+      timestamp: new Date().toISOString(),
+      activeUser: 'Don Lupe (Encargado)',
+      products: service.products(),
+      creditCustomers: service.creditCustomers(),
+      cashShift: service.cashShift(),
+      cashRegister: service.cashRegister(),
+      kardex: service.kardex(),
+      shrinkRecords: service.shrinkRecords(),
+      auditLines: service.auditLines(),
+    };
+
+    class FailingV2StorageAdapter extends MemoryStateStorageAdapter {
+      override async save(key: string, value: any): Promise<void> {
+        if (key === STATE_STORAGE_KEY) {
+          throw new Error('Fallo simulado de disco al escribir v2');
+        }
+        await super.save(key, value);
+      }
+    }
+
+    const failingAdapter = new FailingV2StorageAdapter();
+    await failingAdapter.save(LEGACY_STATE_STORAGE_KEY, validV1State);
+
+    service.storageAdapter = failingAdapter;
+    const res = await service.restorePersistedState();
+    expect(res.success).toBeTrue();
+
+    const v1LoadedAfterFailure = await failingAdapter.load(LEGACY_STATE_STORAGE_KEY);
+    expect(v1LoadedAfterFailure).toBeTruthy();
+    expect(v1LoadedAfterFailure.schemaVersion).toBe(1);
+
+    const healthyAdapter = new MemoryStateStorageAdapter();
+    await healthyAdapter.save(LEGACY_STATE_STORAGE_KEY, validV1State);
+    service.storageAdapter = healthyAdapter;
+
+    const healthyRes = await service.restorePersistedState();
+    expect(healthyRes.success).toBeTrue();
+
+    const v2Loaded = await healthyAdapter.load(STATE_STORAGE_KEY);
+    expect(v2Loaded).toBeTruthy();
+    expect(v2Loaded.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+
+    const v1AfterSuccess = await healthyAdapter.load(LEGACY_STATE_STORAGE_KEY);
+    expect(v1AfterSuccess).toBeNull();
+  });
+
+  it('34. Seguimiento F1: Los productos PENDIENTE_APROBACION no pueden recibirse, venderse, auditarse, entrar a ABC, reportes ni resolverse al escanear', async () => {
+    service.handleProductCreateRequestFromLan({
+      type: 'PRODUCT_CREATE_REQUEST',
+      requestId: 'REQ-PEND-TEST',
+      barcode: '7501059299092',
+      name: 'Galleta de Avena Móvil',
+      salePrice: 15.0,
+      cost: 10.0,
+      saleUnit: 'Pieza',
+    });
+
+    const pendingProd = service.products().find((p) => p.barcode === '7501059299092')!;
+    expect(pendingProd).toBeDefined();
+    expect(pendingProd.approvalStatus).toBe('PENDIENTE_APROBACION');
+
+    // 1. No pueden recibirse en inventario
+    expect(() => {
+      service.saveReception(
+        [
+          {
+            sku: pendingProd.sku,
+            name: pendingProd.name,
+            emoji: '📦',
+            qtyPurchase: 5,
+            purchaseUnit: 'Caja',
+            unitsPerPurchase: 10,
+            saleUnit: 'Pieza',
+            lineTotal: 500,
+            historicCost: 10,
+            newCost: 10,
+            salePrice: 15,
+            targetMargin: 20,
+            resolved: true,
+          },
+        ],
+        'REC-BLOCKED'
+      );
+    }).toThrowError(/pendiente de aprobación/i);
+
+    // 2. No pueden venderse en efectivo ni a crédito
+    const cashSaleRes = service.processCashSale(
+      [
+        {
+          sku: pendingProd.sku,
+          barcode: pendingProd.barcode,
+          name: pendingProd.name,
+          emoji: '📦',
+          saleUnit: 'Pieza',
+          isBulk: false,
+          qty: 1,
+          unitPrice: 15,
+          subtotal: 15,
+        },
+      ],
+      50
+    );
+    expect(cashSaleRes.ok).toBeFalse();
+    expect(cashSaleRes.message).toMatch(/pendiente de aprobación/i);
+
+    const creditSaleRes = service.processCreditSale(
+      [
+        {
+          sku: pendingProd.sku,
+          barcode: pendingProd.barcode,
+          name: pendingProd.name,
+          emoji: '📦',
+          saleUnit: 'Pieza',
+          isBulk: false,
+          qty: 1,
+          unitPrice: 15,
+          subtotal: 15,
+        },
+      ],
+      'CLI-DON-JUAN'
+    );
+    expect(creditSaleRes.ok).toBeFalse();
+    expect(creditSaleRes.message).toMatch(/pendiente de aprobación/i);
+
+    // 3. No pueden contarse en auditoría
+    service.submitBlindAuditResults([
+      { sku: pendingProd.sku, countedQty: 10 },
+      { sku: 'LAC-LAL-1L', countedQty: 20 },
+    ]);
+    expect(service.auditLines().some((l) => l.sku === pendingProd.sku)).toBeFalse();
+
+    const squareRes = service.applySquareAdjustment(pendingProd.sku, 'MERMA_OPERATIVA');
+    expect(squareRes.ok).toBeFalse();
+
+    // 4. No pueden entrar a la clasificación ABC
+    expect(service.abcSuggestions().some((r) => r.sku === pendingProd.sku)).toBeFalse();
+    const guidedRes = service.previewGuided([{ sku: pendingProd.sku, frequency: 'VARIAS_AL_DIA', losesCustomer: true }]);
+    expect(guidedRes.some((r) => r.sku === pendingProd.sku)).toBeFalse();
+
+    // 5. No pueden entrar a reportes
+    expect(service.fefoExchangeProducts().some((p) => p.sku === pendingProd.sku)).toBeFalse();
+    expect(service.criticalRopProducts().some((p) => p.sku === pendingProd.sku)).toBeFalse();
+    expect(service.quickAccessSuggestions().some((p) => p.sku === pendingProd.sku)).toBeFalse();
+
+    // 6. No pueden resolverse al escanear en celular ni en POS
+    expect(service.findProductByBarcode('7501059299092')).toBeUndefined();
+    expect(service.resolveScannedBarcode('7501059299092')).toBeNull();
+  });
+
+  it('35. Seguimiento F1: Merma natural: auditoría con diferencia dentro de tolerancia baja stock una sola vez y Kardex mantiene continuidad', () => {
+    const frijol = service.products().find((p) => p.sku === 'FRI-NEG-50K')!;
+    const previousStock = frijol.stock; // 16.5 kg
+    const countedQty = Math.round((previousStock - 1.0) * 1000) / 1000; // 15.5 kg (-1.0 kg dentro de tolerancia de 3% sobre base mensual)
+
+    service.auditLines.set([
+      {
+        sku: frijol.sku,
+        name: frijol.name,
+        emoji: '🫘',
+        location: frijol.location || 'Pasillo Granel',
+        saleUnit: 'Kg',
+        systemQty: previousStock,
+        countedQty,
+        unitCost: frijol.unitCost ?? 16.94,
+        status: 'pendiente',
+        naturalShrinkTolerancePct: 3,
+      },
+    ]);
+
+    const initialKardexCount = service.kardex().length;
+    const res = service.applySquareAdjustment(frijol.sku, 'MERMA_OPERATIVA', 'Administrador (PIN)');
+    expect(res.ok).toBeTrue();
+
+    const updatedFrijol = service.products().find((p) => p.sku === 'FRI-NEG-50K')!;
+    expect(updatedFrijol.stock).toBe(countedQty);
+
+    expect(service.kardex().length).toBe(initialKardexCount + 1);
+    const latestKardex = service.kardex()[0];
+    expect(latestKardex.type).toBe('MERMA_NATURAL');
+    expect(latestKardex.saldoAnterior).toBe(previousStock);
+    expect(latestKardex.cantidad).toBe(-1.0);
+    expect(latestKardex.saldoResultante).toBe(countedQty);
+
+    const continuity = verifyProductContinuity(service.products(), service.kardex(), 'newest-first');
+    expect(continuity.valid).toBeTrue();
+    expect(continuity.affectedSkus.length).toBe(0);
+  });
+
+  it('36. Seguimiento F1: Persistencia del residuo de redondeo en granel tras recarga/reinicio a mitad de un bulto de 50 kg', async () => {
+    service.saveReception(
+      [
+        {
+          sku: 'FRI-NEG-50K',
+          name: 'Frijol Negro 50kg',
+          emoji: '🫘',
+          qtyPurchase: 1,
+          purchaseUnit: 'Bulto',
+          unitsPerPurchase: 50,
+          saleUnit: 'Kg',
+          lineTotal: 847.0,
+          historicCost: 16.94,
+          newCost: 16.94,
+          packageCost: 847.0,
+          packageFactor: 50,
+          salePrice: 24.0,
+          targetMargin: 29,
+          resolved: true,
+        },
+      ],
+      'REC-50K-TEST'
+    );
+
+    let firstHalfQty = 0;
+    while (firstHalfQty < 25.0) {
+      const tanda = Math.min(0.35, Math.round((25.0 - firstHalfQty) * 1000) / 1000);
+      const res = service.processCashSale(
+        [
+          {
+            sku: 'FRI-NEG-50K',
+            barcode: '2000001000014',
+            name: 'Frijol Negro',
+            emoji: '🫘',
+            saleUnit: 'Kg',
+            isBulk: true,
+            qty: tanda,
+            unitPrice: 24.0,
+            subtotal: tanda * 24.0,
+          },
+        ],
+        50
+      );
+      expect(res.ok).toBeTrue();
+      firstHalfQty = Math.round((firstHalfQty + tanda) * 1000) / 1000;
+    }
+
+    const prodAtHalf = service.products().find((p) => p.sku === 'FRI-NEG-50K')!;
+    expect(prodAtHalf.bulkSoldQtyCurrentPackage).toBe(25.0);
+    expect(typeof prodAtHalf.bulkCostResidualCents).toBe('number');
+    const residualAtHalf = prodAtHalf.bulkCostResidualCents;
+
+    await service.flushSave();
+    await service.restorePersistedState();
+
+    const prodAfterReload = service.products().find((p) => p.sku === 'FRI-NEG-50K')!;
+    expect(prodAfterReload.bulkSoldQtyCurrentPackage).toBe(25.0);
+    expect(prodAfterReload.bulkCostResidualCents).toBe(residualAtHalf);
+
+    let secondHalfQty = 0;
+    while (secondHalfQty < 25.0) {
+      const tanda = Math.min(0.35, Math.round((25.0 - secondHalfQty) * 1000) / 1000);
+      const res = service.processCashSale(
+        [
+          {
+            sku: 'FRI-NEG-50K',
+            barcode: '2000001000014',
+            name: 'Frijol Negro',
+            emoji: '🫘',
+            saleUnit: 'Kg',
+            isBulk: true,
+            qty: tanda,
+            unitPrice: 24.0,
+            subtotal: tanda * 24.0,
+          },
+        ],
+        50
+      );
+      expect(res.ok).toBeTrue();
+      secondHalfQty = Math.round((secondHalfQty + tanda) * 1000) / 1000;
+    }
+
+    const prodFinished = service.products().find((p) => p.sku === 'FRI-NEG-50K')!;
+    expect(prodFinished.bulkSoldQtyCurrentPackage).toBe(50.0);
+    expect(prodFinished.cumulativeBulkCostCents).toBe(84700);
+  });
+
+  it('37. Seguimiento F1: Bloqueo de venta bajo costo aplica a cada escalón de mayoreo (Menudeo, Medio Mayoreo, Mayoreo) y pide PIN', async () => {
+    await service.setupInitialPin('984312');
+    const prod = service.products().find((p) => p.sku === 'LAC-LAL-1L')!;
+
+    // 1. Escalón MENUDEO vendido por debajo del costo ($15.00 < $18.50)
+    const menudeoNoPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 1,
+          unitPrice: 15.0,
+          activeTier: 'MENUDEO',
+          selectedTier: 'MENUDEO',
+          subtotal: 15.0,
+        },
+      ],
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 20,
+    });
+    expect(menudeoNoPin.ok).toBeFalse();
+    expect(menudeoNoPin.requiresPin).toBeTrue();
+    expect(menudeoNoPin.message).toMatch(/costo/i);
+
+    const menudeoWithPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 1,
+          unitPrice: 15.0,
+          activeTier: 'MENUDEO',
+          selectedTier: 'MENUDEO',
+          subtotal: 15.0,
+        },
+      ],
+      pin: '984312',
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 20,
+    });
+    expect(menudeoWithPin.ok).toBeTrue();
+
+    // 2. Escalón MEDIO_MAYOREO vendido por debajo del costo ($16.00 < $18.50)
+    const medioNoPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 6,
+          unitPrice: 16.0,
+          activeTier: 'MEDIO_MAYOREO',
+          selectedTier: 'MEDIO_MAYOREO',
+          subtotal: 96.0,
+        },
+      ],
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 100,
+    });
+    expect(medioNoPin.ok).toBeFalse();
+    expect(medioNoPin.requiresPin).toBeTrue();
+    expect(medioNoPin.message).toMatch(/costo/i);
+
+    const medioWithPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 6,
+          unitPrice: 16.0,
+          activeTier: 'MEDIO_MAYOREO',
+          selectedTier: 'MEDIO_MAYOREO',
+          subtotal: 96.0,
+        },
+      ],
+      pin: '984312',
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 100,
+    });
+    expect(medioWithPin.ok).toBeTrue();
+
+    // 3. Escalón MAYOREO vendido por debajo del costo ($17.00 < $18.50)
+    const mayoreoNoPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 12,
+          unitPrice: 17.0,
+          activeTier: 'MAYOREO',
+          selectedTier: 'MAYOREO',
+          subtotal: 204.0,
+        },
+      ],
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 250,
+    });
+    expect(mayoreoNoPin.ok).toBeFalse();
+    expect(mayoreoNoPin.requiresPin).toBeTrue();
+    expect(mayoreoNoPin.message).toMatch(/costo/i);
+
+    const mayoreoWithPin = await service.processSaleWithDiscounts({
+      items: [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 12,
+          unitPrice: 17.0,
+          activeTier: 'MAYOREO',
+          selectedTier: 'MAYOREO',
+          subtotal: 204.0,
+        },
+      ],
+      pin: '984312',
+      paymentMethod: 'EFECTIVO',
+      receivedAmount: 250,
+    });
+    expect(mayoreoWithPin.ok).toBeTrue();
+  });
 });

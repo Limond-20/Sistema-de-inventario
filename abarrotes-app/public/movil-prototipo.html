@@ -765,7 +765,11 @@
 
     function findProduct(codeOrSku) {
       const clean = String(codeOrSku || '').trim();
-      return CATALOG.find(p => p.barcode === clean || p.sku === clean || p.altBarcode === clean) || null;
+      const prod = CATALOG.find(p => p.barcode === clean || p.sku === clean || p.altBarcode === clean) || null;
+      if (prod && prod.approvalStatus === 'PENDIENTE_APROBACION') {
+        return null;
+      }
+      return prod;
     }
 
     // =========================== BEEP DE ESCÁNER Y VIBRACIÓN ===========================
@@ -1026,11 +1030,12 @@
       const sent = broadcastToPC(payload);
       CATALOG.push({
         barcode: code,
-        sku: `MOB-${code.slice(-4)}`,
+        sku: 'MOB-' + code.slice(-4),
         name: name,
         salePrice: salePrice,
         unit: saleUnit,
-        unitCost: cost
+        unitCost: cost,
+        approvalStatus: 'PENDIENTE_APROBACION'
       });
 
       const unknownCard = document.getElementById('pos-unknown-barcode-card');
