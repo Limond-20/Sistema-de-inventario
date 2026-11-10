@@ -406,6 +406,104 @@ export async function updateUserPin(
 }
 
 /**
+ * Protección contra suicidio administrativo:
+ * Impide desactivar (baja lógica), eliminar o degradar el rol (ADMINISTRADOR -> ENCARGADO / CAJERO)
+ * si el usuario objetivo es el único ADMINISTRADOR activo en el sistema.
+ */
+export function validateAdminSuicideProtection(
+  users: readonly AppUser[],
+  targetUserId: string,
+  action: 'DEACTIVATE' | 'DELETE' | 'CHANGE_ROLE',
+  newRole?: UserRole
+): { allowed: boolean; error?: string } {
+  const targetUser = users.find((u) => u.id === targetUserId);
+  if (!targetUser) {
+    return { allowed: false, error: 'Usuario no encontrado.' };
+  }
+
+  // Si el usuario objetivo no es un Administrador activo, la operación no compromete el quórum de administradores
+  if (targetUser.role !== 'ADMINISTRADOR' || !targetUser.isActive) {
+    return { allowed: true };
+  }
+
+  const activeAdmins = users.filter((u) => u.role === 'ADMINISTRADOR' && u.isActive);
+
+  if (action === 'DEACTIVATE') {
+    if (activeAdmins.length <= 1) {
+      return {
+        allowed: false,
+        error: 'No es posible desactivar al único Administrador activo del sistema. Debe existir al menos un Administrador activo.',
+      };
+    }
+  } else if (action === 'DELETE') {
+    if (activeAdmins.length <= 1) {
+      return {
+        allowed: false,
+        error: 'No es posible eliminar al único Administrador activo del sistema. Debe existir al menos un Administrador activo.',
+      };
+    }
+  } else if (action === 'CHANGE_ROLE') {
+    if (newRole && newRole !== 'ADMINISTRADOR' && activeAdmins.length <= 1) {
+      return {
+        allowed: false,
+        error: 'No es posible degradar el rol del único Administrador activo del sistema. Debe existir al menos un Administrador activo.',
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
+export interface SupervisorPinVerifyResult {
+  success: boolean;
+  message: string;
+  supervisor?: AppUser;
+  updatedUsers?: AppUser[];
+}
+
+/**
+ * Valida un PIN de elevación de privilegios / override contra los supervisores activos
+ * (ENCARGADO o ADMINISTRADOR). No cierra ni altera la sesión activa del cajero operador.
+ */
+export async function verifySupervisorPinAttempt(
+  users: readonly AppUser[],
+  pin: string,
+  allowedRoles: readonly UserRole[] = ['ENCARGADO', 'ADMINISTRADOR'],
+  now: number = Date.now()
+): Promise<SupervisorPinVerifyResult> {
+  const cleanPin = (pin || '').trim();
+  if (!cleanPin) {
+    return { success: false, message: 'Ingresa el PIN de autorización del supervisor.' };
+  }
+
+  const eligibleSupervisors = users.filter((u) => u.isActive && allowedRoles.includes(u.role));
+  if (eligibleSupervisors.length === 0) {
+    return {
+      success: false,
+      message: 'No hay supervisores activos (Encargado o Administrador) configurados.',
+    };
+  }
+
+  for (const supervisor of eligibleSupervisors) {
+    const attempt = await verifyUserPinAttempt(supervisor, cleanPin, now);
+    if (attempt.success) {
+      const updatedUsers = users.map((u) => (u.id === supervisor.id ? (attempt.updatedUser || u) : u));
+      return {
+        success: true,
+        message: `Operación autorizada por ${supervisor.name} (${supervisor.role}).`,
+        supervisor: attempt.updatedUser || supervisor,
+        updatedUsers,
+      };
+    }
+  }
+
+  return {
+    success: false,
+    message: 'PIN de supervisor incorrecto o no autorizado.',
+  };
+}
+
+/**
  * Genera el listado inicial de usuarios demostrativos con credenciales PBKDF2 precalculadas.
  */
 export function buildDefaultDemoUsers(): AppUser[] {

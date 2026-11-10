@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0e4a57" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Terminal Móvil · Abarrotes Doña Lupe</title>
+  <title>Terminal Móvil · Mi Tiendita</title>
   <!-- Estilos locales y fallback de Tailwind -->
   <link rel="stylesheet" href="vendor/movil.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -144,7 +144,7 @@
           <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"/><path d="M9.8 12a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0 -4.4 0"/></svg>
         </div>
         <div>
-          <span class="block font-display text-base font-bold leading-tight">Doña Lupe</span>
+          <span id="mobile-store-name" class="block font-display text-base font-bold leading-tight">Mi Tiendita</span>
           <span class="block text-xs leading-tight text-brand-200">Terminal Móvil</span>
         </div>
       </div>
@@ -1618,6 +1618,42 @@
       window.addEventListener('lansync:status', function(ev) {
         if (ev && ev.detail && ev.detail.status) {
           updateLanStatusBadge(ev.detail.status);
+        }
+      });
+
+      function updateMobileStoreName(name) {
+        if (!name) return;
+        const el = document.getElementById('mobile-store-name');
+        if (el) el.textContent = name;
+        document.title = 'Terminal Móvil · ' + name;
+      }
+
+      try {
+        const v4 = localStorage.getItem('binnitech_pos_state_v4');
+        if (v4) {
+          const parsed = JSON.parse(v4);
+          if (parsed && parsed.settings && parsed.settings.storeName) {
+            updateMobileStoreName(parsed.settings.storeName);
+          }
+        }
+      } catch (e) {}
+
+      if (syncChannel) {
+        syncChannel.addEventListener('message', function(ev) {
+          if (ev && ev.data && (ev.data.type === 'STORE_NAME' || ev.data.storeName)) {
+            updateMobileStoreName(ev.data.storeName);
+          }
+        });
+      }
+
+      window.addEventListener('storage', function(ev) {
+        if (ev && ev.key === 'binnitech_pos_state_v4' && ev.newValue) {
+          try {
+            const parsed = JSON.parse(ev.newValue);
+            if (parsed && parsed.settings && parsed.settings.storeName) {
+              updateMobileStoreName(parsed.settings.storeName);
+            }
+          } catch (e) {}
         }
       });
     });

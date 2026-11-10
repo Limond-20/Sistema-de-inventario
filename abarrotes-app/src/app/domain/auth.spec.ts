@@ -8,6 +8,8 @@ import {
   hasPermission,
   normalizeUserName,
   updateUserPin,
+  validateAdminSuicideProtection,
+  verifySupervisorPinAttempt,
   verifyUserPinAttempt,
   type AppUser,
 } from './auth.ts';
@@ -220,4 +222,129 @@ test('Usuarios (Bloque G): Normalización y prevención de duplicados', () => {
   assert.equal(checkUserDuplicate(users, 'MARIA GARCIA'), true);
   assert.equal(checkUserDuplicate(users, 'María García', 'USR-1'), false); // excluyendo su propio id
   assert.equal(checkUserDuplicate(users, 'Pedro Martínez'), false);
+});
+
+test('Protección contra suicidio administrativo (Bloque G seguimiento)', () => {
+  const users: AppUser[] = [
+    {
+      id: 'USR-ADMIN-1',
+      name: 'Admin Único',
+      role: 'ADMINISTRADOR',
+      salt: 'salt1',
+      pinHash: 'hash1',
+      iterations: 1000,
+      isActive: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      createdAt: '2026-11-10T12:00:00Z',
+    },
+    {
+      id: 'USR-CAJERO-1',
+      name: 'Cajero 1',
+      role: 'CAJERO',
+      salt: 'salt2',
+      pinHash: 'hash2',
+      iterations: 1000,
+      isActive: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      createdAt: '2026-11-10T12:00:00Z',
+    },
+  ];
+
+  // 1. Desactivar al único admin activo -> RECHAZADO
+  const deactRes = validateAdminSuicideProtection(users, 'USR-ADMIN-1', 'DEACTIVATE');
+  assert.equal(deactRes.allowed, false);
+  assert.match(deactRes.error || '', /No es posible desactivar al único Administrador activo/i);
+
+  // 2. Eliminar al único admin activo -> RECHAZADO
+  const delRes = validateAdminSuicideProtection(users, 'USR-ADMIN-1', 'DELETE');
+  assert.equal(delRes.allowed, false);
+  assert.match(delRes.error || '', /No es posible eliminar al único Administrador activo/i);
+
+  // 3. Degradar rol de único admin activo (a ENCARGADO o CAJERO) -> RECHAZADO
+  const roleDegradeRes = validateAdminSuicideProtection(users, 'USR-ADMIN-1', 'CHANGE_ROLE', 'ENCARGADO');
+  assert.equal(roleDegradeRes.allowed, false);
+  assert.match(roleDegradeRes.error || '', /No es posible degradar el rol del único Administrador activo/i);
+
+  const roleDegradeCajero = validateAdminSuicideProtection(users, 'USR-ADMIN-1', 'CHANGE_ROLE', 'CAJERO');
+  assert.equal(roleDegradeCajero.allowed, false);
+
+  // Mantener rol ADMINISTRADOR -> PERMITIDO
+  const keepAdmin = validateAdminSuicideProtection(users, 'USR-ADMIN-1', 'CHANGE_ROLE', 'ADMINISTRADOR');
+  assert.equal(keepAdmin.allowed, true);
+
+  // Desactivar a un cajero -> PERMITIDO
+  const deactCajero = validateAdminSuicideProtection(users, 'USR-CAJERO-1', 'DEACTIVATE');
+  assert.equal(deactCajero.allowed, true);
+
+  // 4. Si existe un segundo admin activo, sí se permite desactivar o degradar al primero
+  const twoAdminsUsers: AppUser[] = [
+    ...users,
+    {
+      id: 'USR-ADMIN-2',
+      name: 'Admin Segundo',
+      role: 'ADMINISTRADOR',
+      salt: 'salt3',
+      pinHash: 'hash3',
+      iterations: 1000,
+      isActive: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      createdAt: '2026-11-10T12:00:00Z',
+    },
+  ];
+
+  const allowedDeact = validateAdminSuicideProtection(twoAdminsUsers, 'USR-ADMIN-1', 'DEACTIVATE');
+  assert.equal(allowedDeact.allowed, true);
+
+  const allowedDegrade = validateAdminSuicideProtection(twoAdminsUsers, 'USR-ADMIN-1', 'CHANGE_ROLE', 'ENCARGADO');
+  assert.equal(allowedDegrade.allowed, true);
+});
+
+test('Elevación puntual de privilegios con PIN de supervisor (Bloque G seguimiento)', async () => {
+  const adminRes = await createAppUser({
+    name: 'Admin Supervisor',
+    role: 'ADMINISTRADOR',
+    pin: '984312',
+    iterations: 1000,
+  });
+  const encRes = await createAppUser({
+    name: 'Encargado Pasillo',
+    role: 'ENCARGADO',
+    pin: '839201',
+    iterations: 1000,
+  });
+  const cajeroRes = await createAppUser({
+    name: 'Cajero Operador',
+    role: 'CAJERO',
+    pin: '719283',
+    iterations: 1000,
+  });
+
+  const users: AppUser[] = [adminRes.user!, encRes.user!, cajeroRes.user!];
+
+  // 1. PIN de cajero como supervisor -> RECHAZADO (un cajero no puede autorizar su propio descuento o override)
+  const cajeroAttempt = await verifySupervisorPinAttempt(users, '719283');
+  assert.equal(cajeroAttempt.success, false);
+  assert.match(cajeroAttempt.message, /PIN de supervisor incorrecto o no autorizado/i);
+
+  // 2. PIN de Encargado -> ACEPTADO
+  const encAttempt = await verifySupervisorPinAttempt(users, '839201');
+  assert.equal(encAttempt.success, true);
+  assert.equal(encAttempt.supervisor?.name, 'Encargado Pasillo');
+  assert.equal(encAttempt.supervisor?.role, 'ENCARGADO');
+
+  // 3. PIN de Administrador -> ACEPTADO
+  const adminAttempt = await verifySupervisorPinAttempt(users, '984312');
+  assert.equal(adminAttempt.success, true);
+  assert.equal(adminAttempt.supervisor?.name, 'Admin Supervisor');
+  assert.equal(adminAttempt.supervisor?.role, 'ADMINISTRADOR');
+
+  // 4. PIN incorrecto -> RECHAZADO
+  const wrongAttempt = await verifySupervisorPinAttempt(users, '000000');
+  assert.equal(wrongAttempt.success, false);
 });

@@ -100,9 +100,12 @@ import {
   checkUserDuplicate,
   createAppUser,
   verifyUserPinAttempt,
+  verifySupervisorPinAttempt,
+  validateAdminSuicideProtection,
   updateUserPin,
   buildDefaultDemoUsers,
   type UserPinVerifyResult,
+  type SupervisorPinVerifyResult,
 } from '../domain/auth';
 import {
   type BusinessSettings,
@@ -661,7 +664,7 @@ export function parseTicketOCR(rawText: string, catalog: Product[]): ReceptionLi
 }
 
 // =====================================================================
-//  DATOS SIMULADOS (Abarrotes Doña Lupe · León, Gto.)
+//  DATOS SIMULADOS INICIALES DE DEMOSTRACIÓN
 //  Incluye los 5 productos base con sus códigos EAN-13 exactos y estrategias ABC / ROP / FEFO
 // =====================================================================
 
@@ -1304,9 +1307,9 @@ const AUDIT_LINES: AuditLine[] = RAW_AUDIT_LINES.map((l) => enrichAuditLineWithT
 const SHRINK_RECORDS: ShrinkRecord[] = [
   { id: 'M-0412', date: '22/10/2026', time: '9:15 a.m.', sku: 'LAC-LAL-1L', name: 'Leche Lala Entera 1L', emoji: '🥛', qty: 2, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 21.0, registeredBy: 'Celular · Toño', hasPhoto: true, reviewed: false },
   { id: 'M-0411', date: '21/10/2026', time: '11:40 a.m.', sku: 'HUE-BAC-18', name: 'Huevo Blanco Granel (1 kg)', emoji: '🥚', qty: 1, saleUnit: 'Kg', reason: 'Envase Roto en Piso', unitCost: 36.0, registeredBy: 'Celular · Toño', hasPhoto: true, reviewed: false },
-  { id: 'M-0410', date: '20/10/2026', time: '8:05 p.m.', sku: 'YOG-YOP-1K', name: 'Yoghurt Yoplait Fresa 1kg', emoji: '🍓', qty: 3, saleUnit: 'Pieza', reason: 'Caducado sin devolución', unitCost: 41.3, registeredBy: 'Celular · Doña Lupe', hasPhoto: true, reviewed: false },
+  { id: 'M-0410', date: '20/10/2026', time: '8:05 p.m.', sku: 'YOG-YOP-1K', name: 'Yoghurt Yoplait Fresa 1kg', emoji: '🍓', qty: 3, saleUnit: 'Pieza', reason: 'Caducado sin devolución', unitCost: 41.3, registeredBy: 'Celular · Encargado', hasPhoto: true, reviewed: false },
   { id: 'M-0409', date: '19/10/2026', time: '9:30 a.m.', sku: 'PAN-BIM-680', name: 'Pan Blanco Bimbo Grande 680g', emoji: '🍞', qty: 2, saleUnit: 'Pieza', reason: 'Caducado sin devolución', unitCost: 41, registeredBy: 'Celular · Toño', hasPhoto: true, reviewed: true },
-  { id: 'M-0408', date: '18/10/2026', time: '5:50 p.m.', sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml', emoji: '🫒', qty: 1, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 34.0, registeredBy: 'Celular · Doña Lupe', hasPhoto: true, reviewed: true },
+  { id: 'M-0408', date: '18/10/2026', time: '5:50 p.m.', sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml', emoji: '🫒', qty: 1, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 34.0, registeredBy: 'Celular · Encargado', hasPhoto: true, reviewed: true },
 ];
 
 export const SUPPLIER_ROUTES: SupplierRoute[] = [
@@ -1723,11 +1726,9 @@ export class MockInventoryService implements OnDestroy {
     const user = this.users().find((u) => u.id === userId);
     if (!user) return { ok: false, message: 'Usuario no encontrado.' };
 
-    if (user.role === 'ADMINISTRADOR' && newRole !== 'ADMINISTRADOR') {
-      const activeAdmins = this.users().filter((u) => u.isActive && u.role === 'ADMINISTRADOR');
-      if (activeAdmins.length <= 1) {
-        return { ok: false, message: 'No se puede cambiar el rol del único Administrador activo del sistema.' };
-      }
+    const suicideCheck = validateAdminSuicideProtection(this.users(), userId, 'CHANGE_ROLE', newRole);
+    if (!suicideCheck.allowed) {
+      return { ok: false, message: suicideCheck.error || 'No es posible degradar el rol del único Administrador activo del sistema.' };
     }
 
     const oldRole = user.role;
@@ -1765,11 +1766,9 @@ export class MockInventoryService implements OnDestroy {
     const user = this.users().find((u) => u.id === userId);
     if (!user) return { ok: false, message: 'Usuario no encontrado.' };
 
-    if (user.role === 'ADMINISTRADOR') {
-      const activeAdmins = this.users().filter((u) => u.isActive && u.role === 'ADMINISTRADOR');
-      if (activeAdmins.length <= 1) {
-        return { ok: false, message: 'No se puede desactivar al único Administrador activo del sistema.' };
-      }
+    const suicideCheck = validateAdminSuicideProtection(this.users(), userId, 'DEACTIVATE');
+    if (!suicideCheck.allowed) {
+      return { ok: false, message: suicideCheck.error || 'No es posible desactivar al único Administrador activo del sistema.' };
     }
 
     const updatedUser: AppUser = {
@@ -1789,6 +1788,36 @@ export class MockInventoryService implements OnDestroy {
 
     await this.flushSave();
     return { ok: true, message: `Usuario "${user.name}" desactivado.` };
+  }
+
+  async deleteUser(userId: string): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const currentRole = this.currentUser()?.role || 'ADMINISTRADOR';
+    if (!hasPermission(currentRole, 'usuarios')) {
+      return { ok: false, message: 'Permiso denegado: solo el Administrador puede eliminar usuarios.' };
+    }
+
+    const user = this.users().find((u) => u.id === userId);
+    if (!user) return { ok: false, message: 'Usuario no encontrado.' };
+
+    const suicideCheck = validateAdminSuicideProtection(this.users(), userId, 'DELETE');
+    if (!suicideCheck.allowed) {
+      return { ok: false, message: suicideCheck.error || 'No es posible eliminar al único Administrador activo del sistema.' };
+    }
+
+    this.users.update((list) => list.filter((u) => u.id !== userId));
+
+    this.appendSecurityAuditEntry(
+      'USER_DEACTIVATED',
+      `Eliminación definitiva de usuario "${user.name}" (${user.role})`,
+      { userId, role: user.role, action: 'DELETE' },
+      user.name
+    );
+
+    await this.flushSave();
+    return { ok: true, message: `Usuario "${user.name}" eliminado.` };
   }
 
   async changeUserPin(
@@ -1831,6 +1860,23 @@ export class MockInventoryService implements OnDestroy {
     return { ok: true, message: 'PIN actualizado correctamente.' };
   }
 
+  /**
+   * Determina si el turno de caja actual tiene movimientos registrados
+   * (ventas en efectivo, ventas a crédito, abonos de clientes, pagos a proveedores, consumos o mermas).
+   */
+  hasCurrentShiftMovements(): boolean {
+    const s = this.cashShift();
+    return (
+      (s.cashSalesTotal || 0) > 0 ||
+      (s.creditSalesTotal || 0) > 0 ||
+      (s.creditPaymentsReceived || 0) > 0 ||
+      (s.cashPayoutsTotal || 0) > 0 ||
+      (s.internalConsumptionTotalCost || 0) > 0 ||
+      (s.shrinkTotalCost || 0) > 0 ||
+      this.cashMovements().length > 0
+    );
+  }
+
   async updateBusinessSettings(
     newSettings: Partial<BusinessSettings>
   ): Promise<{ ok: boolean; message: string; errors?: string[] }> {
@@ -1861,8 +1907,19 @@ export class MockInventoryService implements OnDestroy {
     if (newSettings.storeName && newSettings.storeName !== prev.storeName) {
       diffs.push(`Nombre del negocio: "${prev.storeName}" -> "${validation.sanitized.storeName}"`);
     }
-    if (newSettings.initialCashFloat !== undefined && newSettings.initialCashFloat !== prev.initialCashFloat) {
+    if (
+      (newSettings.initialCashFloat !== undefined && newSettings.initialCashFloat !== prev.initialCashFloat) ||
+      (newSettings.initialCashFloatCents !== undefined && newSettings.initialCashFloatCents !== prev.initialCashFloatCents)
+    ) {
       diffs.push(`Fondo inicial: $${prev.initialCashFloat} -> $${validation.sanitized.initialCashFloat}`);
+      // Aislamiento del Fondo Inicial frente a turnos con movimientos activos (Bloque G seguimiento):
+      // Si el turno actual ya tiene movimientos, NO altera retroactivamente openingCash para no descuadrar el arqueo.
+      // Solo actualiza en vivo si el turno no tiene movimientos, o se aplicará al siguiente inicio de turno.
+      if (!this.hasCurrentShiftMovements()) {
+        const newFloat = validation.sanitized.initialCashFloat;
+        this.cashShift.update((s) => ({ ...s, openingCash: newFloat }));
+        this.cashRegister.update((r) => ({ ...r, openingFloat: newFloat }));
+      }
     }
     if (newSettings.marginThresholdPct !== undefined && newSettings.marginThresholdPct !== prev.marginThresholdPct) {
       diffs.push(`Umbral de margen: ${prev.marginThresholdPct}% -> ${validation.sanitized.marginThresholdPct}%`);
@@ -3093,6 +3150,10 @@ export class MockInventoryService implements OnDestroy {
     if (!this.assertWritable()) return;
     this.phoneLinked.set(true);
 
+    // Continuidad LAN durante bloqueo por inactividad (Bloque G seguimiento):
+    // Las tramas LAN procesadas en pasillo mantienen el servicio activo y refrescan el temporizador
+    this.resetInactivityTimer();
+
     if (data.type === 'MERMA_SUBMIT' && data.record) {
       this.addShrinkRecord(data.record);
     } else if (data.type === 'BARCODE_SCANNED' && data.barcode) {
@@ -3176,10 +3237,39 @@ export class MockInventoryService implements OnDestroy {
   }
 
   /**
+   * Valida un PIN de elevación de privilegios / override contra cualquier usuario activo
+   * con rol ENCARGADO o ADMINISTRADOR sin cerrar ni modificar la sesión del cajero en curso.
+   */
+  async verifySupervisorPin(
+    pin: string,
+    allowedRoles: readonly UserRole[] = ['ENCARGADO', 'ADMINISTRADOR']
+  ): Promise<SupervisorPinVerifyResult> {
+    const res = await verifySupervisorPinAttempt(this.users(), pin, allowedRoles);
+    if (res.updatedUsers) {
+      this.users.set(res.updatedUsers);
+    }
+    return res;
+  }
+
+  /**
    * Verifica un intento de PIN con persistencia ante recarga de página (máx. 3 intentos y bloqueo 30s).
    * Registra quién autorizó la operación en el Kardex.
    */
   async verifyAdminPin(pin: string, authorizer?: string): Promise<PinVerificationResult> {
+    if (this.users().length > 0) {
+      const supCheck = await this.verifySupervisorPin(pin);
+      if (supCheck.success && supCheck.supervisor) {
+        return {
+          success: true,
+          message: supCheck.message,
+          remainingAttempts: 3,
+          isLocked: false,
+          lockedRemainingSeconds: 0,
+          authorizedBy: (authorizer && authorizer !== 'Administrador') ? authorizer : supCheck.supervisor.name,
+          nextState: { failedAttempts: 0, lockedUntil: null, lockoutCount: 0 },
+        };
+      }
+    }
     const authUser = authorizer || this.activeUser();
     const result = await verifyPinAttempt(pin, undefined, Date.now(), authUser);
     this.pinState.set(loadPinState());
@@ -6168,6 +6258,8 @@ export class MockInventoryService implements OnDestroy {
     }
 
     const evaluation = this.evaluatePosCartDiscounts(params.items, params.ticketDiscountPct ?? 0);
+    let authorizerSupervisor: string | undefined;
+
     if (evaluation.requiresPin) {
       if (!params.pin || !params.pin.trim()) {
         return {
@@ -6182,7 +6274,7 @@ export class MockInventoryService implements OnDestroy {
           change: 0,
         };
       }
-      const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName || 'Administrador');
+      const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName);
       if (!pinCheck.success) {
         return {
           ok: false,
@@ -6194,6 +6286,7 @@ export class MockInventoryService implements OnDestroy {
           change: 0,
         };
       }
+      authorizerSupervisor = pinCheck.authorizedBy || params.authorizerName || 'Supervisor';
     }
 
     // Construir líneas con su importe neto exacto en centavos para que caja y Kardex cuadren al centavo
@@ -6206,11 +6299,16 @@ export class MockInventoryService implements OnDestroy {
       };
     });
 
+    const cashierName = this.currentUser()?.name || this.activeUser();
+    const overrideInfo = authorizerSupervisor
+      ? { cashier: cashierName, authorizedBy: authorizerSupervisor }
+      : undefined;
+
     const mode = params.paymentType || params.paymentMethod || 'EFECTIVO';
     if (mode === 'FIADO') {
       const res = this.processCreditSale(netItems, params.customerId || '');
-      if (res.ok && evaluation.totalDiscountCents > 0) {
-        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount);
+      if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
+        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
       }
       await this.flushSave();
       return {
@@ -6224,8 +6322,8 @@ export class MockInventoryService implements OnDestroy {
     } else {
       const cash = params.cashReceived ?? params.receivedAmount ?? evaluation.finalTotal;
       const res = this.processCashSale(netItems, cash);
-      if (res.ok && evaluation.totalDiscountCents > 0) {
-        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount);
+      if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
+        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
       }
       await this.flushSave();
       return {
@@ -6239,10 +6337,16 @@ export class MockInventoryService implements OnDestroy {
     }
   }
 
-  private annotateLatestSaleWithDiscount(discountAmount: number): void {
+  private annotateLatestSaleWithDiscount(
+    discountAmount: number,
+    overrideInfo?: { cashier: string; authorizedBy: string }
+  ): void {
     const entries = [...this.kardex()];
     if (entries.length === 0) return;
     const tag = `DESC-$${discountAmount.toFixed(2)}`;
+    const authTag = overrideInfo
+      ? ` | Cajero: ${overrideInfo.cashier}, Autorizó: ${overrideInfo.authorizedBy}`
+      : '';
     const head = entries[0];
     const prevHash = entries[1]?.entryHash || 'GENESIS';
     const rehashedHead = createKardexEntry(
@@ -6254,14 +6358,25 @@ export class MockInventoryService implements OnDestroy {
         saldoAnterior: head.saldoAnterior,
         saldoResultante: head.saldoResultante,
         usuario: head.usuario,
-        referencia: `${head.referencia} (${tag})`,
+        referencia: `${head.referencia} (${tag}${authTag})`,
         amount: head.amount,
-        description: head.description,
+        description: overrideInfo
+          ? `${head.description} [Autorizado por ${overrideInfo.authorizedBy} para el cajero ${overrideInfo.cashier}]`
+          : head.description,
       },
       prevHash,
     );
     entries[0] = rehashedHead;
     this.kardex.set(entries);
+
+    if (overrideInfo) {
+      this.appendSecurityAuditEntry(
+        'OVERRIDE_AUTHORIZED',
+        `Descuento de $${discountAmount.toFixed(2)} en POS autorizado por ${overrideInfo.authorizedBy} para el cajero ${overrideInfo.cashier}`,
+        { cashier: overrideInfo.cashier, authorizedBy: overrideInfo.authorizedBy, discountAmount },
+        overrideInfo.cashier
+      );
+    }
   }
 
   /**

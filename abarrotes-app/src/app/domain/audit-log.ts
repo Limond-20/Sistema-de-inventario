@@ -16,7 +16,8 @@ export type SecurityAuditAction =
   | 'USER_DEACTIVATED'
   | 'USER_REACTIVATED'
   | 'PIN_CHANGED'
-  | 'SETTINGS_UPDATED';
+  | 'SETTINGS_UPDATED'
+  | 'OVERRIDE_AUTHORIZED';
 
 export interface SecurityAuditEntry {
   id: string;

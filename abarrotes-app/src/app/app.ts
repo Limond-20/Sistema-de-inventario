@@ -1,10 +1,11 @@
 import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterOutlet } from '@angular/router';
+import { RouterOutlet, Router } from '@angular/router';
 import { NavbarComponent } from './components/navbar/navbar.component';
 import { IconComponent } from './components/icon/icon.component';
 import { MockInventoryService } from './services/mock-inventory.service';
+import { canAccessRoute } from './domain/auth';
 
 @Component({
   selector: 'app-root',
@@ -233,6 +234,7 @@ import { MockInventoryService } from './services/mock-inventory.service';
 })
 export class App implements OnInit, OnDestroy {
   protected readonly inv = inject(MockInventoryService);
+  protected readonly router = inject(Router);
 
   // ---------- Control de Desbloqueo / Login ----------
   protected readonly selectedUserId = signal<string>('');
@@ -274,6 +276,14 @@ export class App implements OnInit, OnDestroy {
       } else {
         this.unlockPin.set('');
         this.unlockError.set('');
+
+        // Bloque G: Redirección inmediata si el usuario que desbloquea no tiene acceso a la vista actual
+        const authenticatedUser = res.updatedUser || this.inv.currentUser();
+        const role = authenticatedUser?.role || 'CAJERO';
+        const currentUrl = this.router.url || '';
+        if (!canAccessRoute(role, currentUrl)) {
+          await this.router.navigate(['/pos']);
+        }
       }
     } finally {
       this.isSubmittingUnlock.set(false);
