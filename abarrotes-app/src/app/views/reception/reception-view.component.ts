@@ -463,6 +463,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   protected readonly supplierNotes = signal<string>('');
   protected readonly supplierError = signal<string>('');
   protected readonly supplierFeedback = signal<string>('');
+  protected readonly supplierDuplicateWarning = signal<boolean>(false);
 
   protected readonly supplierFichaModalOpen = signal<boolean>(false);
   protected readonly selectedSupplier = signal<any | null>(null);
@@ -475,6 +476,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   protected readonly paymentTargetDebtId = signal<string | null>(null);
   protected readonly paymentTargetDebtFolio = signal<string | null>(null);
   protected readonly paymentNotes = signal<string>('');
+  protected readonly paymentPin = signal<string>('');
   protected readonly paymentError = signal<string>('');
   protected readonly paymentFeedback = signal<string>('');
 
@@ -528,7 +530,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     this.supplierModalOpen.set(false);
   }
 
-  saveSupplier(): void {
+  saveSupplier(confirmDuplicate = false): void {
     this.supplierError.set('');
     this.supplierFeedback.set('');
     const visitDaysArray = this.supplierVisitDays().split(',').map((d) => d.trim()).filter(Boolean);
@@ -543,19 +545,27 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     };
 
     if (this.supplierMode() === 'create') {
-      const res = this.inv.createSupplier(input);
+      const res = this.inv.createSupplier(input, confirmDuplicate);
       if (!res.ok) {
+        if (res.duplicateWarning) {
+          this.supplierDuplicateWarning.set(true);
+        }
         this.supplierError.set(res.message);
         return;
       }
+      this.supplierDuplicateWarning.set(false);
       this.supplierFeedback.set(res.message);
       setTimeout(() => this.closeSupplierModal(), 600);
     } else {
-      const res = this.inv.updateSupplier(this.supplierId(), input);
+      const res = this.inv.updateSupplier(this.supplierId(), input, confirmDuplicate);
       if (!res.ok) {
+        if (res.duplicateWarning) {
+          this.supplierDuplicateWarning.set(true);
+        }
         this.supplierError.set(res.message);
         return;
       }
+      this.supplierDuplicateWarning.set(false);
       this.supplierFeedback.set(res.message);
       setTimeout(() => this.closeSupplierModal(), 600);
     }
@@ -597,6 +607,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     this.paymentTargetDebtId.set(debtId || null);
     this.paymentTargetDebtFolio.set(debtFolio || null);
     this.paymentNotes.set(debtFolio ? `Liquidación nota ${debtFolio}` : '');
+    this.paymentPin.set('');
     this.paymentError.set('');
     this.paymentFeedback.set('');
     this.paymentModalOpen.set(true);
@@ -606,7 +617,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     this.paymentModalOpen.set(false);
   }
 
-  submitSupplierPayment(): void {
+  async submitSupplierPayment(): Promise<void> {
     this.paymentError.set('');
     this.paymentFeedback.set('');
     const supId = this.paymentSupplierId();
@@ -615,11 +626,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
       this.paymentError.set('El monto de pago debe ser mayor a cero.');
       return;
     }
-    if (this.paymentSource() === 'CAJA' && amount > this.inv.getRealDrawerCash()) {
-      this.paymentError.set(`Efectivo insuficiente en cajón (${this.inv.getRealDrawerCash().toFixed(2)} disponible). Selecciona 'Bolsillo / Fondo Externo' o ajusta el monto.`);
-      return;
-    }
-    const res = this.inv.registerSupplierPayment(
+    const res = await this.inv.registerSupplierPayment(
       supId,
       amount,
       this.paymentMethod(),
@@ -627,6 +634,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
       {
         source: this.paymentSource(),
         targetDebtId: this.paymentTargetDebtId() || undefined,
+        pin: this.paymentPin() || undefined,
       }
     );
     if (!res.ok) {

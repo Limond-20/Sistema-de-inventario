@@ -8,6 +8,9 @@ import {
   canDeactivateSupplier,
   allocateSupplierPaymentToDebts,
   detectPriceHike,
+  checkSupplierDuplicate,
+  formatLocalDate,
+  parseLocalDate,
   type Supplier,
   type AccountsPayableDebt,
 } from './suppliers.ts';
@@ -235,4 +238,124 @@ test('Proveedores (F2): amortización específica de remisión/factura por targe
   const cxp1Part = alloc2.updatedDebts.find((d) => d.id === 'CXP-01')!;
   assert.equal(cxp1Part.remainingBalance, 200.0); // 500 - 300 = 200
   assert.equal(cxp1Part.status, 'VENCIDO');
+});
+
+test('Fechas (F2 Seguimiento): cálculo de vencimiento con fecha local AAAA-MM-DD sin desfase UTC a las 19:00 y 23:30 (plazos 15/30 días, cruce de mes y año)', () => {
+  // Caso 1: Hora fijada a las 19:00 (típica hora en México donde toISOString convertiría a +6 horas = día siguiente en UTC)
+  // Fecha base: 31 de Octubre de 2026 a las 19:00:00 local
+  const dateAt1900 = new Date(2026, 9, 31, 19, 0, 0); // Octubre es mes 9
+  assert.equal(formatLocalDate(dateAt1900), '2026-10-31', 'La fecha local a las 19:00 debe ser 2026-10-31');
+
+  // Plazo 15 días: 31 Octubre + 15 días = 15 Noviembre (cruce de mes)
+  const due15Days1900 = calculateDueDate(dateAt1900, 15);
+  assert.equal(due15Days1900, '2026-11-15');
+
+  // Plazo 30 días: 31 Octubre + 30 días = 30 Noviembre
+  const due30Days1900 = calculateDueDate(dateAt1900, 30);
+  assert.equal(due30Days1900, '2026-11-30');
+
+  // Caso 2: Hora fijada a las 23:30 (cerca de medianoche)
+  // Fecha base: 20 de Diciembre de 2026 a las 23:30:00 local
+  const dateAt2330 = new Date(2026, 11, 20, 23, 30, 0); // Diciembre es mes 11
+  assert.equal(formatLocalDate(dateAt2330), '2026-12-20', 'La fecha local a las 23:30 debe ser 2026-12-20');
+
+  // Plazo 15 días: 20 Diciembre + 15 días = 4 Enero 2027 (cruce de mes y año)
+  const due15Days2330 = calculateDueDate(dateAt2330, 15);
+  assert.equal(due15Days2330, '2027-01-04');
+
+  // Plazo 30 días: 20 Diciembre + 30 días = 19 Enero 2027 (cruce de mes y año)
+  const due30Days2330 = calculateDueDate(dateAt2330, 30);
+  assert.equal(due30Days2330, '2027-01-19');
+
+  // Verificación de que la comparación de vencimiento también respeta la fecha local sin desfase horario
+  const todayAt2330 = new Date(2026, 9, 31, 23, 30, 0);
+  // Una deuda que vence el mismo día 2026-10-31 NO está vencida hoy a las 23:30
+  assert.equal(isDebtOverdue('2026-10-31', todayAt2330), false);
+  // Una deuda que venció ayer 2026-10-30 sí está vencida
+  assert.equal(isDebtOverdue('2026-10-30', todayAt2330), true);
+});
+
+test('Proveedores (F2 Seguimiento): Detección y prevención de proveedores duplicados (nombre normalizado + teléfono)', () => {
+  const existingSuppliers: Supplier[] = [
+    {
+      id: 'SUP-01',
+      name: 'Distribuidora del Bajío',
+      phone: '477-123-4567',
+      visitDays: ['Lunes'],
+      paymentTerms: 'CREDITO',
+      creditDays: 15,
+      physicalExchangePolicy: true,
+      isActive: true,
+      currentBalance: 0,
+    },
+    {
+      id: 'SUP-02',
+      name: 'Lácteos Santa Clara',
+      phone: '55-9876-5432',
+      visitDays: ['Martes'],
+      paymentTerms: 'CONTADO',
+      creditDays: 0,
+      physicalExchangePolicy: false,
+      isActive: true,
+      currentBalance: 0,
+    },
+    {
+      id: 'SUP-INACTIVE',
+      name: 'Abarrotes Don Pepe',
+      phone: '951-999-8877',
+      visitDays: [],
+      paymentTerms: 'CONTADO',
+      creditDays: 0,
+      physicalExchangePolicy: false,
+      isActive: false, // Inactivo
+      currentBalance: 0,
+    },
+  ];
+
+  // 1. Duplicado por nombre idéntico con mayúsculas y acentos
+  const dupName = checkSupplierDuplicate(
+    { name: '  dístribuidora DEL bajio  ', phone: '999-000-1111' },
+    existingSuppliers
+  );
+  assert.equal(dupName.isDuplicate, true);
+  assert.equal(dupName.duplicateOf?.id, 'SUP-01');
+  assert.match(dupName.reason || '', /mismo nombre/);
+
+  // 2. Duplicado por teléfono (mismos dígitos en distinto formato)
+  const dupPhone = checkSupplierDuplicate(
+    { name: 'Comercializadora Nueva', phone: '(477) 123 4567' },
+    existingSuppliers
+  );
+  assert.equal(dupPhone.isDuplicate, true);
+  assert.equal(dupPhone.duplicateOf?.id, 'SUP-01');
+  assert.match(dupPhone.reason || '', /mismo teléfono/);
+
+  // 3. Duplicado exacto (nombre y teléfono coinciden)
+  const dupBoth = checkSupplierDuplicate(
+    { name: 'Lácteos Santa Clara', phone: '5598765432' },
+    existingSuppliers
+  );
+  assert.equal(dupBoth.isDuplicate, true);
+  assert.equal(dupBoth.duplicateOf?.id, 'SUP-02');
+
+  // 4. Proveedor no duplicado (distinto nombre y teléfono)
+  const notDup = checkSupplierDuplicate(
+    { name: 'Bimbo México', phone: '55-1122-3344' },
+    existingSuppliers
+  );
+  assert.equal(notDup.isDuplicate, false);
+
+  // 5. Comparación contra sí mismo en edición (mismo id) no debe marcar duplicado
+  const selfCheck = checkSupplierDuplicate(
+    { id: 'SUP-01', name: 'Distribuidora del Bajío', phone: '477-123-4567' },
+    existingSuppliers
+  );
+  assert.equal(selfCheck.isDuplicate, false);
+
+  // 6. Proveedor dado de baja (isActive: false) no bloquea nuevo registro
+  const inactiveCheck = checkSupplierDuplicate(
+    { name: 'Abarrotes Don Pepe', phone: '951-999-8877' },
+    existingSuppliers
+  );
+  assert.equal(inactiveCheck.isDuplicate, false);
 });

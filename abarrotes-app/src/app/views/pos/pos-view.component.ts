@@ -785,6 +785,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   protected readonly customerFormPin = signal<string>('');
   protected readonly customerFormError = signal<string>('');
   protected readonly customerFormFeedback = signal<string>('');
+  protected readonly customerDuplicateWarning = signal<boolean>(false);
 
   protected readonly customerFichaModalOpen = signal<boolean>(false);
   protected readonly customerFicha = signal<CreditCustomer | null>(null);
@@ -801,6 +802,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.customerFormPin.set('');
     this.customerFormError.set('');
     this.customerFormFeedback.set('');
+    this.customerDuplicateWarning.set(false);
     this.customerFormModalOpen.set(true);
   }
 
@@ -817,6 +819,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.customerFormPin.set('');
     this.customerFormError.set('');
     this.customerFormFeedback.set('');
+    this.customerDuplicateWarning.set(false);
     this.customerFormModalOpen.set(true);
   }
 
@@ -824,7 +827,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     this.customerFormModalOpen.set(false);
   }
 
-  async saveCustomerForm(): Promise<void> {
+  async saveCustomerForm(confirmDuplicate = false): Promise<void> {
     this.customerFormError.set('');
     this.customerFormFeedback.set('');
     const input = {
@@ -837,11 +840,15 @@ export class PosViewComponent implements OnInit, OnDestroy {
     };
 
     if (this.customerFormMode() === 'create') {
-      const res = this.inv.createCustomer(input);
+      const res = this.inv.createCustomer(input, confirmDuplicate);
       if (!res.ok) {
+        if (res.duplicateWarning) {
+          this.customerDuplicateWarning.set(true);
+        }
         this.customerFormError.set(res.message);
         return;
       }
+      this.customerDuplicateWarning.set(false);
       this.customerFormFeedback.set(res.message);
       if (res.customer) {
         this.selectedCustomerId.set(res.customer.id);
@@ -851,12 +858,17 @@ export class PosViewComponent implements OnInit, OnDestroy {
       const res = await this.inv.updateCustomerWithPinCheck(
         this.customerFormId(),
         input,
-        this.customerFormPin()
+        this.customerFormPin(),
+        confirmDuplicate
       );
       if (!res.ok) {
+        if (res.duplicateWarning) {
+          this.customerDuplicateWarning.set(true);
+        }
         this.customerFormError.set(res.message);
         return;
       }
+      this.customerDuplicateWarning.set(false);
       this.customerFormFeedback.set(res.message);
       setTimeout(() => this.closeCustomerFormModal(), 600);
     }

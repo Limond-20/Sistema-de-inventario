@@ -22,6 +22,7 @@ import {
   requiresPinForCreditTermsChange,
   searchCreditCustomers,
   calculateCustomerDueDate,
+  checkCustomerDuplicate,
 } from '../domain/credit';
 import {
   type Supplier,
@@ -36,7 +37,14 @@ import {
   allocateSupplierPaymentToDebts,
   detectPriceHike,
   validateSupplierInput,
+  checkSupplierDuplicate,
+  formatLocalDate,
+  parseLocalDate,
 } from '../domain/suppliers';
+import {
+  CashMovement,
+  createCashMovement,
+} from '../domain/cash';
 import {
   createKardexEntry,
   generateKardexId,
@@ -67,6 +75,8 @@ import {
 import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY_V2,
+  LEGACY_STATE_STORAGE_KEY_V1,
   LEGACY_STATE_STORAGE_KEY,
   CORRUPT_STATE_KEY_PREFIX,
   WRITER_LOCK_NAME,
@@ -1850,6 +1860,10 @@ export class MockInventoryService implements OnDestroy {
       internalConsumptionRecords: this.internalConsumptionRecords(),
       morningAlerts: this.morningAlerts(),
       maxDiscountPctWithoutPin: this.maxDiscountPctWithoutPin(),
+      suppliers: this.suppliers(),
+      accountsPayable: this.accountsPayable(),
+      priceHistory: this.productPriceHistory(),
+      cashMovements: this.cashMovements(),
     };
   }
 
@@ -2307,9 +2321,20 @@ export class MockInventoryService implements OnDestroy {
     try {
       let raw = await this.storageAdapter.load(STATE_STORAGE_KEY);
       let loadedFromLegacy = false;
+      let legacyKeyLoaded: string | null = null;
       if (!raw) {
-        raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY);
-        if (raw) loadedFromLegacy = true;
+        raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V2);
+        if (raw) {
+          loadedFromLegacy = true;
+          legacyKeyLoaded = LEGACY_STATE_STORAGE_KEY_V2;
+        }
+      }
+      if (!raw) {
+        raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V1);
+        if (raw) {
+          loadedFromLegacy = true;
+          legacyKeyLoaded = LEGACY_STATE_STORAGE_KEY_V1;
+        }
       }
       if (!raw) {
         this.isHydrated.set(true);
@@ -2393,6 +2418,10 @@ export class MockInventoryService implements OnDestroy {
       if (typeof stateToValidate.maxDiscountPctWithoutPin === 'number') {
         this.maxDiscountPctWithoutPin.set(stateToValidate.maxDiscountPctWithoutPin);
       }
+      if (stateToValidate.suppliers) this.suppliers.set(stateToValidate.suppliers);
+      if (stateToValidate.accountsPayable) this.accountsPayable.set(stateToValidate.accountsPayable);
+      if (stateToValidate.priceHistory) this.productPriceHistory.set(stateToValidate.priceHistory);
+      if (stateToValidate.cashMovements) this.cashMovements.set(stateToValidate.cashMovements);
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
@@ -2400,19 +2429,21 @@ export class MockInventoryService implements OnDestroy {
       if (migration.migrated || loadedFromLegacy) {
         try {
           await this.flushSave();
-          // REGLA MIGRACIÓN: no borres la clave binnitech_pos_state_v1 hasta verificar
-          // que el estado v2 recién escrito se puede leer y pasa validateStoredState
-          const writtenV2 = await this.storageAdapter.load(STATE_STORAGE_KEY);
-          const v2Validation = validateStoredState(
-            writtenV2,
+          // REGLA MIGRACIÓN: no borres la clave de versión anterior (v2 o v1) hasta verificar
+          // que el estado v3 recién escrito se puede leer y pasa validateStoredState
+          const writtenV3 = await this.storageAdapter.load(STATE_STORAGE_KEY);
+          const v3Validation = validateStoredState(
+            writtenV3,
             (k) => verifyKardexChain(k, 'newest-first'),
             (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
           );
-          if (v2Validation.valid && this.storageAdapter.delete) {
-            await this.storageAdapter.delete(LEGACY_STATE_STORAGE_KEY);
+          if (v3Validation.valid && this.storageAdapter.delete) {
+            if (legacyKeyLoaded) {
+              await this.storageAdapter.delete(legacyKeyLoaded);
+            }
           }
         } catch (saveErr) {
-          console.warn('[MockInventoryService] Falló el guardado/verificación de v2 durante migración; v1 permanece intacto:', saveErr);
+          console.warn('[MockInventoryService] Falló el guardado/verificación de v3 durante migración; datos anteriores permanecen intactos:', saveErr);
         }
       }
 
@@ -2525,6 +2556,7 @@ export class MockInventoryService implements OnDestroy {
     this.suppliers.set(structuredClone(INITIAL_SUPPLIERS));
     this.accountsPayable.set([]);
     this.productPriceHistory.set([]);
+    this.cashMovements.set([]);
     this.activeUser.set('Don Lupe (Encargado)');
     this.maxDiscountPctWithoutPin.set(DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN);
     this.processedMobileProductRequests.clear();
@@ -2643,6 +2675,7 @@ export class MockInventoryService implements OnDestroy {
   readonly suppliers = signal<Supplier[]>(structuredClone(INITIAL_SUPPLIERS));
   readonly accountsPayable = signal<AccountsPayableDebt[]>([]);
   readonly productPriceHistory = signal<ProductPriceHistoryRecord[]>([]);
+  readonly cashMovements = signal<CashMovement[]>([]);
   readonly perishableBatches = signal<PerishableBatch[]>(structuredClone(PERISHABLE_BATCHES));
   readonly blindAuditMission = signal<BlindAuditItem[]>([]);
 
@@ -3495,6 +3528,19 @@ export class MockInventoryService implements OnDestroy {
 
     this.kardex.update((entries) => [entry, ...entries]);
 
+    const cashMov = createCashMovement({
+      type: 'ENTRADA',
+      amount: applied,
+      reason: `Abono de cliente: ${customer.name}`,
+      user: this.activeUser(),
+      reference: `ABONO-${customer.id}-${Date.now()}`,
+      date: formatLocalDate(new Date()),
+      timestamp: new Date().toISOString(),
+      source: 'CAJA',
+      notes: `Abono a crédito recibido en efectivo de ${customer.name}: $${applied.toFixed(2)}. Saldo restante: $${paymentResult.updatedCustomer.currentBalance.toFixed(2)}`,
+    });
+    this.cashMovements.update((list) => [cashMov, ...list]);
+
     void this.flushSave();
 
     return {
@@ -3802,7 +3848,16 @@ export class MockInventoryService implements OnDestroy {
   //  BLOQUE F2: CLIENTES Y CRÉDITOS (ALTA, EDICIÓN, BAJA, BÚSQUEDA)
   // =====================================================================
 
-  createCustomer(input: CustomerInput): { ok: boolean; message: string; customer?: CreditCustomer } {
+  createCustomer(
+    input: CustomerInput,
+    confirmDuplicate = false
+  ): {
+    ok: boolean;
+    message: string;
+    duplicateWarning?: boolean;
+    duplicateOf?: CreditCustomer;
+    customer?: CreditCustomer;
+  } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
@@ -3811,8 +3866,21 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: validation.error || 'Datos de cliente inválidos.' };
     }
     const norm = validation.normalized;
+
+    if (!confirmDuplicate) {
+      const dupCheck = checkCustomerDuplicate(norm, this.creditCustomers());
+      if (dupCheck.isDuplicate) {
+        return {
+          ok: false,
+          duplicateWarning: true,
+          duplicateOf: dupCheck.duplicateOf as CreditCustomer,
+          message: `${dupCheck.reason} ¿Deseas registrarlo de todas formas?`,
+        };
+      }
+    }
+
     const newId = `CLI-${Date.now().toString().slice(-4)}`;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = formatLocalDate(new Date());
     const dueDateStr = calculateCustomerDueDate(todayStr, norm.creditDays);
 
     const newCustomer: CreditCustomer = {
@@ -3839,8 +3907,15 @@ export class MockInventoryService implements OnDestroy {
   async updateCustomerWithPinCheck(
     customerId: string,
     input: CustomerInput,
-    pin?: string
-  ): Promise<{ ok: boolean; message: string; customer?: CreditCustomer }> {
+    pin?: string,
+    confirmDuplicate = false
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    duplicateWarning?: boolean;
+    duplicateOf?: CreditCustomer;
+    customer?: CreditCustomer;
+  }> {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
@@ -3869,6 +3944,18 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: validation.error || 'Datos de cliente inválidos.' };
     }
     const norm = validation.normalized;
+
+    if (!confirmDuplicate) {
+      const dupCheck = checkCustomerDuplicate({ ...norm, id: customerId }, this.creditCustomers());
+      if (dupCheck.isDuplicate) {
+        return {
+          ok: false,
+          duplicateWarning: true,
+          duplicateOf: dupCheck.duplicateOf as CreditCustomer,
+          message: `${dupCheck.reason} ¿Deseas actualizarlo de todas formas?`,
+        };
+      }
+    }
 
     const updated: CreditCustomer = {
       ...existing,
@@ -3921,7 +4008,16 @@ export class MockInventoryService implements OnDestroy {
   //  BLOQUE F2: PROVEEDORES, CUENTAS POR PAGAR (CxP) E HISTORIAL DE PRECIOS
   // =====================================================================
 
-  createSupplier(input: SupplierInput): { ok: boolean; message: string; supplier?: Supplier } {
+  createSupplier(
+    input: SupplierInput,
+    confirmDuplicate = false
+  ): {
+    ok: boolean;
+    message: string;
+    duplicateWarning?: boolean;
+    duplicateOf?: Supplier;
+    supplier?: Supplier;
+  } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
@@ -3930,6 +4026,19 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: validation.error || 'Datos de proveedor inválidos.' };
     }
     const norm = validation.normalized;
+
+    if (!confirmDuplicate) {
+      const dupCheck = checkSupplierDuplicate(norm, this.suppliers());
+      if (dupCheck.isDuplicate) {
+        return {
+          ok: false,
+          duplicateWarning: true,
+          duplicateOf: dupCheck.duplicateOf,
+          message: `${dupCheck.reason} ¿Deseas registrarlo de todas formas?`,
+        };
+      }
+    }
+
     const newId = `SUP-${Date.now().toString().slice(-4)}`;
     const newSupplier: Supplier = {
       id: newId,
@@ -3949,7 +4058,17 @@ export class MockInventoryService implements OnDestroy {
     return { ok: true, message: 'Proveedor registrado exitosamente.', supplier: newSupplier };
   }
 
-  updateSupplier(supplierId: string, input: SupplierInput): { ok: boolean; message: string; supplier?: Supplier } {
+  updateSupplier(
+    supplierId: string,
+    input: SupplierInput,
+    confirmDuplicate = false
+  ): {
+    ok: boolean;
+    message: string;
+    duplicateWarning?: boolean;
+    duplicateOf?: Supplier;
+    supplier?: Supplier;
+  } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
@@ -3962,6 +4081,18 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: validation.error || 'Datos de proveedor inválidos.' };
     }
     const norm = validation.normalized;
+
+    if (!confirmDuplicate) {
+      const dupCheck = checkSupplierDuplicate({ ...norm, id: supplierId }, this.suppliers());
+      if (dupCheck.isDuplicate) {
+        return {
+          ok: false,
+          duplicateWarning: true,
+          duplicateOf: dupCheck.duplicateOf,
+          message: `${dupCheck.reason} ¿Deseas actualizarlo de todas formas?`,
+        };
+      }
+    }
 
     const updated: Supplier = {
       ...existing,
@@ -4002,19 +4133,19 @@ export class MockInventoryService implements OnDestroy {
     return { ok: true, message: `Proveedor "${existing.name}" dado de baja exitosamente.` };
   }
 
-  registerSupplierPayment(
+  async registerSupplierPayment(
     supplierId: string,
     amount: number,
     paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA' = 'EFECTIVO',
     authorizer?: string,
-    options?: { source?: SupplierPaymentSource; targetDebtId?: string }
-  ): {
+    options?: { source?: SupplierPaymentSource; targetDebtId?: string; pin?: string }
+  ): Promise<{
     ok: boolean;
     message: string;
     appliedAmount: number;
     remainingBalance: number;
     excessAmount: number;
-  } {
+  }> {
     if (!this.assertWritable()) {
       return {
         ok: false,
@@ -4046,15 +4177,47 @@ export class MockInventoryService implements OnDestroy {
       };
     }
 
-    const source: SupplierPaymentSource = options?.source ?? (paymentMethod === 'EFECTIVO' ? 'CAJA' : 'FONDO_EXTERNO');
+    const debts = this.accountsPayable().filter((d) => d.supplierId === supplierId);
+    if (debts.length === 0) {
+      return {
+        ok: false,
+        message: `${supplier.name} no tiene cuentas por pagar registradas.`,
+        appliedAmount: 0,
+        remainingBalance: supplier.currentBalance,
+        excessAmount: amount,
+      };
+    }
 
-    // Validación estricta de efectivo en cajón cuando el origen es CAJA
-    if (source === 'CAJA') {
-      const drawerCash = this.getRealDrawerCash();
-      if (amount > drawerCash) {
+    // Regla 5: Rechazar pago mayor al saldo de la deuda con mensaje claro
+    if (options?.targetDebtId) {
+      const targetDebt = debts.find((d) => d.id === options.targetDebtId);
+      if (!targetDebt) {
         return {
           ok: false,
-          message: `Efectivo insuficiente en cajón ($${drawerCash.toFixed(2)} disponible). Selecciona 'Bolsillo / Fondo Externo' o ajusta el monto.`,
+          message: 'Nota o remisión seleccionada no encontrada para este proveedor.',
+          appliedAmount: 0,
+          remainingBalance: supplier.currentBalance,
+          excessAmount: 0,
+        };
+      }
+      const debtBalanceCents = Math.round(targetDebt.remainingBalance * 100);
+      const amountCents = Math.round(amount * 100);
+      if (amountCents > debtBalanceCents) {
+        return {
+          ok: false,
+          message: `El monto de pago ($${amount.toFixed(2)}) supera el saldo de la deuda seleccionada ($${targetDebt.remainingBalance.toFixed(2)}).`,
+          appliedAmount: 0,
+          remainingBalance: supplier.currentBalance,
+          excessAmount: 0,
+        };
+      }
+    } else {
+      const suppBalanceCents = Math.round(supplier.currentBalance * 100);
+      const amountCents = Math.round(amount * 100);
+      if (amountCents > suppBalanceCents) {
+        return {
+          ok: false,
+          message: `El monto de pago ($${amount.toFixed(2)}) supera el saldo pendiente total del proveedor ($${supplier.currentBalance.toFixed(2)}).`,
           appliedAmount: 0,
           remainingBalance: supplier.currentBalance,
           excessAmount: 0,
@@ -4062,7 +4225,34 @@ export class MockInventoryService implements OnDestroy {
       }
     }
 
-    const debts = this.accountsPayable().filter((d) => d.supplierId === supplierId);
+    const source: SupplierPaymentSource = options?.source ?? (paymentMethod === 'EFECTIVO' ? 'CAJA' : 'FONDO_EXTERNO');
+
+    // Regla 5: Rechazar pago en efectivo si excede efectivo en cajón sin PIN de encargado
+    if (source === 'CAJA') {
+      const drawerCash = this.getRealDrawerCash();
+      if (amount > drawerCash) {
+        if (!options?.pin) {
+          return {
+            ok: false,
+            message: `El pago en efectivo ($${amount.toFixed(2)}) excede el efectivo disponible en cajón ($${drawerCash.toFixed(2)}). Se requiere PIN de encargado para autorizar la salida extraordinaria.`,
+            appliedAmount: 0,
+            remainingBalance: supplier.currentBalance,
+            excessAmount: 0,
+          };
+        }
+        const pinCheck = await this.verifyAdminPin(options.pin, authorizer || 'Encargado');
+        if (!pinCheck.success) {
+          return {
+            ok: false,
+            message: 'PIN de encargado incorrecto para autorizar la salida de efectivo.',
+            appliedAmount: 0,
+            remainingBalance: supplier.currentBalance,
+            excessAmount: 0,
+          };
+        }
+      }
+    }
+
     const allocation = allocateSupplierPaymentToDebts(debts, amount, new Date(), options?.targetDebtId);
 
     if (allocation.totalApplied <= 0) {
@@ -4126,6 +4316,22 @@ export class MockInventoryService implements OnDestroy {
     }, previousHash);
 
     this.kardex.update((k) => [entry, ...k]);
+
+    // Regla 3: Registrar movimiento contable CashMovement para auditoría de tesorería (reutilizable en Bloque H)
+    const cashMov = createCashMovement({
+      type: 'SALIDA',
+      amount: allocation.totalApplied,
+      reason: `Pago a proveedor: ${supplier.name}${targetInfo}`,
+      user: authorizer || this.activeUser(),
+      reference: `PXP-${supplier.id}-${Date.now()}`,
+      date: formatLocalDate(new Date()),
+      timestamp: new Date().toISOString(),
+      source,
+      supplierId: supplier.id,
+      debtId: options?.targetDebtId,
+      notes: `Pago CxP (${paymentMethod}/${source}). Saldo restante: $${allocation.totalRemainingBalance.toFixed(2)}`,
+    });
+    this.cashMovements.update((list) => [cashMov, ...list]);
 
     // Actualizar alertas del tablero: retirar alertas de deudas pagadas
     this.morningAlerts.update((alerts) =>

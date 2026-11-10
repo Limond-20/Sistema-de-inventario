@@ -10,6 +10,9 @@ import {
   requiresPinForCreditTermsChange,
   searchCreditCustomers,
   calculateCustomerDueDate,
+  checkCustomerDuplicate,
+  formatLocalDate,
+  parseLocalDate,
   type CreditCustomerLike,
   type CreditDebtItem,
   type CustomerInput,
@@ -392,4 +395,106 @@ test('Fiado (F2): Ficha de cliente registra compras a crédito con partidas (deb
   assert.equal(abono.updatedCustomer.debts?.find((d) => d.id === 'FIADO-01')?.remainingBalance, 0);
   // La partida FIADO-02 se amortizó con los $100 restantes ($300 -> $200)
   assert.equal(abono.updatedCustomer.debts?.find((d) => d.id === 'FIADO-02')?.remainingBalance, 200.0);
+});
+
+test('Fechas Clientes (F2 Seguimiento): cálculo de vencimiento local AAAA-MM-DD sin desfase UTC a las 19:00 y 23:30 (plazos 15/30 días, cruce de mes y año)', () => {
+  // Caso 1: Hora fijada a las 19:00 local (en UTC-6 esto es +6h en UTC, cruzando de día con toISOString)
+  const base1900 = new Date(2026, 9, 31, 19, 0, 0); // 31 Octubre 2026
+  assert.equal(formatLocalDate(base1900), '2026-10-31');
+
+  // Plazo 15 días: 31 Oct + 15 días = 15 Nov (cruce de mes)
+  const due15_1900 = calculateCustomerDueDate(base1900, 15);
+  assert.equal(due15_1900, '2026-11-15');
+
+  // Plazo 30 días: 31 Oct + 30 días = 30 Nov
+  const due30_1900 = calculateCustomerDueDate(base1900, 30);
+  assert.equal(due30_1900, '2026-11-30');
+
+  // Caso 2: Hora fijada a las 23:30 local
+  const base2330 = new Date(2026, 11, 20, 23, 30, 0); // 20 Diciembre 2026
+  assert.equal(formatLocalDate(base2330), '2026-12-20');
+
+  // Plazo 15 días: 20 Dic + 15 días = 4 Enero 2027 (cruce de mes y año)
+  const due15_2330 = calculateCustomerDueDate(base2330, 15);
+  assert.equal(due15_2330, '2027-01-04');
+
+  // Plazo 30 días: 20 Dic + 30 días = 19 Enero 2027 (cruce de mes y año)
+  const due30_2330 = calculateCustomerDueDate(base2330, 30);
+  assert.equal(due30_2330, '2027-01-19');
+});
+
+test('Clientes (F2 Seguimiento): Detección y prevención de clientes duplicados (nombre normalizado + teléfono)', () => {
+  const existingCustomers: CreditCustomerLike[] = [
+    {
+      id: 'CLI-01',
+      name: 'Doña Carmen Gómez',
+      phone: '951-123-4567',
+      creditLimit: 500,
+      currentBalance: 0,
+      isActive: true,
+    },
+    {
+      id: 'CLI-02',
+      name: 'Don Ramón Valdez',
+      phone: '951-888-9999',
+      creditLimit: 800,
+      currentBalance: 0,
+      isActive: true,
+    },
+    {
+      id: 'CLI-INACTIVE',
+      name: 'Pedro Páramo',
+      phone: '951-777-6666',
+      creditLimit: 300,
+      currentBalance: 0,
+      isActive: false,
+    },
+  ];
+
+  // 1. Duplicado por nombre (insensible a acentos y espacios)
+  const dupName = checkCustomerDuplicate(
+    { name: '  dona CARMEN gomez  ', phone: '951-000-0000' },
+    existingCustomers
+  );
+  assert.equal(dupName.isDuplicate, true);
+  assert.equal(dupName.duplicateOf?.id, 'CLI-01');
+  assert.match(dupName.reason || '', /mismo nombre/);
+
+  // 2. Duplicado por teléfono (mismos dígitos)
+  const dupPhone = checkCustomerDuplicate(
+    { name: 'Carmen Ramírez', phone: '(951) 123 4567' },
+    existingCustomers
+  );
+  assert.equal(dupPhone.isDuplicate, true);
+  assert.equal(dupPhone.duplicateOf?.id, 'CLI-01');
+  assert.match(dupPhone.reason || '', /mismo teléfono/);
+
+  // 3. Duplicado ambos
+  const dupBoth = checkCustomerDuplicate(
+    { name: 'Don Ramón Valdez', phone: '9518889999' },
+    existingCustomers
+  );
+  assert.equal(dupBoth.isDuplicate, true);
+  assert.equal(dupBoth.duplicateOf?.id, 'CLI-02');
+
+  // 4. No duplicado
+  const notDup = checkCustomerDuplicate(
+    { name: 'Señor Barriga', phone: '951-111-2233' },
+    existingCustomers
+  );
+  assert.equal(notDup.isDuplicate, false);
+
+  // 5. Comparación con sí mismo
+  const selfCheck = checkCustomerDuplicate(
+    { id: 'CLI-01', name: 'Doña Carmen Gómez', phone: '951-123-4567' },
+    existingCustomers
+  );
+  assert.equal(selfCheck.isDuplicate, false);
+
+  // 6. Cliente dado de baja
+  const inactiveCheck = checkCustomerDuplicate(
+    { name: 'Pedro Páramo', phone: '951-777-6666' },
+    existingCustomers
+  );
+  assert.equal(inactiveCheck.isDuplicate, false);
 });

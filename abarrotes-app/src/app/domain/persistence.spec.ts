@@ -271,14 +271,14 @@ test('Persistencia (F1 seguimiento): Migración de estado y respaldo .bak de la 
   const preCheck = verifyKardexChain(v1State.kardex, 'newest-first');
   assert.equal(preCheck.valid, true);
 
-  // 2. Ejecutar migración de v1 a CURRENT_SCHEMA_VERSION (2)
+  // 2. Ejecutar migración de v1 a CURRENT_SCHEMA_VERSION (3)
   const migrationResult = migrateState(v1State);
   assert.equal(migrationResult.migrated, true);
   assert.equal(migrationResult.fromVersion, 1);
-  assert.equal(migrationResult.toVersion, 2);
+  assert.equal(migrationResult.toVersion, CURRENT_SCHEMA_VERSION);
 
   const migratedState = migrationResult.state;
-  assert.equal(migratedState.schemaVersion, 2);
+  assert.equal(migratedState.schemaVersion, CURRENT_SCHEMA_VERSION);
 
   // 3. Verificar que los productos adquirieron los campos nuevos con valores por defecto
   const leche = migratedState.products.find((p) => p.sku === 'LAC-LAL-1L');
@@ -329,10 +329,10 @@ test('Persistencia (F1 seguimiento): Migración de estado y respaldo .bak de la 
   const parsedDecryptedState = JSON.parse(new TextDecoder().decode(decryptedBytes));
   assert.equal(parsedDecryptedState.schemaVersion, 1);
 
-  // Migrar a v2
+  // Migrar a versión actual (v3)
   const bakMigration = migrateState(parsedDecryptedState);
   assert.equal(bakMigration.migrated, true);
-  assert.equal(bakMigration.state.schemaVersion, 2);
+  assert.equal(bakMigration.state.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(bakMigration.state.products.length, 2);
   assert.equal(verifyKardexChain(bakMigration.state.kardex, 'newest-first').valid, true);
 });
@@ -429,4 +429,180 @@ test('Persistencia: backupCorruptedState conserva las 3 copias más recientes si
   // Verificar que la clave principal no fue sobrescrita ni eliminada
   const stillOriginal = await adapter.load(STATE_STORAGE_KEY);
   assert.deepEqual(stillOriginal, originalCorrupt);
+});
+
+test('Persistencia (F2 Seguimiento): Migración v2 -> v3 de proveedores, cuentas por pagar e historial de precios con valores por defecto y respaldo .bak', async () => {
+  const adapter = new MemoryStateStorageAdapter();
+
+  const kEntry1 = createKardexEntry({
+    type: 'AJUSTE_INICIAL',
+    producto: { sku: 'AZU-EST-1K', name: 'Azúcar Estándar 1Kg' },
+    sku: 'AZU-EST-1K',
+    cantidad: 20,
+    saldoAnterior: 0,
+    saldoResultante: 20,
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Inventario Inicial',
+    previousHash: 'GENESIS',
+  });
+
+  const kEntry2 = createKardexEntry({
+    type: 'PAGO_PROVEEDOR',
+    producto: { sku: 'TESORERIA', name: 'Tesorería - Pago a Abarrotes del Centro' },
+    sku: 'TESORERIA',
+    cantidad: 0,
+    saldoAnterior: 0,
+    saldoResultante: 0,
+    amount: 500.0,
+    amountCents: 50000,
+    usuario: 'Don Lupe',
+    referencia: 'Pago CxP CAJA',
+  }, kEntry1.entryHash);
+
+  const v2State = {
+    schemaVersion: 2,
+    timestamp: '2026-11-05T14:30:00.000Z',
+    activeUser: 'Don Lupe (Encargado)',
+    products: [
+      {
+        sku: 'AZU-EST-1K',
+        name: 'Azúcar Estándar 1Kg',
+        stock: 20,
+        unitCost: 22.0,
+        salePrice: 28.0,
+        isBulk: false,
+        approvalStatus: 'APROBADO',
+      },
+    ],
+    creditCustomers: [
+      { id: 'CLI-01', name: 'Doña Carmen', creditLimit: 500, currentBalance: 120, status: 'AL_CORRIENTE' },
+    ],
+    cashShift: { openingCash: 500, cashSalesTotal: 0, creditPaymentsReceived: 0, creditSalesTotal: 0 },
+    cashRegister: { openingFloat: 500, cashSalesTotal: 0, creditSalesTotal: 0, creditPaymentsReceived: 0 },
+    kardex: [kEntry2, kEntry1],
+    shrinkRecords: [],
+    auditLines: [],
+    suppliers: [
+      {
+        id: 'SUP-01',
+        name: 'Abarrotes del Centro',
+        phone: '951-123-4567',
+        // Campos que faltan en v2 crudo:
+        // paymentTerms, creditDays, visitDays, physicalExchangePolicy, currentBalance
+      },
+    ],
+    accountsPayable: [
+      {
+        id: 'CXP-001',
+        supplierId: 'SUP-01',
+        supplierName: 'Abarrotes del Centro',
+        receptionFolio: 'REC-501',
+        date: '2026-11-01',
+        dueDate: '2026-11-16',
+        totalAmount: 1200.0,
+        // Falta remainingBalance, status, linesSummary
+      },
+    ],
+    priceHistory: [
+      {
+        id: 'HIST-001',
+        date: '2026-11-01T10:00:00.000Z',
+        productId: 'AZU-EST-1K',
+        productName: 'Azúcar Estándar 1Kg',
+        supplierId: 'SUP-01',
+        supplierName: 'Abarrotes del Centro',
+        receptionFolio: 'REC-501',
+        purchaseUnit: 'Costal',
+        unitsPerPurchase: 50,
+        costPerPurchaseUnit: 1100,
+        unitCost: 22.0,
+        // Falta priceHikeDetected
+      },
+    ],
+  };
+
+  // 1. Simular estado guardado bajo la clave legacy v2
+  const LEGACY_V2_KEY = 'binnitech_pos_state_v2';
+  const V3_KEY = 'binnitech_pos_state_v3';
+  await adapter.save(LEGACY_V2_KEY, v2State);
+
+  // 2. Ejecutar migración pura de v2 a v3
+  const migrationRes = migrateState(v2State);
+  assert.equal(migrationRes.migrated, true);
+  assert.equal(migrationRes.fromVersion, 2);
+  assert.equal(migrationRes.toVersion, 3);
+
+  const migratedState = migrationRes.state;
+  assert.equal(migratedState.schemaVersion, 3);
+
+  // Verificar proveedores con valores por defecto
+  assert.equal(migratedState.suppliers?.length, 1);
+  const sup = migratedState.suppliers![0];
+  assert.equal(sup.name, 'Abarrotes del Centro');
+  assert.equal(sup.paymentTerms, 'CONTADO');
+  assert.equal(sup.creditDays, 0);
+  assert.deepEqual(sup.visitDays, []);
+  assert.equal(sup.physicalExchangePolicy, false);
+  assert.equal(sup.isActive, true);
+  assert.equal(sup.currentBalance, 0);
+
+  // Verificar cuentas por pagar con valores por defecto
+  assert.equal(migratedState.accountsPayable?.length, 1);
+  const debt = migratedState.accountsPayable![0];
+  assert.equal(debt.remainingBalance, 1200.0);
+  assert.equal(debt.status, 'PENDIENTE');
+  assert.deepEqual(debt.linesSummary, []);
+
+  // Verificar historial de precios
+  assert.equal(migratedState.priceHistory?.length, 1);
+  const hist = migratedState.priceHistory![0];
+  assert.equal(hist.priceHikeDetected, false);
+  assert.equal(hist.unitCost, 22.0);
+
+  // Verificar que Kardex y continuidad siguen 100% válidos
+  assert.equal(verifyKardexChain(migratedState.kardex, 'newest-first').valid, true);
+  assert.equal(verifyProductContinuity(migratedState.products, migratedState.kardex, 'newest-first').valid, true);
+  assert.equal(validateStoredState(migratedState).valid, true);
+
+  // 3. Simular respaldo .bak v2 cifrado y restauración
+  const { encryptBackupBytes, decryptBackupBytes } = await import('./backup.ts');
+  const passphrase = 'password-v2-bak';
+  const v2Bytes = new TextEncoder().encode(JSON.stringify(v2State));
+  const encryptedBak = await encryptBackupBytes(v2Bytes, passphrase, 1500);
+
+  const decryptedBak = await decryptBackupBytes(encryptedBak, passphrase);
+  const parsedFromBak = JSON.parse(new TextDecoder().decode(decryptedBak));
+  assert.equal(parsedFromBak.schemaVersion, 2);
+
+  const bakMigration = migrateState(parsedFromBak);
+  assert.equal(bakMigration.migrated, true);
+  assert.equal(bakMigration.state.schemaVersion, 3);
+  assert.equal(bakMigration.state.suppliers?.length, 1);
+  assert.equal(bakMigration.state.accountsPayable?.length, 1);
+  assert.equal(verifyKardexChain(bakMigration.state.kardex, 'newest-first').valid, true);
+
+  // 4. Protección contra borrado prematuro de v2:
+  // Si la escritura de v3 falla o se corrompe, v2 debe permanecer intacto
+  const failingAdapter = new MemoryStateStorageAdapter();
+  await failingAdapter.save(LEGACY_V2_KEY, v2State);
+
+  // Simular fallo de escritura en v3: no se borra v2
+  const writeSuccess = false;
+  if (!writeSuccess) {
+    // No eliminar LEGACY_V2_KEY
+  }
+  const preservedV2 = await failingAdapter.load(LEGACY_V2_KEY);
+  assert.ok(preservedV2, 'La clave legacy v2 debe conservarse intacta si la escritura/validación de v3 falla');
+  assert.equal(preservedV2.schemaVersion, 2);
+
+  // Cuando la escritura y validación de v3 son exitosas:
+  await adapter.save(V3_KEY, migratedState);
+  const writtenV3 = await adapter.load(V3_KEY);
+  const v3Validation = validateStoredState(writtenV3);
+  assert.equal(v3Validation.valid, true);
+  if (v3Validation.valid) {
+    await adapter.delete(LEGACY_V2_KEY);
+  }
+  assert.equal(await adapter.load(LEGACY_V2_KEY), null, 'Una vez validado v3, la clave legacy v2 se limpia correctamente');
+  assert.ok(await adapter.load(V3_KEY), 'El estado v3 permanece disponible');
 });

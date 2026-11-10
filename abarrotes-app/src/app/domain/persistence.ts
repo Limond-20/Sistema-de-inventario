@@ -22,9 +22,11 @@ export type ProductContinuityVerifier = (
   entries: any[]
 ) => { valid: boolean; error?: string; affectedSkus: string[] };
 
-export const CURRENT_SCHEMA_VERSION = 2;
-export const STATE_STORAGE_KEY = 'binnitech_pos_state_v2';
-export const LEGACY_STATE_STORAGE_KEY = 'binnitech_pos_state_v1';
+export const CURRENT_SCHEMA_VERSION = 3;
+export const STATE_STORAGE_KEY = 'binnitech_pos_state_v3';
+export const LEGACY_STATE_STORAGE_KEY_V2 = 'binnitech_pos_state_v2';
+export const LEGACY_STATE_STORAGE_KEY_V1 = 'binnitech_pos_state_v1';
+export const LEGACY_STATE_STORAGE_KEY = 'binnitech_pos_state_v2';
 export const CORRUPT_STATE_KEY_PREFIX = 'binnitech_pos_state_corrupt_';
 export const MAX_CORRUPT_BACKUPS = 3;
 export const WRITER_LOCK_NAME = 'binnitech_pos_writer';
@@ -47,6 +49,7 @@ export interface PersistedAppState {
   suppliers?: any[];
   accountsPayable?: any[];
   priceHistory?: any[];
+  cashMovements?: any[];
 }
 
 export interface ValidationResult {
@@ -97,6 +100,9 @@ export function validateStoredState(
   }
   if (data.priceHistory !== undefined && !Array.isArray(data.priceHistory)) {
     return { valid: false, reason: 'La colección de historial de precios está dañada o no es un arreglo.' };
+  }
+  if (data.cashMovements !== undefined && !Array.isArray(data.cashMovements)) {
+    return { valid: false, reason: 'La colección de movimientos de caja está dañada o no es un arreglo.' };
   }
 
   // 3. Validar consistencia básica de productos
@@ -162,6 +168,39 @@ export function migrateCustomerDefaults(c: any): any {
     isActive: c?.isActive !== false,
     debts: Array.isArray(c?.debts) ? c.debts : [],
     payments: Array.isArray(c?.payments) ? c.payments : [],
+  };
+}
+
+export function migrateSupplierDefaults(s: any): any {
+  if (!s || typeof s !== 'object') return s;
+  return {
+    ...s,
+    paymentTerms: s.paymentTerms === 'CREDITO' ? 'CREDITO' : 'CONTADO',
+    creditDays: typeof s.creditDays === 'number' ? s.creditDays : 0,
+    visitDays: Array.isArray(s.visitDays) ? s.visitDays : [],
+    physicalExchangePolicy: Boolean(s.physicalExchangePolicy),
+    isActive: s.isActive !== false,
+    currentBalance: typeof s.currentBalance === 'number' ? s.currentBalance : 0,
+  };
+}
+
+export function migrateAccountsPayableDefaults(d: any): any {
+  if (!d || typeof d !== 'object') return d;
+  return {
+    ...d,
+    totalAmount: typeof d.totalAmount === 'number' ? d.totalAmount : 0,
+    remainingBalance: typeof d.remainingBalance === 'number' ? d.remainingBalance : typeof d.totalAmount === 'number' ? d.totalAmount : 0,
+    status: d.status || 'PENDIENTE',
+    linesSummary: Array.isArray(d.linesSummary) ? d.linesSummary : [],
+  };
+}
+
+export function migratePriceHistoryDefaults(h: any): any {
+  if (!h || typeof h !== 'object') return h;
+  return {
+    ...h,
+    priceHikeDetected: Boolean(h.priceHikeDetected),
+    unitCost: typeof h.unitCost === 'number' ? h.unitCost : 0,
   };
 }
 
@@ -328,9 +367,16 @@ export function migrateState(data: any): MigrationResult {
         typeof working.maxDiscountPctWithoutPin === 'number'
           ? working.maxDiscountPctWithoutPin
           : 10,
-      suppliers: Array.isArray(working.suppliers) ? working.suppliers : [],
-      accountsPayable: Array.isArray(working.accountsPayable) ? working.accountsPayable : [],
-      priceHistory: Array.isArray(working.priceHistory) ? working.priceHistory : [],
+      suppliers: Array.isArray(working.suppliers)
+        ? working.suppliers.map(migrateSupplierDefaults)
+        : [],
+      accountsPayable: Array.isArray(working.accountsPayable)
+        ? working.accountsPayable.map(migrateAccountsPayableDefaults)
+        : [],
+      priceHistory: Array.isArray(working.priceHistory)
+        ? working.priceHistory.map(migratePriceHistoryDefaults)
+        : [],
+      cashMovements: Array.isArray(working.cashMovements) ? working.cashMovements : [],
     };
   }
 

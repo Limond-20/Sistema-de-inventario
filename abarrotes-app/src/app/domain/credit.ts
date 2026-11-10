@@ -91,20 +91,109 @@ export interface CreditCustomerLike {
 }
 
 /**
- * Calcula la fecha de vencimiento sumando N días calendario a una fecha base (formato YYYY-MM-DD).
+ * Extrae la fecha local en formato AAAA-MM-DD sin desfase horario por UTC.
+ * NUNCA usa toISOString() sobre fechas con hora local.
+ */
+export function formatLocalDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Parsea una fecha asegurando interpretación local para cadenas AAAA-MM-DD.
+ */
+export function parseLocalDate(baseDate: string | Date): Date {
+  if (baseDate instanceof Date) {
+    return new Date(baseDate.getTime());
+  }
+  const str = String(baseDate || '').trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if (match) {
+    const year = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1;
+    const day = parseInt(match[3], 10);
+    return new Date(year, month, day, 12, 0, 0);
+  }
+  const fallback = new Date(str);
+  return isNaN(fallback.getTime()) ? new Date() : fallback;
+}
+
+/**
+ * Normaliza nombres de contacto eliminando diacríticos, acentos y espacios superfluos.
+ */
+export function normalizeContactName(name: string): string {
+  return (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extrae únicamente dígitos numéricos del teléfono para comparación normalizada.
+ */
+export function normalizePhoneNumber(phone: string): string {
+  return (phone || '').replace(/\D/g, '');
+}
+
+/**
+ * Verifica si un cliente candidato duplica a alguno existente (nombre normalizado o teléfono).
+ */
+export function checkCustomerDuplicate(
+  candidate: { name: string; phone?: string; alias?: string; id?: string },
+  existingCustomers: readonly CreditCustomerLike[]
+): { isDuplicate: boolean; duplicateOf?: CreditCustomerLike; reason?: string } {
+  const normName = normalizeContactName(candidate.name);
+  const normPhone = normalizePhoneNumber(candidate.phone || '');
+
+  for (const c of existingCustomers) {
+    if (candidate.id && c.id === candidate.id) continue;
+    if (c.isActive === false) continue;
+
+    const cNormName = normalizeContactName(c.name || '');
+    const cNormPhone = normalizePhoneNumber(c.phone || '');
+
+    const nameMatches = normName.length > 0 && normName === cNormName;
+    const phoneMatches = normPhone.length >= 7 && normPhone === cNormPhone;
+
+    if (nameMatches && phoneMatches) {
+      return {
+        isDuplicate: true,
+        duplicateOf: c,
+        reason: `Ya existe un cliente con el mismo nombre y teléfono: "${c.name}" (${c.phone || 'Sin tel'}).`,
+      };
+    }
+    if (nameMatches) {
+      return {
+        isDuplicate: true,
+        duplicateOf: c,
+        reason: `Ya existe un cliente con el mismo nombre: "${c.name}".`,
+      };
+    }
+    if (phoneMatches) {
+      return {
+        isDuplicate: true,
+        duplicateOf: c,
+        reason: `Ya existe un cliente con el mismo teléfono: "${c.name}" (${c.phone}).`,
+      };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
+/**
+ * Calcula la fecha de vencimiento sumando N días calendario a una fecha base (formato AAAA-MM-DD).
+ * Utiliza exclusivamente fechas y componentes locales para evitar desfases de zona horaria.
  */
 export function calculateCustomerDueDate(baseDate: string | Date, days: number): string {
-  const d = typeof baseDate === 'string'
-    ? new Date(baseDate.includes('T') ? baseDate : `${baseDate}T12:00:00`)
-    : new Date(baseDate);
-  if (isNaN(d.getTime())) {
-    const today = new Date();
-    today.setDate(today.getDate() + Math.max(0, days));
-    return today.toISOString().slice(0, 10);
-  }
+  const d = parseLocalDate(baseDate);
   const cleanDays = Math.max(0, Math.round(Number(days) || 0));
-  d.setDate(d.getDate() + cleanDays);
-  return d.toISOString().slice(0, 10);
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate() + cleanDays, 12, 0, 0);
+  return formatLocalDate(target);
 }
 
 /**
@@ -203,18 +292,12 @@ export function searchCreditCustomers<T extends CreditCustomerLike>(
 
 /**
  * Determina si una fecha de vencimiento dada ya transcurrió respecto a 'hoy'.
- * Compara las fechas a nivel de día (YYYY-MM-DD) para evitar problemas de desfase horario.
+ * Compara las fechas a nivel de día local (AAAA-MM-DD) para evitar problemas de desfase horario.
  */
 export function isDueDatePassed(dueDate: string | Date | undefined, today: Date = new Date()): boolean {
   if (!dueDate) return false;
-  let dueStr: string;
-  if (typeof dueDate === 'string') {
-    dueStr = dueDate.trim().slice(0, 10);
-  } else {
-    dueStr = dueDate.toISOString().slice(0, 10);
-  }
-
-  const todayStr = today.toISOString().slice(0, 10);
+  const dueStr = formatLocalDate(parseLocalDate(dueDate));
+  const todayStr = formatLocalDate(today);
   return dueStr < todayStr;
 }
 

@@ -327,3 +327,154 @@ test('Kardex (F2 Bloque B): PAGO_PROVEEDOR no desvirtúa inventario físico, CPP
   assert.equal(valuation.totalValuationCents, 28000);
   assert.equal(valuation.totalValuation, 280.0);
 });
+
+test('Kardex (F2 Seguimiento): verifyProductContinuity y verifyKardexChain siguen válidos tras PAGO_PROVEEDOR y tras ABONO_FIADO', () => {
+  const products = [
+    { sku: 'ACEITE-850', name: 'Aceite 850ml', stock: 7 },
+    { sku: 'ARROZ-1K', name: 'Arroz 1Kg', stock: 15 },
+  ];
+
+  let history: KardexEntry[] = [];
+  let prevHash = 'GENESIS';
+
+  function addEntry(data: any): KardexEntry {
+    const entry = createKardexEntry(data, prevHash);
+    history = [entry, ...history];
+    prevHash = entry.entryHash;
+    return entry;
+  }
+
+  // 1. Inventario inicial de Aceite: 10 pzas
+  addEntry({
+    type: 'AJUSTE_INICIAL',
+    producto: { sku: 'ACEITE-850', name: 'Aceite 850ml' },
+    sku: 'ACEITE-850',
+    cantidad: 10,
+    quantity: 10,
+    saldoAnterior: 0,
+    saldoResultante: 10,
+    stockAfter: 10,
+    usuario: 'Don Lupe',
+    referencia: 'Apertura',
+  });
+
+  // 2. Inventario inicial de Arroz: 15 pzas
+  addEntry({
+    type: 'AJUSTE_INICIAL',
+    producto: { sku: 'ARROZ-1K', name: 'Arroz 1Kg' },
+    sku: 'ARROZ-1K',
+    cantidad: 15,
+    quantity: 15,
+    saldoAnterior: 0,
+    saldoResultante: 15,
+    stockAfter: 15,
+    usuario: 'Don Lupe',
+    referencia: 'Apertura',
+  });
+
+  // 3. Venta de 2 Aceites (saldo 10 -> 8)
+  addEntry({
+    type: 'VENTA_EFECTIVO',
+    producto: { sku: 'ACEITE-850', name: 'Aceite 850ml' },
+    sku: 'ACEITE-850',
+    cantidad: -2,
+    quantity: -2,
+    saldoAnterior: 10,
+    saldoResultante: 8,
+    stockAfter: 8,
+    usuario: 'Cajero',
+    referencia: 'Ticket 101',
+  });
+
+  // 4. PAGO_PROVEEDOR (Tesorería pura: cantidad 0, saldo 0, importe $450)
+  addEntry({
+    type: 'PAGO_PROVEEDOR',
+    producto: { sku: 'TESORERIA', name: 'Tesorería - Pago a Lala' },
+    sku: 'TESORERIA',
+    cantidad: 0,
+    quantity: 0,
+    saldoAnterior: 0,
+    saldoResultante: 0,
+    stockAfter: 0,
+    amount: 450.0,
+    amountCents: 45000,
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Pago CxP CAJA: Lala',
+  });
+
+  // 5. ABONO_FIADO (Abono de fiado en efectivo: cliente 'CLI-01', cantidad 0, importe $200)
+  addEntry({
+    type: 'ABONO_FIADO',
+    producto: { sku: 'CLI-01', name: 'Doña Carmen Gómez' },
+    sku: 'CLI-01',
+    cantidad: 0,
+    quantity: 0,
+    saldoAnterior: 350.0,
+    saldoResultante: 150.0,
+    stockAfter: 150.0,
+    amount: 200.0,
+    amountCents: 20000,
+    usuario: 'Cajero',
+    referencia: 'Abono cliente',
+  });
+
+  // 6. Venta de 1 Aceite adicional (saldo 8 -> 7)
+  addEntry({
+    type: 'VENTA_EFECTIVO',
+    producto: { sku: 'ACEITE-850', name: 'Aceite 850ml' },
+    sku: 'ACEITE-850',
+    cantidad: -1,
+    quantity: -1,
+    saldoAnterior: 8,
+    saldoResultante: 7,
+    stockAfter: 7,
+    usuario: 'Cajero',
+    referencia: 'Ticket 102',
+  });
+
+  // 7. Otro PAGO_PROVEEDOR desde Fondo Externo
+  addEntry({
+    type: 'PAGO_PROVEEDOR',
+    producto: { sku: 'TESORERIA', name: 'Tesorería - Pago a Bimbo' },
+    sku: 'TESORERIA',
+    cantidad: 0,
+    quantity: 0,
+    saldoAnterior: 0,
+    saldoResultante: 0,
+    stockAfter: 0,
+    amount: 800.0,
+    amountCents: 80000,
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Pago CxP FONDO_EXTERNO: Bimbo',
+  });
+
+  // 8. Otro ABONO_FIADO
+  addEntry({
+    type: 'ABONO_FIADO',
+    producto: { sku: 'CLI-02', name: 'Don Ramón' },
+    sku: 'CLI-02',
+    cantidad: 0,
+    quantity: 0,
+    saldoAnterior: 500.0,
+    saldoResultante: 300.0,
+    stockAfter: 300.0,
+    amount: 200.0,
+    amountCents: 20000,
+    usuario: 'Cajero',
+    referencia: 'Abono cliente',
+  });
+
+  // Verificaciones críticas de integridad criptográfica y continuidad:
+  // A. Cadena completa SHA-256 válida
+  const chainCheck = verifyKardexChain(history, 'newest-first');
+  assert.equal(chainCheck.valid, true, `Cadena rota: ${chainCheck.error}`);
+
+  // B. Continuidad de productos físicos (ACEITE-850 con stock 7 y ARROZ-1K con stock 15)
+  const continuityCheck = verifyProductContinuity(products, history, 'newest-first');
+  assert.equal(continuityCheck.valid, true, `Continuidad falló: ${continuityCheck.error}`);
+  assert.deepEqual(continuityCheck.affectedSkus, []);
+
+  // C. Verificación individual
+  assert.equal(verifyProductContinuity('ACEITE-850', history, 7, 'newest-first').valid, true);
+  assert.equal(verifyProductContinuity('ARROZ-1K', history, 15, 'newest-first').valid, true);
+});
