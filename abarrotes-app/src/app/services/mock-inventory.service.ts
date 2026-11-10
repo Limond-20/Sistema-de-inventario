@@ -28,6 +28,7 @@ import {
   type SupplierInput,
   type AccountsPayableDebt,
   type ProductPriceHistoryRecord,
+  type SupplierPaymentSource,
   calculateDueDate,
   isDebtOverdue,
   isDebtDueSoon,
@@ -45,6 +46,10 @@ import {
   resolveShortageAlertAdjustment,
   verifyKardexChain,
   verifyProductContinuity,
+  computePhysicalStockFromKardex,
+  computeWeightedAverageCostFromKardex,
+  computeKardexInventoryValuation,
+  type InventoryValuationResult,
   KardexAsyncQueue,
   type KardexEntry,
   type KardexType,
@@ -3432,7 +3437,14 @@ export class MockInventoryService implements OnDestroy {
    * - Suma el dinero recibido a creditPaymentsReceived (¡SÍ ENTRA EFECTIVO FÍSICO AL CAJÓN!).
    * - Registra entrada en Kardex encadenada.
    */
-  registerCreditPayment(customerId: string, amount: number): { ok: boolean; message: string; applied?: number } {
+  registerCreditPayment(customerId: string, amount: number): {
+    ok: boolean;
+    message: string;
+    applied?: number;
+    previousBalance?: number;
+    newBalance?: number;
+    customerName?: string;
+  } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
@@ -3444,6 +3456,7 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: 'Cliente no encontrado.' };
     }
 
+    const previousBalance = customer.currentBalance;
     const paymentResult = applyCreditPaymentPure(customer, amount, new Date(), `Abono deudor: ${customer.name}`);
     const applied = paymentResult.appliedAmount;
     if (applied <= 0) {
@@ -3469,11 +3482,14 @@ export class MockInventoryService implements OnDestroy {
       type: 'ABONO_FIADO',
       producto: { sku: customer.id, name: customer.name },
       cantidad: 0,
+      quantity: 0,
       saldoAnterior: customer.currentBalance,
       saldoResultante: paymentResult.updatedCustomer.currentBalance,
+      stockAfter: paymentResult.updatedCustomer.currentBalance,
       usuario: this.activeUser(),
       referencia: `Abono deudor: ${customer.name}`,
       amount: applied,
+      amountCents: Math.round(applied * 100),
       description: `Abono en efectivo recibido de ${customer.name}`,
     }, previousHash);
 
@@ -3484,6 +3500,9 @@ export class MockInventoryService implements OnDestroy {
     return {
       ok: true,
       applied,
+      previousBalance,
+      newBalance: paymentResult.updatedCustomer.currentBalance,
+      customerName: customer.name,
       message: `Se registró abono de ${applied.toFixed(2)} en efectivo de ${customer.name}.`,
     };
   }
@@ -3987,7 +4006,8 @@ export class MockInventoryService implements OnDestroy {
     supplierId: string,
     amount: number,
     paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA' = 'EFECTIVO',
-    authorizer?: string
+    authorizer?: string,
+    options?: { source?: SupplierPaymentSource; targetDebtId?: string }
   ): {
     ok: boolean;
     message: string;
@@ -4026,8 +4046,24 @@ export class MockInventoryService implements OnDestroy {
       };
     }
 
+    const source: SupplierPaymentSource = options?.source ?? (paymentMethod === 'EFECTIVO' ? 'CAJA' : 'FONDO_EXTERNO');
+
+    // Validación estricta de efectivo en cajón cuando el origen es CAJA
+    if (source === 'CAJA') {
+      const drawerCash = this.getRealDrawerCash();
+      if (amount > drawerCash) {
+        return {
+          ok: false,
+          message: `Efectivo insuficiente en cajón ($${drawerCash.toFixed(2)} disponible). Selecciona 'Bolsillo / Fondo Externo' o ajusta el monto.`,
+          appliedAmount: 0,
+          remainingBalance: supplier.currentBalance,
+          excessAmount: 0,
+        };
+      }
+    }
+
     const debts = this.accountsPayable().filter((d) => d.supplierId === supplierId);
-    const allocation = allocateSupplierPaymentToDebts(debts, amount, new Date());
+    const allocation = allocateSupplierPaymentToDebts(debts, amount, new Date(), options?.targetDebtId);
 
     if (allocation.totalApplied <= 0) {
       return {
@@ -4057,8 +4093,9 @@ export class MockInventoryService implements OnDestroy {
       )
     );
 
-    // Si es en efectivo, genera salida de caja en el corte de turno (bloque H)
-    if (paymentMethod === 'EFECTIVO') {
+    // Si el origen es CAJA: descuenta del arqueo de caja (cashPayoutsTotal)
+    // Si el origen es FONDO_EXTERNO: NO altera cashPayoutsTotal ni descuenta de caja
+    if (source === 'CAJA') {
       this.cashShift.update((s) => ({
         ...s,
         cashPayoutsTotal: sumMoney([s.cashPayoutsTotal || 0, allocation.totalApplied]),
@@ -4069,18 +4106,23 @@ export class MockInventoryService implements OnDestroy {
       }));
     }
 
-    // Generar movimiento en Kardex
+    // Generar movimiento en Kardex estrictamente como TESORERIA con quantity: 0, stockAfter: 0
     const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
+    const targetInfo = options?.targetDebtId ? ` [Nota ${options.targetDebtId}]` : '';
     const entry = createKardexEntry({
       type: 'PAGO_PROVEEDOR',
-      producto: { sku: supplier.id, name: supplier.name },
+      producto: { sku: 'TESORERIA', name: `Tesorería - Pago a ${supplier.name}` },
+      sku: 'TESORERIA',
       cantidad: 0,
-      saldoAnterior: supplier.currentBalance,
-      saldoResultante: allocation.totalRemainingBalance,
+      quantity: 0,
+      saldoAnterior: 0,
+      saldoResultante: 0,
+      stockAfter: 0,
       usuario: authorizer || this.activeUser(),
-      referencia: `Pago CxP ${paymentMethod}: ${supplier.name}`,
+      referencia: `Pago CxP ${source} (${paymentMethod}): ${supplier.name}${targetInfo}`,
       amount: allocation.totalApplied,
-      description: `Pago a proveedor ${supplier.name} por ${allocation.totalApplied.toFixed(2)} (${paymentMethod}). Saldo pendiente: ${allocation.totalRemainingBalance.toFixed(2)}`,
+      amountCents: Math.round(allocation.totalApplied * 100),
+      description: `Pago a proveedor ${supplier.name} por ${allocation.totalApplied.toFixed(2)} (${source}/${paymentMethod}). Saldo pendiente: ${allocation.totalRemainingBalance.toFixed(2)}`,
     }, previousHash);
 
     this.kardex.update((k) => [entry, ...k]);
@@ -4105,6 +4147,18 @@ export class MockInventoryService implements OnDestroy {
       remainingBalance: allocation.totalRemainingBalance,
       excessAmount: allocation.excessAmount,
     };
+  }
+
+  getPhysicalStockFromKardex(sku: string): number {
+    return computePhysicalStockFromKardex(sku, this.kardex());
+  }
+
+  getProductCPP(sku: string): number {
+    return computeWeightedAverageCostFromKardex(sku, this.kardex());
+  }
+
+  getInventoryValuation(): InventoryValuationResult {
+    return computeKardexInventoryValuation(this.products(), this.kardex());
   }
 
   getPendingAccountsPayable(supplierId?: string): AccountsPayableDebt[] {

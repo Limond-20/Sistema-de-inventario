@@ -16,6 +16,7 @@ import {
   multiplyMoney,
   fromCents,
 } from '../../domain/money';
+import { type SupplierPaymentSource } from '../../domain/suppliers';
 
 type Mode = 'ocr' | 'manual';
 
@@ -470,9 +471,18 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   protected readonly paymentSupplierId = signal<string>('');
   protected readonly paymentAmount = signal<number>(0);
   protected readonly paymentMethod = signal<'EFECTIVO' | 'TRANSFERENCIA'>('EFECTIVO');
+  protected readonly paymentSource = signal<SupplierPaymentSource>('CAJA');
+  protected readonly paymentTargetDebtId = signal<string | null>(null);
+  protected readonly paymentTargetDebtFolio = signal<string | null>(null);
   protected readonly paymentNotes = signal<string>('');
   protected readonly paymentError = signal<string>('');
   protected readonly paymentFeedback = signal<string>('');
+
+  protected readonly isDrawerCashInsufficient = computed(() => {
+    if (this.paymentSource() !== 'CAJA') return false;
+    const amount = Number(this.paymentAmount()) || 0;
+    return amount > this.inv.getRealDrawerCash();
+  });
 
   onSupplierSelectionChange(supId: string): void {
     this.selectedSupplierId.set(supId);
@@ -579,11 +589,14 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     return this.inv.accountsPayable().filter((d) => d.supplierId === supplierId);
   }
 
-  openPayDebtModal(supplierId?: string, debtAmount?: number): void {
+  openPayDebtModal(supplierId?: string, debtAmount?: number, debtId?: string, debtFolio?: string): void {
     this.paymentSupplierId.set(supplierId || this.inv.suppliers()[0]?.id || '');
     this.paymentAmount.set(debtAmount || 0);
     this.paymentMethod.set('EFECTIVO');
-    this.paymentNotes.set('');
+    this.paymentSource.set('CAJA');
+    this.paymentTargetDebtId.set(debtId || null);
+    this.paymentTargetDebtFolio.set(debtFolio || null);
+    this.paymentNotes.set(debtFolio ? `Liquidación nota ${debtFolio}` : '');
     this.paymentError.set('');
     this.paymentFeedback.set('');
     this.paymentModalOpen.set(true);
@@ -602,11 +615,19 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
       this.paymentError.set('El monto de pago debe ser mayor a cero.');
       return;
     }
+    if (this.paymentSource() === 'CAJA' && amount > this.inv.getRealDrawerCash()) {
+      this.paymentError.set(`Efectivo insuficiente en cajón (${this.inv.getRealDrawerCash().toFixed(2)} disponible). Selecciona 'Bolsillo / Fondo Externo' o ajusta el monto.`);
+      return;
+    }
     const res = this.inv.registerSupplierPayment(
       supId,
       amount,
       this.paymentMethod(),
-      this.paymentNotes() || undefined
+      this.paymentNotes() || undefined,
+      {
+        source: this.paymentSource(),
+        targetDebtId: this.paymentTargetDebtId() || undefined,
+      }
     );
     if (!res.ok) {
       this.paymentError.set(res.message);

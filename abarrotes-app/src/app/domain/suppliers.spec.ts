@@ -167,3 +167,72 @@ test('Proveedores (F2): detección de alza de precio por proveedor e historial',
   assert.equal(checkHike.diffCents, 400); // 400 centavos = $4.00
   assert.equal(checkHike.hikePct, 14.29);
 });
+
+
+test('Proveedores (F2): amortización específica de remisión/factura por targetDebtId con spillover FIFO', () => {
+  const todayRef = new Date('2026-10-20T12:00:00Z');
+
+  const debts: AccountsPayableDebt[] = [
+    {
+      id: 'CXP-01',
+      supplierId: 'SUP-01',
+      supplierName: 'Distribuidora A',
+      receptionFolio: 'REC-101',
+      date: '2026-09-25',
+      dueDate: '2026-10-10', // VENCIDA
+      totalAmount: 1000.0,
+      remainingBalance: 500.0,
+      status: 'VENCIDO',
+    },
+    {
+      id: 'CXP-02',
+      supplierId: 'SUP-01',
+      supplierName: 'Distribuidora A',
+      receptionFolio: 'REC-102',
+      date: '2026-10-01',
+      dueDate: '2026-10-15', // VENCIDA
+      totalAmount: 800.0,
+      remainingBalance: 800.0,
+      status: 'VENCIDO',
+    },
+    {
+      id: 'CXP-03',
+      supplierId: 'SUP-01',
+      supplierName: 'Distribuidora A',
+      receptionFolio: 'REC-103',
+      date: '2026-10-12',
+      dueDate: '2026-10-27', // VIGENTE
+      totalAmount: 600.0,
+      remainingBalance: 300.0,
+      status: 'PENDIENTE',
+    },
+  ];
+
+  // Caso 1: Pago de $300.00 dirigido explícitamente a CXP-03 (que es vigente y no la más antigua)
+  const alloc1 = allocateSupplierPaymentToDebts(debts, 300.0, todayRef, 'CXP-03');
+  assert.equal(alloc1.totalApplied, 300.0);
+  assert.equal(alloc1.excessAmount, 0);
+
+  const cxp3After = alloc1.updatedDebts.find((d) => d.id === 'CXP-03')!;
+  assert.equal(cxp3After.remainingBalance, 0);
+  assert.equal(cxp3After.status, 'PAGADO');
+
+  // CXP-01 y CXP-02 deben seguir intactas
+  const cxp1After = alloc1.updatedDebts.find((d) => d.id === 'CXP-01')!;
+  assert.equal(cxp1After.remainingBalance, 500.0);
+  assert.equal(cxp1After.status, 'VENCIDO');
+
+  // Caso 2: Pago de $600.00 dirigido a CXP-03 (saldo $300):
+  // Liquida primero CXP-03 ($300) y el remanente de $300 pasa por FIFO a CXP-01 (quedando en $200)
+  const alloc2 = allocateSupplierPaymentToDebts(debts, 600.0, todayRef, 'CXP-03');
+  assert.equal(alloc2.totalApplied, 600.0);
+  assert.equal(alloc2.excessAmount, 0);
+
+  const cxp3Paid = alloc2.updatedDebts.find((d) => d.id === 'CXP-03')!;
+  assert.equal(cxp3Paid.remainingBalance, 0);
+  assert.equal(cxp3Paid.status, 'PAGADO');
+
+  const cxp1Part = alloc2.updatedDebts.find((d) => d.id === 'CXP-01')!;
+  assert.equal(cxp1Part.remainingBalance, 200.0); // 500 - 300 = 200
+  assert.equal(cxp1Part.status, 'VENCIDO');
+});

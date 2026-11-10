@@ -10,6 +10,9 @@ import {
   verifyKardexChain,
   verifyProductContinuity,
   KardexAsyncQueue,
+  computePhysicalStockFromKardex,
+  computeWeightedAverageCostFromKardex,
+  computeKardexInventoryValuation,
   type KardexEntry,
 } from './kardex.ts';
 
@@ -245,4 +248,82 @@ test('Resolución de alerta de faltante con ajuste físico autorizado con PIN', 
   assert.equal(res.kardexEntry.cantidad, 16); // 12 - (-4) = +16 kg ajustados
   assert.equal(res.kardexEntry.usuario, 'Don Lupe (Encargado)');
   assert.ok(res.kardexEntry.referencia.includes(alertId));
+});
+
+
+test('Kardex (F2 Bloque B): PAGO_PROVEEDOR no desvirtúa inventario físico, CPP ni valuación de inventario', () => {
+  const entryCompra = createKardexEntry({
+    type: 'ENTRADA_COMPRA',
+    producto: { sku: 'ACEITE-850', name: 'Aceite 850ml' },
+    sku: 'ACEITE-850',
+    cantidad: 10,
+    quantity: 10,
+    saldoAnterior: 0,
+    saldoResultante: 10,
+    stockAfter: 10,
+    amount: 350.0,
+    amountCents: 35000,
+    usuario: 'Don Lupe',
+    referencia: 'Factura F-100',
+  }, 'GENESIS');
+
+  const entryPagoTesoreria = createKardexEntry({
+    type: 'PAGO_PROVEEDOR',
+    producto: { sku: 'TESORERIA', name: 'Tesorería - Pago a Distribuidora' },
+    sku: 'TESORERIA',
+    cantidad: 0,
+    quantity: 0,
+    saldoAnterior: 0,
+    saldoResultante: 0,
+    stockAfter: 0,
+    amount: 1500.0,
+    amountCents: 150000,
+    usuario: 'Don Lupe',
+    referencia: 'Pago CxP CAJA: Distribuidora',
+  }, entryCompra.entryHash);
+
+  const entryVenta = createKardexEntry({
+    type: 'VENTA_EFECTIVO',
+    producto: { sku: 'ACEITE-850', name: 'Aceite 850ml' },
+    sku: 'ACEITE-850',
+    cantidad: -2,
+    quantity: -2,
+    saldoAnterior: 10,
+    saldoResultante: 8,
+    stockAfter: 8,
+    amount: 80.0,
+    amountCents: 8000,
+    usuario: 'Cajero 1',
+    referencia: 'Ticket T-01',
+  }, entryPagoTesoreria.entryHash);
+
+  const history = [entryVenta, entryPagoTesoreria, entryCompra];
+
+  // 1. Cadena criptográfica SHA-256 intacta
+  const chainCheck = verifyKardexChain(history, 'newest-first');
+  assert.equal(chainCheck.valid, true);
+
+  // 2. Continuidad de producto para ACEITE-850 válida a pesar de la presencia de PAGO_PROVEEDOR
+  const continuity = verifyProductContinuity('ACEITE-850', history, 8, 'newest-first');
+  assert.equal(continuity.valid, true);
+
+  // 3. Stock físico ignorando tesorería pura
+  const physicalStock = computePhysicalStockFromKardex('ACEITE-850', history, 'newest-first');
+  assert.equal(physicalStock, 8);
+
+  const tesoreriaStock = computePhysicalStockFromKardex('TESORERIA', history);
+  assert.equal(tesoreriaStock, 0);
+
+  // 4. CPP (Costo Promedio Ponderado)
+  const cpp = computeWeightedAverageCostFromKardex('ACEITE-850', history);
+  assert.equal(cpp, 35.0);
+
+  // 5. Valuación total del inventario: 8 piezas a $35.00 = $280.00
+  const valuation = computeKardexInventoryValuation([
+    { sku: 'ACEITE-850', cost: 35.0, stock: 8 },
+    { sku: 'TESORERIA', cost: 1500.0, stock: 0 },
+  ], history);
+  assert.equal(valuation.totalPhysicalUnits, 8);
+  assert.equal(valuation.totalValuationCents, 28000);
+  assert.equal(valuation.totalValuation, 280.0);
 });

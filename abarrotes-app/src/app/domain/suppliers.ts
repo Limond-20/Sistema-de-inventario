@@ -24,6 +24,7 @@ const toCentsInt = toCents;
 const fromCentsInt = fromCents;
 
 export type SupplierPaymentTerms = 'CONTADO' | 'CREDITO';
+export type SupplierPaymentSource = 'CAJA' | 'FONDO_EXTERNO';
 
 export interface Supplier {
   id: string;
@@ -182,7 +183,8 @@ export function canDeactivateSupplier(supplier: Supplier, pendingDebts: Accounts
 export function allocateSupplierPaymentToDebts(
   debts: readonly AccountsPayableDebt[],
   paymentAmount: number,
-  today: Date = new Date()
+  today: Date = new Date(),
+  targetDebtId?: string
 ): {
   updatedDebts: AccountsPayableDebt[];
   totalApplied: number;
@@ -211,26 +213,30 @@ export function allocateSupplierPaymentToDebts(
 
   const mutableDebts = debts.map((d) => ({ ...d }));
   const affectedDebtIds: string[] = [];
-
-  // Separar en vencidas y vigentes con saldo > 0
-  const overdueIndices = mutableDebts
-    .map((d, index) => ({ index, debt: d }))
-    .filter((x) => isDebtOverdue(x.debt.dueDate, today) && toCentsInt(x.debt.remainingBalance) > 0)
-    .sort((a, b) => a.debt.dueDate.localeCompare(b.debt.dueDate) || a.debt.date.localeCompare(b.debt.date))
-    .map((x) => x.index);
-
-  const vigenteIndices = mutableDebts
-    .map((d, index) => ({ index, debt: d }))
-    .filter((x) => !isDebtOverdue(x.debt.dueDate, today) && toCentsInt(x.debt.remainingBalance) > 0)
-    .sort((a, b) => a.debt.dueDate.localeCompare(b.debt.dueDate) || a.debt.date.localeCompare(b.debt.date))
-    .map((x) => x.index);
-
   let appliedTotalCents = 0;
 
-  // 1. Amortizar cuentas vencidas (más antiguas primero)
-  for (const idx of overdueIndices) {
+  // 1. Si se especificó targetDebtId, amortizar primero esa factura/deuda concreta
+  if (targetDebtId) {
+    const target = mutableDebts.find((d) => d.id === targetDebtId);
+    if (target && toCentsInt(target.remainingBalance) > 0) {
+      const remCents = toCentsInt(target.remainingBalance);
+      const payCents = Math.min(availableCents, remCents);
+      const newRemCents = remCents - payCents;
+      target.remainingBalance = fromCentsInt(newRemCents);
+      target.status = newRemCents === 0 ? 'PAGADO' : (isDebtOverdue(target.dueDate, today) ? 'VENCIDO' : 'PENDIENTE');
+      availableCents -= payCents;
+      appliedTotalCents += payCents;
+      affectedDebtIds.push(target.id);
+    }
+  }
+
+  // 2. Si queda disponible, aplicar FIFO tradicional al resto (vencidas primero, luego vigentes)
+  const overdueRemaining = mutableDebts
+    .filter((d) => isDebtOverdue(d.dueDate, today) && toCentsInt(d.remainingBalance) > 0)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.date.localeCompare(b.date));
+
+  for (const debt of overdueRemaining) {
     if (availableCents <= 0) break;
-    const debt = mutableDebts[idx];
     const remCents = toCentsInt(debt.remainingBalance);
     const payCents = Math.min(availableCents, remCents);
     const newRemCents = remCents - payCents;
@@ -238,13 +244,17 @@ export function allocateSupplierPaymentToDebts(
     debt.status = newRemCents === 0 ? 'PAGADO' : 'VENCIDO';
     availableCents -= payCents;
     appliedTotalCents += payCents;
-    affectedDebtIds.push(debt.id);
+    if (!affectedDebtIds.includes(debt.id)) {
+      affectedDebtIds.push(debt.id);
+    }
   }
 
-  // 2. Amortizar cuentas vigentes (más antiguas primero)
-  for (const idx of vigenteIndices) {
+  const vigenteRemaining = mutableDebts
+    .filter((d) => !isDebtOverdue(d.dueDate, today) && toCentsInt(d.remainingBalance) > 0)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.date.localeCompare(b.date));
+
+  for (const debt of vigenteRemaining) {
     if (availableCents <= 0) break;
-    const debt = mutableDebts[idx];
     const remCents = toCentsInt(debt.remainingBalance);
     const payCents = Math.min(availableCents, remCents);
     const newRemCents = remCents - payCents;
@@ -252,7 +262,9 @@ export function allocateSupplierPaymentToDebts(
     debt.status = newRemCents === 0 ? 'PAGADO' : 'PENDIENTE';
     availableCents -= payCents;
     appliedTotalCents += payCents;
-    affectedDebtIds.push(debt.id);
+    if (!affectedDebtIds.includes(debt.id)) {
+      affectedDebtIds.push(debt.id);
+    }
   }
 
   const finalOverdueCents = mutableDebts

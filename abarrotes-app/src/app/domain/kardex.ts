@@ -34,6 +34,10 @@ export interface KardexEntry {
   referencia: string;
   description?: string;
   amount?: number;
+  amountCents?: number;
+  quantity?: number;
+  stockAfter?: number;
+  sku?: string;
   previousHash: string; // SHA-256 de la entrada anterior (o 'GENESIS')
   entryHash: string; // SHA-256 del JSON ordenado con previousHash + campos de esta entrada
 }
@@ -212,15 +216,19 @@ export function computeKardexHash(
 export interface CreateKardexEntryParams {
   type: KardexType;
   producto: KardexProductInfo | string;
-  cantidad: number;
-  saldoAnterior: number;
-  saldoResultante: number;
+  cantidad?: number;
+  quantity?: number;
+  saldoAnterior?: number;
+  saldoResultante?: number;
+  stockAfter?: number;
+  sku?: string;
   usuario: string; // Usuario / cajero activo
   referencia: string;
   previousHash?: string;
   timestamp?: string;
   description?: string;
   amount?: number;
+  amountCents?: number;
 }
 
 /**
@@ -231,7 +239,14 @@ export function createKardexEntry(
   previousHash: string = params.previousHash || 'GENESIS'
 ): KardexEntry {
   const prodName = typeof params.producto === 'string' ? params.producto : params.producto.name;
-  const defaultDesc = `${params.type}: ${prodName} (Cant: ${params.cantidad >= 0 ? '+' : ''}${params.cantidad}, Saldo: ${params.saldoResultante})`;
+  const cant = params.cantidad ?? params.quantity ?? 0;
+  const saldoAnt = params.saldoAnterior ?? 0;
+  const saldoRes = params.saldoResultante ?? params.stockAfter ?? 0;
+  const amt = params.amount ?? 0;
+  const amtCents = params.amountCents ?? Math.round(amt * 100);
+  const sku = params.sku || (typeof params.producto === 'string' ? params.producto : params.producto?.sku);
+
+  const defaultDesc = `${params.type}: ${prodName} (Cant: ${cant >= 0 ? '+' : ''}${cant}, Saldo: ${saldoRes})`;
   const id = generateKardexId();
   const timestamp = params.timestamp || new Date().toISOString();
 
@@ -240,17 +255,21 @@ export function createKardexEntry(
     timestamp,
     type: params.type,
     producto: params.producto,
-    cantidad: params.cantidad,
-    saldoAnterior: params.saldoAnterior,
-    saldoResultante: params.saldoResultante,
+    cantidad: cant,
+    quantity: cant,
+    saldoAnterior: saldoAnt,
+    saldoResultante: saldoRes,
+    stockAfter: saldoRes,
+    sku,
     usuario: params.usuario,
     referencia: params.referencia,
     description: params.description ?? defaultDesc,
-    amount: params.amount ?? 0,
+    amount: amt,
+    amountCents: amtCents,
     previousHash,
   };
 
-  const entryHash = computeKardexHash(baseEntry, previousHash);
+  const entryHash = computeKardexHash(baseEntry as any, previousHash);
 
   return {
     ...baseEntry,
@@ -325,6 +344,7 @@ function verifySingleProductContinuity(
 ): ProductContinuityResult {
   const chrono = order === 'newest-first' ? [...entries].reverse() : [...entries];
   const prodEntries = chrono.filter((e) => {
+    if (e.type === 'PAGO_PROVEEDOR') return false;
     const prodSku = typeof e.producto === 'string' ? e.producto : e.producto?.sku;
     return prodSku === sku;
   });
@@ -658,5 +678,121 @@ export function resolveShortageAlertAdjustment<T extends StockItemLike>(
       stock: saldoResultante,
     },
     kardexEntry,
+  };
+}
+
+
+/**
+ * Calcula el stock físico de un producto en el Kardex.
+ * Filtra estrictamente descartando movimientos de tesorería pura ('PAGO_PROVEEDOR' o 'TESORERIA' o 'CXP').
+ */
+export function computePhysicalStockFromKardex(
+  sku: string,
+  entries: readonly KardexEntry[],
+  order: 'chronological' | 'newest-first' = 'newest-first'
+): number {
+  const cleanSku = String(sku || '').trim().toUpperCase();
+  if (!cleanSku || cleanSku === 'TESORERIA' || cleanSku === 'CXP') return 0;
+
+  const physicalEntries = entries.filter((e) => {
+    if (e.type === 'PAGO_PROVEEDOR') return false;
+    const entrySku = e.sku || (typeof e.producto === 'string' ? e.producto : e.producto?.sku);
+    return String(entrySku || '').trim().toUpperCase() === cleanSku;
+  });
+
+  if (physicalEntries.length === 0) return 0;
+
+  if (order === 'newest-first') {
+    return physicalEntries[0].stockAfter ?? physicalEntries[0].saldoResultante;
+  } else {
+    const last = physicalEntries[physicalEntries.length - 1];
+    return last.stockAfter ?? last.saldoResultante;
+  }
+}
+
+/**
+ * Calcula el Costo Promedio Ponderado (CPP) de un SKU basado exclusivamente en compras registradas en el Kardex.
+ * Filtra estrictamente movimientos de tesorería ('PAGO_PROVEEDOR' o quantity <= 0).
+ */
+export function computeWeightedAverageCostFromKardex(
+  sku: string,
+  entries: readonly KardexEntry[]
+): number {
+  const cleanSku = String(sku || '').trim().toUpperCase();
+  if (!cleanSku || cleanSku === 'TESORERIA' || cleanSku === 'CXP') return 0;
+
+  const purchaseEntries = entries.filter((e) => {
+    if (e.type === 'PAGO_PROVEEDOR') return false;
+    const qty = e.quantity ?? e.cantidad;
+    if (qty <= 0) return false;
+    const entrySku = e.sku || (typeof e.producto === 'string' ? e.producto : e.producto?.sku);
+    return String(entrySku || '').trim().toUpperCase() === cleanSku && (e.amount || 0) > 0;
+  });
+
+  if (purchaseEntries.length === 0) return 0;
+
+  let totalQty = 0;
+  let totalCostCents = 0;
+
+  for (const entry of purchaseEntries) {
+    const qty = entry.quantity ?? entry.cantidad;
+    const cents = entry.amountCents ?? Math.round((entry.amount || 0) * 100);
+    totalQty += qty;
+    totalCostCents += cents;
+  }
+
+  if (totalQty <= 0) return 0;
+  const cppCents = Math.round(totalCostCents / totalQty);
+  return Math.round(cppCents) / 100;
+}
+
+export interface InventoryValuationResult {
+  totalSkus: number;
+  totalPhysicalUnits: number;
+  totalValuationCents: number;
+  totalValuation: number;
+}
+
+/**
+ * Calcula la valuación monetaria total del inventario físico.
+ * Filtra estrictamente descartando cualquier transacción de tesorería ('PAGO_PROVEEDOR', 'TESORERIA', 'CXP')
+ * o movimientos sin stock físico.
+ */
+export function computeKardexInventoryValuation(
+  products: readonly { sku: string; cost?: number; weightedAvgCost?: number; stock?: number }[],
+  entries: readonly KardexEntry[]
+): InventoryValuationResult {
+  const physicalEntries = entries.filter((e) => {
+    if (e.type === 'PAGO_PROVEEDOR') return false;
+    const s = e.sku || (typeof e.producto === 'string' ? e.producto : e.producto?.sku);
+    return s !== 'TESORERIA' && s !== 'CXP';
+  });
+
+  let totalPhysicalUnits = 0;
+  let totalValuationCents = 0;
+  let validSkusCount = 0;
+
+  for (const prod of products) {
+    if (!prod || !prod.sku || prod.sku === 'TESORERIA' || prod.sku === 'CXP') continue;
+
+    const kardexStock = computePhysicalStockFromKardex(prod.sku, physicalEntries, 'newest-first');
+    const effectiveStock = kardexStock > 0 ? kardexStock : (prod.stock && prod.stock > 0 ? prod.stock : 0);
+
+    if (effectiveStock > 0) {
+      const unitCost = prod.weightedAvgCost ?? prod.cost ?? 0;
+      const costCents = Math.round(unitCost * 100);
+      const prodTotalValuationCents = Math.round(effectiveStock * costCents);
+
+      totalPhysicalUnits += effectiveStock;
+      totalValuationCents += prodTotalValuationCents;
+      validSkusCount++;
+    }
+  }
+
+  return {
+    totalSkus: validSkusCount,
+    totalPhysicalUnits: Math.round(totalPhysicalUnits * 1000) / 1000,
+    totalValuationCents,
+    totalValuation: totalValuationCents / 100,
   };
 }

@@ -2736,6 +2736,10 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
       creditDays: 7,
     });
 
+    // Simular ventas en efectivo para tener suficiente efectivo en cajón ($1,500)
+    service.cashShift.update((s) => ({ ...s, cashSalesTotal: 1000.0 }));
+    service.cashRegister.update((r) => ({ ...r, cashSalesTotal: 1000.0 }));
+
     const initialDrawerCash = service.getRealDrawerCash();
     const initialPayouts = service.cashShift().cashPayoutsTotal || 0;
 
@@ -2750,16 +2754,20 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(service.cashRegister().cashPayoutsTotal).toBe(initialPayouts + 500.0);
     expect(service.getRealDrawerCash()).toBe(initialDrawerCash - 500.0);
 
-    // 4. Comprobar movimiento en Kardex de tipo PAGO_PROVEEDOR
-    const kardexPayout = service.kardex().find((k) => k.type === 'PAGO_PROVEEDOR' && (typeof k.producto === 'string' ? k.producto : k.producto.sku) === suppId);
+    // 4. Comprobar movimiento en Kardex de tipo PAGO_PROVEEDOR registrado con sku: 'TESORERIA'
+    const kardexPayout = service.kardex().find((k) => k.type === 'PAGO_PROVEEDOR' && (k.sku === 'TESORERIA' || (typeof k.producto !== 'string' && k.producto.sku === 'TESORERIA')));
     expect(kardexPayout).toBeDefined();
     expect(kardexPayout?.amount).toBe(500.0);
+    expect(kardexPayout?.cantidad).toBe(0);
+    expect(kardexPayout?.quantity).toBe(0);
     expect(service.verifyKardexIntegrity().valid).toBeTrue();
 
-    // 5. Liquidar el restante $340.00
+    // 5. Liquidar el restante $340.00 en efectivo desde el cajón
     const payRes2 = service.registerSupplierPayment(suppId, 340.0, 'EFECTIVO', 'Don Lupe');
     expect(payRes2.ok).toBeTrue();
     expect(payRes2.remainingBalance).toBe(0);
+    expect(service.cashShift().cashPayoutsTotal).toBe(initialPayouts + 840.0);
+    expect(service.getRealDrawerCash()).toBe(initialDrawerCash - 840.0);
 
     const pendingDebts = service.getPendingAccountsPayable(suppId);
     expect(pendingDebts.length).toBe(0); // Totalmente liquidada
@@ -2802,6 +2810,206 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const hikeAlert = service.morningAlerts().find((a) => a.kind === 'margen' && a.id.includes('FRI-NEG-50K'));
     expect(hikeAlert).toBeDefined();
     expect(hikeAlert?.title).toContain('+20%');
+  });
+
+
+
+  it('47. Seguimiento F2: Validación de efectivo en cajón y opción de pago a proveedor con fondo externo (bolsillo del dueño)', () => {
+    const suppRes = service.createSupplier({
+      name: 'Distribuidora San Juan',
+      phone: '477-555-1234',
+      paymentTerms: 'CREDITO',
+      creditDays: 15,
+    });
+    const suppId = suppRes.supplier!.id;
+
+    // Recepción a crédito de $5,000.00 (mayor que el efectivo en caja)
+    service.saveReception([service.createManualLine('FRI-NEG-50K', 5, 1000.0)], 'REC-SJ-5000', {
+      paymentType: 'CREDITO',
+      supplierId: suppId,
+      creditDays: 15,
+    });
+
+    const realCash = service.getRealDrawerCash();
+    const excessiveAmount = realCash + 1000.0; // Supera el dinero en cajón
+
+    // 1. Intento de pago con CAJA que excede el efectivo disponible -> RECHAZADO con mensaje descriptivo exacto
+    const rejectRes = service.registerSupplierPayment(suppId, excessiveAmount, 'EFECTIVO', 'Don Lupe', { source: 'CAJA' });
+    expect(rejectRes.ok).toBeFalse();
+    expect(rejectRes.message).toBe(`Efectivo insuficiente en cajón ($${realCash.toFixed(2)} disponible). Selecciona 'Bolsillo / Fondo Externo' o ajusta el monto.`);
+
+    // El arqueo y saldo permanecen intactos
+    expect(service.getRealDrawerCash()).toBe(realCash);
+    expect(service.cashShift().cashPayoutsTotal || 0).toBe(0);
+
+    // 2. Pago con FONDO_EXTERNO por $2,500.00 -> PERMITIDO aunque no salga de la caja
+    const extRes = service.registerSupplierPayment(suppId, 2500.0, 'EFECTIVO', 'Don Lupe', { source: 'FONDO_EXTERNO' });
+    expect(extRes.ok).toBeTrue();
+    expect(extRes.appliedAmount).toBe(2500.0);
+    expect(extRes.remainingBalance).toBe(2500.0);
+
+    // NO se tocó el efectivo de la tienda ni cashPayoutsTotal
+    expect(service.getRealDrawerCash()).toBe(realCash);
+    expect(service.cashShift().cashPayoutsTotal || 0).toBe(0);
+
+    // 3. Pago con CAJA dentro del saldo disponible -> Descuenta del cajón y suma a cashPayoutsTotal
+    const validAmount = 50.0;
+    expect(validAmount).toBeLessThanOrEqual(realCash);
+    const cajaRes = service.registerSupplierPayment(suppId, validAmount, 'EFECTIVO', 'Don Lupe', { source: 'CAJA' });
+    expect(cajaRes.ok).toBeTrue();
+    expect(cajaRes.appliedAmount).toBe(validAmount);
+    expect(service.cashShift().cashPayoutsTotal).toBe(validAmount);
+    expect(service.getRealDrawerCash()).toBe(realCash - validAmount);
+  });
+
+  it('48. Seguimiento F2: Aislamiento estricto de movimientos monetarios (PAGO_PROVEEDOR) para no contaminar valuaciones ni conteos físicos en Kardex', () => {
+    const suppRes = service.createSupplier({
+      name: 'Comercializadora Kardex Test',
+      phone: '477-888-9999',
+      paymentTerms: 'CREDITO',
+    });
+    const suppId = suppRes.supplier!.id;
+
+    // Crear producto físico y registrar compra
+    const initialValuation = service.getInventoryValuation();
+    const initialPhysicalUnits = initialValuation.totalPhysicalUnits;
+
+    // Generar recepción a crédito y luego pago de tesorería de $1,200.00
+    service.saveReception([service.createManualLine('ACE-NUT-850', 10, 30.0)], 'REC-KARDEX-01', {
+      paymentType: 'CREDITO',
+      supplierId: suppId,
+    });
+
+    const paymentRes = service.registerSupplierPayment(suppId, 300.0, 'EFECTIVO', 'Don Lupe', { source: 'FONDO_EXTERNO' });
+    expect(paymentRes.ok).toBeTrue();
+
+    // Comprobar que la entrada en el Kardex tiene sku: 'TESORERIA', quantity: 0, stockAfter: 0
+    const entry = service.kardex()[0];
+    expect(entry.type).toBe('PAGO_PROVEEDOR');
+    expect(entry.sku).toBe('TESORERIA');
+    expect(entry.quantity).toBe(0);
+    expect(entry.cantidad).toBe(0);
+    expect(entry.saldoAnterior).toBe(0);
+    expect(entry.saldoResultante).toBe(0);
+    expect(entry.stockAfter).toBe(0);
+    expect(entry.amountCents).toBe(30000);
+
+    // Verificación de integridad SHA-256 encadenada
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+
+    // Verificación de que TESORERIA no tiene stock físico
+    expect(service.getPhysicalStockFromKardex('TESORERIA')).toBe(0);
+    expect(service.getProductCPP('TESORERIA')).toBe(0);
+
+    // Valuación de inventario no incluye montos de tesorería
+    const postValuation = service.getInventoryValuation();
+    expect(postValuation.totalSkus).toBeGreaterThan(0);
+    expect(postValuation.totalPhysicalUnits).toBe(initialPhysicalUnits + 10);
+  });
+
+  it('49. Seguimiento F2: Amortización específica por remisión/factura (targetDebtId) en CxP además del FIFO automático', () => {
+    const suppRes = service.createSupplier({
+      name: 'Proveedor Notas Múltiples',
+      phone: '477-222-1111',
+      paymentTerms: 'CREDITO',
+    });
+    const suppId = suppRes.supplier!.id;
+
+    // Registrar 2 compras a crédito con folios distintos
+    service.saveReception([service.createManualLine('ACE-NUT-850', 10, 20.0)], 'REC-NOTA-A', {
+      paymentType: 'CREDITO',
+      supplierId: suppId,
+      creditDays: 5, // Vence pronto
+    });
+    service.saveReception([service.createManualLine('ACE-NUT-850', 10, 30.0)], 'REC-NOTA-B', {
+      paymentType: 'CREDITO',
+      supplierId: suppId,
+      creditDays: 30, // Vence más tarde
+    });
+
+    const pending = service.getPendingAccountsPayable(suppId);
+    expect(pending.length).toBe(2);
+    const notaA = pending.find((d) => d.receptionFolio === 'REC-NOTA-A')!;
+    const notaB = pending.find((d) => d.receptionFolio === 'REC-NOTA-B')!;
+
+    // Pagar específicamente NOTA-B ($300.00) por targetDebtId
+    const payRes = service.registerSupplierPayment(suppId, 300.0, 'EFECTIVO', 'Don Lupe', {
+      source: 'FONDO_EXTERNO',
+      targetDebtId: notaB.id,
+    });
+
+    expect(payRes.ok).toBeTrue();
+
+    const afterDebts = service.accountsPayable().filter((d) => d.supplierId === suppId);
+    const updatedNotaB = afterDebts.find((d) => d.id === notaB.id)!;
+    const updatedNotaA = afterDebts.find((d) => d.id === notaA.id)!;
+
+    // NOTA-B quedó pagada
+    expect(updatedNotaB.remainingBalance).toBe(0);
+    expect(updatedNotaB.status).toBe('PAGADO');
+
+    // NOTA-A (aunque más antigua) sigue con saldo completo
+    expect(updatedNotaA.remainingBalance).toBe(notaA.remainingBalance);
+  });
+
+  it('50. Seguimiento F2: Resumen visual de abono de cliente en POS (saldo anterior, abono, nuevo saldo sin emojis)', () => {
+    // 1. Crear cliente con saldo
+    const custRes = service.createCustomer({
+      name: 'Doña Petra Abonos',
+      alias: 'Doña Petra',
+      phone: '477-666-7777',
+      creditLimit: 1000.0,
+      creditDays: 15,
+    });
+    const custId = custRes.customer!.id;
+
+    // Venta a crédito de $400.00
+    service.activeUser.set('Don Lupe (Encargado)');
+    const saleItems: PosSaleItem[] = [
+      {
+        sku: 'AB-PAN-01',
+        barcode: '75010001',
+        name: 'Pan Dulce Artesanal',
+        emoji: '🥐',
+        unitPrice: 40.0,
+        saleUnit: 'Pieza',
+        isBulk: false,
+        qty: 10,
+        subtotal: 400.0,
+      },
+    ];
+    const saleRes = service.processCreditSale(saleItems, custId);
+    expect(saleRes.ok).toBeTrue();
+
+    // 2. Registrar abono de $150.00
+    const abonoRes = service.registerCreditPayment(custId, 150.0);
+    expect(abonoRes.ok).toBeTrue();
+    expect(abonoRes.previousBalance).toBe(400.0);
+    expect(abonoRes.applied).toBe(150.0);
+    expect(abonoRes.newBalance).toBe(250.0);
+    expect(abonoRes.customerName).toBe('Doña Petra Abonos');
+
+    // 3. Probar componente PosViewComponent y la señal abonoSuccessSummary
+    const comp = TestBed.runInInjectionContext(() => new PosViewComponent());
+    comp.ngOnInit();
+
+    // Seleccionar cliente y monto
+    (comp as any).abonoCustomerId.set(custId);
+    (comp as any).abonoAmount.set(100.0);
+
+    // Ejecutar abono
+    comp.executeAbono();
+
+    const summary = (comp as any).abonoSuccessSummary();
+    expect(summary).not.toBeNull();
+    expect(summary.customerName).toBe('Doña Petra Abonos');
+    expect(summary.previousBalance).toBe(250.0);
+    expect(summary.applied).toBe(100.0);
+    expect(summary.newBalance).toBe(150.0);
+
+    // Cerrar resumen manualmente
+    comp.closeAbonoSummary();
+    expect((comp as any).abonoSuccessSummary()).toBeNull();
   });
 
 });

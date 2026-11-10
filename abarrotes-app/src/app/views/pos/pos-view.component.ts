@@ -92,6 +92,13 @@ export class PosViewComponent implements OnInit, OnDestroy {
   protected readonly abonoCustomerId = signal<string>('CLI-03');
   protected readonly abonoAmount = signal<number>(200);
   protected readonly abonoFeedback = signal<string | null>(null);
+  protected readonly abonoSuccessSummary = signal<{
+    customerName: string;
+    previousBalance: number;
+    applied: number;
+    newBalance: number;
+  } | null>(null);
+  private abonoDismissTimer: any = null;
 
   // ---------- Modal Consumo Interno ----------
   protected readonly internalConsumptionModalOpen = signal<boolean>(false);
@@ -268,6 +275,10 @@ export class PosViewComponent implements OnInit, OnDestroy {
     }
     if (typeof window !== 'undefined') {
       window.removeEventListener('storage', this.storageListener);
+    }
+    if (this.abonoDismissTimer) {
+      clearTimeout(this.abonoDismissTimer);
+      this.abonoDismissTimer = null;
     }
   }
 
@@ -732,6 +743,29 @@ export class PosViewComponent implements OnInit, OnDestroy {
     const amount = parseMoney(this.abonoAmount());
     const res = this.inv.registerCreditPayment(customerId, amount);
     this.abonoFeedback.set(res.message);
+    if (res.ok && res.applied !== undefined) {
+      if (this.abonoDismissTimer) {
+        clearTimeout(this.abonoDismissTimer);
+      }
+      this.abonoSuccessSummary.set({
+        customerName: res.customerName || 'Cliente',
+        previousBalance: res.previousBalance ?? 0,
+        applied: res.applied,
+        newBalance: res.newBalance ?? 0,
+      });
+      this.abonoDismissTimer = setTimeout(() => {
+        this.abonoSuccessSummary.set(null);
+        this.abonoDismissTimer = null;
+      }, 6000);
+    }
+  }
+
+  closeAbonoSummary(): void {
+    if (this.abonoDismissTimer) {
+      clearTimeout(this.abonoDismissTimer);
+      this.abonoDismissTimer = null;
+    }
+    this.abonoSuccessSummary.set(null);
   }
 
   submitCustomerAbono(): void {
