@@ -77,6 +77,38 @@ El sistema incluye un mecanismo de **respaldo cifrado en el servidor local (`loc
 
 ---
 
+## ⚙️ Ajustes del Negocio, Usuarios y Seguridad Criptográfica (Bloque G)
+
+El Bloque G introduce la centralización administrativa del sistema con base en el principio de menor privilegio, trazabilidad inmutable y desvinculación de parámetros rígidos:
+
+1. **Pantalla "Ajustes y Gestión de Usuarios" (`/ajustes`):**
+   - **Barrera de acceso por PIN de Administrador:** Requiere autenticación con PIN maestro para desbloquear la vista y aplicar cambios a parámetros críticos o credenciales.
+   - **Nombre comercial parametrizable:** Elimina el valor estático *"Abarrotes Doña Lupe"* de toda la aplicación, reflejando reactivamente el nombre comercial configurado en la cabecera de la app, pestaña de navegador, tickets de venta de mostrador y hoja imprimible de códigos EAN-13 y granel.
+   - **Fondo inicial y umbrales financieros:** Configuración del efectivo sugerido de apertura de caja (`initialCashFloat`), umbral de margen mínimo (`marginThresholdPct`), impuestos por defecto (IVA e IEPS) y tope de descuento por ticket sin autorización de encargado/administrador (`maxDiscountPctWithoutPin`).
+   - **Tiempo de bloqueo por inactividad:** Parametrización en minutos (0 a 120 min) tras los cuales la terminal bloquea automáticamente la interfaz en todos los dispositivos de mostrador.
+
+2. **Usuarios con credenciales y matriz de permisos por rol:**
+   - **Derivación criptográfica PBKDF2:** Cada usuario almacena su propio PIN derivado mediante **PBKDF2-HMAC-SHA256 con 600,000 iteraciones** y sal criptográfica de 16 bytes. El sistema incluye validación de políticas que rechaza secuencias triviales (ascendentes, descendentes o dígitos repetidos).
+   - **Matriz de permisos estricta:**
+     * **Cajero (`CAJERO`):** Vender en mostrador, cobrar efectivo/transferencia y abonar a libretas de crédito. Restringido de recepción, mermas, auditorías, ajustes y administración de usuarios.
+     * **Encargado (`ENCARGADO`):** Todo lo de Cajero, además de recepción de compras, registro y dictamen de mermas, auditorías físicas de pasillo y cortes de turno/caja.
+     * **Administrador (`ADMINISTRADOR`):** Control total, incluyendo ajustes generales, gestión de usuarios y roles, edición de precios base en catálogo, generación de respaldos cifrados y restablecimiento de datos.
+   - **Atribución en Kardex:** Todo movimiento operativo se vincula de manera obligatoria al usuario autenticado actual. Se eliminó definitivamente el selector de usuario libre sin contraseña de la barra lateral.
+   - **Bloqueo escalado temporal por usuario:** 3 intentos consecutivos erróneos bloquean al usuario específico por 30 segundos (primer bloqueo) o 5 minutos (bloqueos posteriores), sin afectar el acceso del resto del equipo.
+   - **Pantalla de bloqueo por PIN:** Bloqueo manual desde la barra lateral o automático por inactividad, permitiendo cambiar de cajero o desbloquear mediante PIN individual.
+
+3. **Bitácora de auditoría encadenada criptográficamente (SHA-256):**
+   - Registro append-only inmutable de eventos sensibles: alta de usuarios, cambios de rol, desactivaciones/reactivaciones, cambios de PIN y modificaciones a parámetros del negocio.
+   - Cada evento incluye secuencia incremental, timestamp ISO, fecha local, actor responsable, detalle y el hash SHA-256 de la entrada previa (`prevHash`), anclado en `GENESIS_SECURITY_AUDIT_HASH`.
+   - La función `verifySecurityAuditChain` verifica en tiempo real la validez matemática de toda la cadena, señalando inmediatamente cualquier alteración o manipulación de datos históricos.
+
+4. **Persistencia y migración de esquema v4 (`binnitech_pos_state_v4`):**
+   - `CURRENT_SCHEMA_VERSION` incrementado a 4.
+   - Migración automática de estados v3 (y retrocompatibilidad con v2 y v1) incorporando `settings`, `users` y `securityAuditLog` con valores predeterminados y usuarios demostrativos de inicio seguro.
+   - La clave legacy previa (`binnitech_pos_state_v3`) se preserva intacta hasta confirmar que el estado v4 recién escrito se puede leer y supera `validateStoredState`.
+
+---
+
 ## 🏃 Cómo Ejecutar el Proyecto
 
 ### 1. Iniciar la Aplicación de Escritorio (PC):

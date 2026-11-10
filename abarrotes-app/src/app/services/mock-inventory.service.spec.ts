@@ -1,4 +1,7 @@
 import { calculateDueDate } from '../domain/suppliers';
+import { hasPermission, ROLE_PERMISSIONS } from '../domain/auth';
+import { verifySecurityAuditChain } from '../domain/audit-log';
+import { DEFAULT_BUSINESS_SETTINGS } from '../domain/settings';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { MockInventoryService, ShrinkRecord, ReceptionLine, PosSaleItem } from './mock-inventory.service';
@@ -3238,13 +3241,228 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(foundSup).toBeDefined();
     expect(foundSup?.paymentTerms).toBe('CONTADO'); // Migrado con valor por defecto
 
-    // Verificar que el estado guardado ahora está en v3
-    const v3Saved = await adapter.load('binnitech_pos_state_v3');
-    expect(v3Saved).toBeDefined();
-    expect(v3Saved.schemaVersion).toBe(3);
+    // Verificar que el estado guardado ahora está en la versión actual (v4)
+    const v4Saved = await adapter.load(STATE_STORAGE_KEY);
+    expect(v4Saved).toBeDefined();
+    expect(v4Saved.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 
-    // Verificar que la clave legacy v2 fue eliminada tras la validación exitosa de v3
+    // Verificar que la clave legacy v2 fue eliminada tras la validación exitosa de la versión actual
     const legacyCheck = await adapter.load('binnitech_pos_state_v2');
+    expect(legacyCheck).toBeNull();
+  });
+  it('55. Bloque G: Permisos estrictos por rol (Cajero, Encargado, Administrador)', async () => {
+    // 1. Cajero
+    expect(hasPermission('CAJERO', 'vender')).toBeTrue();
+    expect(hasPermission('CAJERO', 'cobrar')).toBeTrue();
+    expect(hasPermission('CAJERO', 'abonar')).toBeTrue();
+    expect(hasPermission('CAJERO', 'recepcion')).toBeFalse();
+    expect(hasPermission('CAJERO', 'mermas')).toBeFalse();
+    expect(hasPermission('CAJERO', 'auditoria')).toBeFalse();
+    expect(hasPermission('CAJERO', 'ajustes')).toBeFalse();
+    expect(hasPermission('CAJERO', 'usuarios')).toBeFalse();
+    expect(hasPermission('CAJERO', 'precios')).toBeFalse();
+
+    // 2. Encargado
+    expect(hasPermission('ENCARGADO', 'vender')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'recepcion')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'mermas')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'auditoria')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'cortes')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'ajustes')).toBeFalse();
+    expect(hasPermission('ENCARGADO', 'usuarios')).toBeFalse();
+    expect(hasPermission('ENCARGADO', 'precios')).toBeFalse();
+
+    // 3. Administrador
+    expect(hasPermission('ADMINISTRADOR', 'ajustes')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'usuarios')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'precios')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'respaldos')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'restablecer')).toBeTrue();
+
+    // 4. Bloqueo en tiempo de ejecución: Si el usuario activo es Cajero, no puede dar de alta usuarios
+    const maria = service.users().find((u) => u.name.includes('María'))!;
+    await service.loginWithPin(maria.id, '719283');
+    expect(service.currentUser()?.role).toBe('CAJERO');
+
+    const createRes = await service.createUser({
+      name: 'Intruso',
+      role: 'CAJERO',
+      pin: '998877',
+    });
+    expect(createRes.ok).toBeFalse();
+    expect(createRes.message).toContain('Permiso denegado');
+  });
+
+  it('56. Bloque G: Bloqueo tras 3 intentos fallidos individual por usuario', async () => {
+    const maria = service.users().find((u) => u.name.includes('María'))!;
+    expect(maria).toBeDefined();
+
+    // Intento 1 incorrecto
+    const r1 = await service.loginWithPin(maria.id, '000000');
+    expect(r1.success).toBeFalse();
+    expect(r1.remainingAttempts).toBe(2);
+    expect(r1.isLocked).toBeFalse();
+
+    // Intento 2 incorrecto
+    const r2 = await service.loginWithPin(maria.id, '111111');
+    expect(r2.success).toBeFalse();
+    expect(r2.remainingAttempts).toBe(1);
+    expect(r2.isLocked).toBeFalse();
+
+    // Intento 3 incorrecto -> Se bloquea
+    const r3 = await service.loginWithPin(maria.id, '222222');
+    expect(r3.success).toBeFalse();
+    expect(r3.remainingAttempts).toBe(0);
+    expect(r3.isLocked).toBeTrue();
+    expect(r3.lockedRemainingSeconds).toBeGreaterThan(0);
+
+    // Intento 4 con el PIN CORRECTO mientras está bloqueada -> Rechazado por bloqueo temporal
+    const r4 = await service.loginWithPin(maria.id, '719283');
+    expect(r4.success).toBeFalse();
+    expect(r4.isLocked).toBeTrue();
+    expect(r4.message).toContain('bloqueado');
+
+    // Comprobar que otro usuario (Pedro) NO está bloqueado y puede ingresar con su PIN correcto
+    const pedro = service.users().find((u) => u.name.includes('Pedro'))!;
+    const rPedro = await service.loginWithPin(pedro.id, '628491');
+    expect(rPedro.success).toBeTrue();
+    expect(service.currentUser()?.id).toBe(pedro.id);
+  });
+
+  it('57. Bloque G: Bitácora de auditoría inmutable y encadenada (SHA-256)', async () => {
+    // Iniciar como Administrador
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    await service.loginWithPin(admin.id, '984312');
+
+    // 1. Modificar ajustes del negocio
+    const settingsRes = await service.updateBusinessSettings({
+      storeName: 'Abarrotes El Triunfo de León',
+      initialCashFloat: 1800,
+      marginThresholdPct: 22,
+    });
+    expect(settingsRes.ok).toBeTrue();
+
+    // 2. Crear nuevo usuario
+    const userRes = await service.createUser({
+      name: 'Sonia Test',
+      role: 'CAJERO',
+      pin: '556677',
+    });
+    expect(userRes.ok).toBeTrue();
+    expect(userRes.user).toBeDefined();
+
+    // 3. Modificar rol del nuevo usuario
+    const roleRes = await service.updateUserRole(userRes.user!.id, 'ENCARGADO');
+    expect(roleRes.ok).toBeTrue();
+
+    // 4. Verificar integridad de la cadena criptográfica
+    const auditLog = service.securityAuditLog();
+    expect(auditLog.length).toBeGreaterThanOrEqual(3);
+
+    const verification = verifySecurityAuditChain(auditLog, 'newest-first');
+    expect(verification.valid).toBeTrue();
+    expect(verification.error).toBeUndefined();
+
+    // 5. Simular alteración maliciosa en un evento histórico -> debe detectarse
+    const tamperedLog = JSON.parse(JSON.stringify(auditLog));
+    tamperedLog[1].details = 'ALTERACION MALICIOSA DE DATOS';
+    const tamperedCheck = verifySecurityAuditChain(tamperedLog, 'newest-first');
+    expect(tamperedCheck.valid).toBeFalse();
+    expect(tamperedCheck.error).toContain('Hash alterado');
+  });
+
+  it('58. Bloque G: Kardex atribuye al usuario autenticado actual y registra CAMBIO_USUARIO al iniciar sesión', async () => {
+    // Iniciar sesión como Pedro
+    const pedro = service.users().find((u) => u.name.includes('Pedro'))!;
+    const loginRes = await service.loginWithPin(pedro.id, '628491');
+    expect(loginRes.success).toBeTrue();
+    expect(service.activeUser()).toBe(pedro.name);
+    expect(service.currentUser()?.name).toBe(pedro.name);
+
+    // Realizar una venta en efectivo
+    const prod = service.products()[0];
+    const saleRes = service.processCashSale(
+      [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji || '',
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 1,
+          unitPrice: prod.salePrice,
+          subtotal: prod.salePrice,
+        },
+      ],
+      prod.salePrice,
+    );
+    expect(saleRes.ok).toBeTrue();
+
+    // Verificar que el movimiento en Kardex se atribuyó estrictamente a Pedro
+    const lastSaleEntry = service.kardex().find((k) => k.type === 'VENTA_EFECTIVO');
+    expect(lastSaleEntry).toBeDefined();
+    expect(lastSaleEntry!.usuario).toBe(pedro.name);
+  });
+
+  it('59. Bloque G: Bloqueo de terminal y desbloqueo mediante PIN', async () => {
+    expect(service.isSessionLocked()).toBeFalse();
+
+    // Bloquear sesión
+    service.lockSession();
+    expect(service.isSessionLocked()).toBeTrue();
+
+    // Desbloquear con PIN incorrecto
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    const failRes = await service.loginWithPin(admin.id, '999999');
+    expect(failRes.success).toBeFalse();
+    expect(service.isSessionLocked()).toBeTrue();
+
+    // Desbloquear con PIN correcto
+    const okRes = await service.loginWithPin(admin.id, '984312');
+    expect(okRes.success).toBeTrue();
+    expect(service.isSessionLocked()).toBeFalse();
+  });
+
+  it('60. Bloque G: Persistencia y migración de estado v3 a v4 preservando v3 hasta validar v4', async () => {
+    const adapter = (service as any).storageAdapter;
+    const v3Data = {
+      schemaVersion: 3,
+      timestamp: '2026-11-08T12:00:00.000Z',
+      activeUser: 'Administrador',
+      products: service.products(),
+      creditCustomers: service.creditCustomers(),
+      cashShift: service.cashShift(),
+      cashRegister: service.cashRegister(),
+      kardex: service.kardex(),
+      shrinkRecords: service.shrinkRecords(),
+      auditLines: service.auditLines(),
+      suppliers: service.suppliers(),
+      accountsPayable: service.accountsPayable(),
+      priceHistory: service.productPriceHistory(),
+    };
+
+    // Guardar bajo clave legacy v3
+    await adapter.save('binnitech_pos_state_v3', v3Data);
+
+    // Ejecutar restorePersistedState
+    const restoreRes = await service.restorePersistedState();
+    expect(restoreRes.success).toBeTrue();
+
+    // Verificar que se hidrataron settings y usuarios por defecto
+    expect(service.businessSettings()).toBeDefined();
+    expect(service.businessSettings().storeName).toBe('Mi Tiendita');
+    expect(service.users().length).toBeGreaterThanOrEqual(4);
+
+    // Verificar que el estado guardado ahora está en v4
+    const v4Saved = await adapter.load(STATE_STORAGE_KEY);
+    expect(v4Saved).toBeDefined();
+    expect(v4Saved.schemaVersion).toBe(4);
+    expect(v4Saved.settings).toBeDefined();
+    expect(v4Saved.users).toBeDefined();
+
+    // Verificar que la clave legacy v3 fue eliminada tras la validación exitosa de v4
+    const legacyCheck = await adapter.load('binnitech_pos_state_v3');
     expect(legacyCheck).toBeNull();
   });
 });

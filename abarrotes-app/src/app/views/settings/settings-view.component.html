@@ -1,0 +1,749 @@
+<div class="space-y-6 max-w-6xl mx-auto pb-12" data-testid="settings-view-root">
+
+  <!-- =========================================================================
+       ENCABEZADO DE VISTA
+       ========================================================================= -->
+  <header class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-5">
+    <div>
+      <div class="flex items-center gap-2.5">
+        <span class="grid h-10 w-10 place-items-center rounded-xl bg-slate-900 text-white">
+          <app-icon name="settings" [size]="22" />
+        </span>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">Ajustes y Gestión de Usuarios</h1>
+          <p class="text-xs font-semibold text-slate-500 mt-0.5">
+            Configuración global de la tienda, control de acceso por roles y bitácora de auditoría
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Indicador de Usuario Actual -->
+    <div class="flex items-center gap-3">
+      <div class="text-right">
+        <span class="block text-xs font-bold text-slate-800">{{ inv.currentUser()?.name || inv.activeUser() }}</span>
+        <span class="inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          [class]="inv.currentUser()?.role === 'ADMINISTRADOR'
+            ? 'bg-purple-100 text-purple-900'
+            : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-800')">
+          Rol: {{ inv.currentUser()?.role || 'ADMINISTRADOR' }}
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       BARRERA DE AUTORIZACIÓN: PIN DE ADMINISTRADOR
+       ========================================================================= -->
+  @if (!isAdminAuthorized()) {
+    <div class="rounded-2xl border border-amber-300 bg-amber-50/70 p-8 text-center max-w-md mx-auto my-12 shadow-sm" data-testid="admin-auth-gate">
+      <div class="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-amber-500 text-white shadow-xs">
+        <app-icon name="shield" [size]="24" />
+      </div>
+      <h2 class="text-lg font-bold text-slate-900">Área Protegida por Administrador</h2>
+      <p class="text-xs text-slate-600 mt-1.5 mb-6">
+        Esta sección contiene parámetros críticos del negocio y control de usuarios. Ingresa el PIN maestro de Administrador para desbloquear.
+      </p>
+
+      <div class="space-y-3">
+        <input
+          type="password"
+          maxlength="8"
+          pattern="[0-9]*"
+          inputmode="numeric"
+          placeholder="Ingresa PIN (mínimo 6 dígitos)"
+          [ngModel]="adminAuthPin()"
+          (ngModelChange)="adminAuthPin.set($event)"
+          (keydown.enter)="verifyAdminAuth()"
+          data-testid="input-admin-auth-pin"
+          class="h-11 w-full text-center text-lg tracking-widest font-mono rounded-xl border border-slate-300 bg-white px-3 font-bold text-slate-900 focus:border-slate-800 focus:outline-none" />
+
+        @if (adminAuthError()) {
+          <div class="rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-xs font-semibold text-rose-800 text-left" data-testid="admin-auth-error">
+            {{ adminAuthError() }}
+          </div>
+        }
+
+        <button
+          type="button"
+          (click)="verifyAdminAuth()"
+          data-testid="btn-verify-admin-auth"
+          class="h-11 w-full rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition-colors shadow-xs">
+          Autorizar Acceso
+        </button>
+      </div>
+    </div>
+  } @else {
+
+    <!-- =========================================================================
+         NAVEGACIÓN POR PESTAÑAS
+         ========================================================================= -->
+    <nav class="flex border-b border-slate-200 gap-2" aria-label="Pestañas de Ajustes">
+      <button
+        type="button"
+        (click)="setTab('parametros')"
+        data-testid="tab-parametros"
+        class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors"
+        [class]="activeTab() === 'parametros'
+          ? 'border-slate-900 text-slate-900 bg-slate-50 rounded-t-xl'
+          : 'border-transparent text-slate-500 hover:text-slate-800'">
+        <app-icon name="settings" [size]="16" />
+        <span>Parámetros del Negocio</span>
+      </button>
+
+      <button
+        type="button"
+        (click)="setTab('usuarios')"
+        data-testid="tab-usuarios"
+        class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors"
+        [class]="activeTab() === 'usuarios'
+          ? 'border-slate-900 text-slate-900 bg-slate-50 rounded-t-xl'
+          : 'border-transparent text-slate-500 hover:text-slate-800'">
+        <app-icon name="user" [size]="16" />
+        <span>Usuarios y Permisos</span>
+      </button>
+
+      <button
+        type="button"
+        (click)="setTab('seguridad')"
+        data-testid="tab-seguridad"
+        class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors"
+        [class]="activeTab() === 'seguridad'
+          ? 'border-slate-900 text-slate-900 bg-slate-50 rounded-t-xl'
+          : 'border-transparent text-slate-500 hover:text-slate-800'">
+        <app-icon name="lock" [size]="16" />
+        <span>Seguridad y PIN</span>
+      </button>
+
+      <button
+        type="button"
+        (click)="setTab('bitacora')"
+        data-testid="tab-bitacora"
+        class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors"
+        [class]="activeTab() === 'bitacora'
+          ? 'border-slate-900 text-slate-900 bg-slate-50 rounded-t-xl'
+          : 'border-transparent text-slate-500 hover:text-slate-800'">
+        <app-icon name="shield" [size]="16" />
+        <span>Bitácora de Auditoría</span>
+      </button>
+    </nav>
+
+    <!-- =========================================================================
+         PESTAÑA 1: PARÁMETROS DEL NEGOCIO
+         ========================================================================= -->
+    @if (activeTab() === 'parametros') {
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-6" data-testid="panel-parametros">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Configuración Comercial y Financiera</h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Los cambios se guardan de forma persistente y aplican de inmediato en tickets, reportes y caja.
+          </p>
+        </div>
+
+        @if (settingsFeedback()) {
+          <div class="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-xs font-bold text-emerald-900" data-testid="settings-feedback">
+            {{ settingsFeedback() }}
+          </div>
+        }
+        @if (settingsError()) {
+          <div class="rounded-xl border border-rose-300 bg-rose-50 p-4 text-xs font-bold text-rose-900" data-testid="settings-error">
+            {{ settingsError() }}
+          </div>
+        }
+
+        <div class="grid md:grid-cols-2 gap-6">
+          <!-- Nombre del negocio -->
+          <div class="space-y-1.5 md:col-span-2">
+            <label for="input-store-name" class="block text-xs font-bold text-slate-700">
+              Nombre Comercial de la Tienda
+            </label>
+            <input
+              id="input-store-name"
+              type="text"
+              maxlength="100"
+              [ngModel]="formStoreName()"
+              (ngModelChange)="formStoreName.set($event)"
+              data-testid="input-store-name"
+              placeholder="Ej. Abarrotes San Juan"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+            <p class="text-[11px] text-slate-500">
+              Aparece en los encabezados de la app, hojas de códigos de barra imprimibles y tickets del cliente.
+            </p>
+          </div>
+
+          <!-- Fondo inicial de caja -->
+          <div class="space-y-1.5">
+            <label for="input-initial-cash" class="block text-xs font-bold text-slate-700">
+              Fondo Inicial de Caja (Efectivo de Apertura)
+            </label>
+            <div class="relative">
+              <span class="absolute left-3.5 top-2.5 text-sm font-bold text-slate-400">$</span>
+              <input
+                id="input-initial-cash"
+                type="number"
+                min="0"
+                step="50"
+                [ngModel]="formInitialCashFloat()"
+                (ngModelChange)="formInitialCashFloat.set($event)"
+                data-testid="input-initial-cash"
+                class="h-10 w-full rounded-xl border border-slate-300 bg-white pl-8 pr-3 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+            </div>
+            <p class="text-[11px] text-slate-500">
+              Monto sugerido en morralla al iniciar un nuevo turno o corte de caja.
+            </p>
+          </div>
+
+          <!-- Umbral de margen mínimo -->
+          <div class="space-y-1.5">
+            <label for="input-margin-threshold" class="block text-xs font-bold text-slate-700">
+              Umbral de Margen Mínimo (%)
+            </label>
+            <div class="relative">
+              <input
+                id="input-margin-threshold"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                [ngModel]="formMarginThresholdPct()"
+                (ngModelChange)="formMarginThresholdPct.set($event)"
+                data-testid="input-margin-threshold"
+                class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-8 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+              <span class="absolute right-3.5 top-2.5 text-sm font-bold text-slate-400">%</span>
+            </div>
+            <p class="text-[11px] text-slate-500">
+              Alerta en recepción y catálogo cuando el margen de ganancia calculado cae por debajo de este valor.
+            </p>
+          </div>
+
+          <!-- IVA por defecto -->
+          <div class="space-y-1.5">
+            <label for="input-default-iva" class="block text-xs font-bold text-slate-700">
+              IVA por Defecto (%)
+            </label>
+            <div class="relative">
+              <input
+                id="input-default-iva"
+                type="number"
+                min="0"
+                max="50"
+                step="1"
+                [ngModel]="formDefaultIvaPct()"
+                (ngModelChange)="formDefaultIvaPct.set($event)"
+                data-testid="input-default-iva"
+                class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-8 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+              <span class="absolute right-3.5 top-2.5 text-sm font-bold text-slate-400">%</span>
+            </div>
+            <p class="text-[11px] text-slate-500">
+              Tasa estándar de IVA aplicada en compras y valuaciones fiscales (16% en México interior, 8% frontera).
+            </p>
+          </div>
+
+          <!-- IEPS por defecto -->
+          <div class="space-y-1.5">
+            <label for="input-default-ieps" class="block text-xs font-bold text-slate-700">
+              IEPS por Defecto (%)
+            </label>
+            <div class="relative">
+              <input
+                id="input-default-ieps"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                [ngModel]="formDefaultIepsPct()"
+                (ngModelChange)="formDefaultIepsPct.set($event)"
+                data-testid="input-default-ieps"
+                class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-8 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+              <span class="absolute right-3.5 top-2.5 text-sm font-bold text-slate-400">%</span>
+            </div>
+            <p class="text-[11px] text-slate-500">
+              Impuesto Especial para alimentos con alta densidad calórica, botanas o refrescos (generalmente 8%).
+            </p>
+          </div>
+
+          <!-- Tiempo de bloqueo por inactividad -->
+          <div class="space-y-1.5">
+            <label for="input-inactivity-timeout" class="block text-xs font-bold text-slate-700">
+              Tiempo de Bloqueo por Inactividad (Minutos)
+            </label>
+            <input
+              id="input-inactivity-timeout"
+              type="number"
+              min="0"
+              max="120"
+              step="1"
+              [ngModel]="formInactivityTimeoutMinutes()"
+              (ngModelChange)="formInactivityTimeoutMinutes.set($event)"
+              data-testid="input-inactivity-timeout"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+            <p class="text-[11px] text-slate-500">
+              La terminal bloqueará automáticamente la pantalla tras este tiempo sin actividad (0 para desactivar).
+            </p>
+          </div>
+
+          <!-- Tope de descuento sin PIN -->
+          <div class="space-y-1.5">
+            <label for="input-max-discount" class="block text-xs font-bold text-slate-700">
+              Tope Máximo de Descuento sin Autorización PIN (%)
+            </label>
+            <div class="relative">
+              <input
+                id="input-max-discount"
+                type="number"
+                min="0"
+                max="50"
+                step="1"
+                [ngModel]="formMaxDiscountPctWithoutPin()"
+                (ngModelChange)="formMaxDiscountPctWithoutPin.set($event)"
+                data-testid="input-max-discount"
+                class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 pr-8 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+              <span class="absolute right-3.5 top-2.5 text-sm font-bold text-slate-400">%</span>
+            </div>
+            <p class="text-[11px] text-slate-500">
+              Cualquier rebaja en mostrador superior a este porcentaje exigirá validación con PIN de encargado o administrador.
+            </p>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-200 pt-5 flex justify-end">
+          <button
+            type="button"
+            (click)="saveSettings()"
+            data-testid="btn-save-settings"
+            class="h-11 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition-colors shadow-xs">
+            Guardar Parámetros
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- =========================================================================
+         PESTAÑA 2: USUARIOS Y PERMISOS
+         ========================================================================= -->
+    @if (activeTab() === 'usuarios') {
+      <div class="space-y-6" data-testid="panel-usuarios">
+        <!-- Barra de acciones de usuarios -->
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Usuarios del Sistema</h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Cada usuario cuenta con PIN individual y rol asignado. Los movimientos de Kardex quedan atribuidos a su identidad.
+            </p>
+          </div>
+          <button
+            type="button"
+            (click)="openNewUserModal()"
+            data-testid="btn-open-new-user-modal"
+            class="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-xs flex items-center gap-2">
+            <span>+ Alta de Usuario</span>
+          </button>
+        </div>
+
+        <!-- Listado de Usuarios -->
+        <div class="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+          <table class="w-full text-left text-xs" data-testid="users-table">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+              <tr>
+                <th class="py-3 px-4">Usuario</th>
+                <th class="py-3 px-4">Rol Asignado</th>
+                <th class="py-3 px-4">Estatus</th>
+                <th class="py-3 px-4">Intentos Fallidos</th>
+                <th class="py-3 px-4">Fecha de Alta</th>
+                <th class="py-3 px-4 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 font-medium">
+              @for (user of inv.users(); track user.id) {
+                <tr class="hover:bg-slate-50/60 transition-colors" [class.opacity-60]="!user.isActive">
+                  <td class="py-3 px-4">
+                    <span class="font-bold text-slate-900 block">{{ user.name }}</span>
+                    <span class="text-[10px] text-slate-400 font-mono">{{ user.id }}</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <select
+                      [disabled]="!user.isActive"
+                      [value]="user.role"
+                      (change)="handleRoleChange(user, $any($event.target).value)"
+                      data-testid="select-user-role"
+                      class="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 focus:outline-none">
+                      <option value="CAJERO">Cajero</option>
+                      <option value="ENCARGADO">Encargado</option>
+                      <option value="ADMINISTRADOR">Administrador</option>
+                    </select>
+                  </td>
+                  <td class="py-3 px-4">
+                    @if (user.isActive) {
+                      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Activo
+                      </span>
+                    } @else {
+                      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                        Inactivo
+                      </span>
+                    }
+                  </td>
+                  <td class="py-3 px-4 tabular-nums">
+                    @if (user.lockedUntil) {
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
+                        Bloqueado temporalmente
+                      </span>
+                    } @else {
+                      <span class="text-slate-600">{{ user.failedAttempts }} / 3</span>
+                    }
+                  </td>
+                  <td class="py-3 px-4 text-slate-500 tabular-nums">
+                    {{ user.createdAt ? (user.createdAt | date:'shortDate') : 'Sistema' }}
+                  </td>
+                  <td class="py-3 px-4 text-right">
+                    <button
+                      type="button"
+                      (click)="handleToggleUser(user)"
+                      data-testid="btn-toggle-user"
+                      class="h-8 px-3 rounded-lg border text-xs font-bold transition-colors"
+                      [class]="user.isActive
+                        ? 'border-slate-300 text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                        : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'">
+                      {{ user.isActive ? 'Desactivar' : 'Reactivar' }}
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Matriz de Permisos Documentada -->
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-4" data-testid="permissions-matrix-card">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">Matriz Documentada de Permisos y Roles</h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Control de acceso según el principio de menor privilegio para salvaguardar inventario y finanzas.
+            </p>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+              <thead class="bg-slate-50 border-b border-slate-200 font-bold text-slate-700">
+                <tr>
+                  <th class="py-2.5 px-4">Operación / Módulo</th>
+                  <th class="py-2.5 px-4 text-center">Cajero</th>
+                  <th class="py-2.5 px-4 text-center">Encargado</th>
+                  <th class="py-2.5 px-4 text-center">Administrador</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (row of permissionsMatrix; track row.permission) {
+                  <tr class="hover:bg-slate-50/50">
+                    <td class="py-2 px-4 font-semibold text-slate-800">{{ row.permission }}</td>
+                    <td class="py-2 px-4 text-center font-bold">
+                      @if (row.cajero) {
+                        <span class="text-emerald-700 font-bold">Permitido</span>
+                      } @else {
+                        <span class="text-slate-400 font-normal">Restringido</span>
+                      }
+                    </td>
+                    <td class="py-2 px-4 text-center font-bold">
+                      @if (row.encargado) {
+                        <span class="text-emerald-700 font-bold">Permitido</span>
+                      } @else {
+                        <span class="text-slate-400 font-normal">Restringido</span>
+                      }
+                    </td>
+                    <td class="py-2 px-4 text-center font-bold">
+                      @if (row.admin) {
+                        <span class="text-emerald-700 font-bold">Permitido</span>
+                      } @else {
+                        <span class="text-slate-400 font-normal">Restringido</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- =========================================================================
+         PESTAÑA 3: SEGURIDAD Y CAMBIO DE PIN
+         ========================================================================= -->
+    @if (activeTab() === 'seguridad') {
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs max-w-xl mx-auto space-y-6" data-testid="panel-seguridad">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Cambio de PIN de Acceso</h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            El nuevo PIN se deriva mediante PBKDF2-HMAC-SHA256 con sal aleatoria criptográfica y 600,000 iteraciones.
+          </p>
+        </div>
+
+        @if (pinFeedback()) {
+          <div class="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-xs font-bold text-emerald-900" data-testid="pin-feedback">
+            {{ pinFeedback() }}
+          </div>
+        }
+        @if (pinError()) {
+          <div class="rounded-xl border border-rose-300 bg-rose-50 p-4 text-xs font-bold text-rose-900" data-testid="pin-error">
+            {{ pinError() }}
+          </div>
+        }
+
+        <div class="space-y-4">
+          <!-- Selección de usuario -->
+          <div class="space-y-1.5">
+            <label for="select-pin-user" class="block text-xs font-bold text-slate-700">Usuario a Modificar</label>
+            <select
+              id="select-pin-user"
+              [ngModel]="selectedUserForPin()"
+              (ngModelChange)="selectedUserForPin.set($event)"
+              data-testid="select-pin-user"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none">
+              <option value="">Selecciona usuario (por defecto: usuario autenticado)</option>
+              @for (user of inv.users(); track user.id) {
+                <option [value]="user.id">{{ user.name }} ({{ user.role }})</option>
+              }
+            </select>
+          </div>
+
+          <!-- PIN actual -->
+          <div class="space-y-1.5">
+            <label for="input-pin-current" class="block text-xs font-bold text-slate-700">PIN Actual del Usuario</label>
+            <input
+              id="input-pin-current"
+              type="password"
+              maxlength="8"
+              pattern="[0-9]*"
+              inputmode="numeric"
+              [ngModel]="pinCurrent()"
+              (ngModelChange)="pinCurrent.set($event)"
+              data-testid="input-pin-current"
+              placeholder="Ingresa tu PIN actual"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-mono tracking-widest font-bold text-slate-900 focus:border-slate-800 focus:outline-none" />
+          </div>
+
+          <!-- Nuevo PIN -->
+          <div class="space-y-1.5">
+            <label for="input-pin-new" class="block text-xs font-bold text-slate-700">Nuevo PIN (Mínimo 6 dígitos)</label>
+            <input
+              id="input-pin-new"
+              type="password"
+              maxlength="8"
+              pattern="[0-9]*"
+              inputmode="numeric"
+              [ngModel]="pinNew()"
+              (ngModelChange)="pinNew.set($event)"
+              data-testid="input-pin-new"
+              placeholder="Mínimo 6 números no triviales"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-mono tracking-widest font-bold text-slate-900 focus:border-slate-800 focus:outline-none" />
+            <p class="text-[11px] text-slate-500">
+              Evita secuencias obvias como 123456 o todos dígitos repetidos como 111111.
+            </p>
+          </div>
+
+          <!-- Confirmación nuevo PIN -->
+          <div class="space-y-1.5">
+            <label for="input-pin-confirm" class="block text-xs font-bold text-slate-700">Confirmar Nuevo PIN</label>
+            <input
+              id="input-pin-confirm"
+              type="password"
+              maxlength="8"
+              pattern="[0-9]*"
+              inputmode="numeric"
+              [ngModel]="pinConfirm()"
+              (ngModelChange)="pinConfirm.set($event)"
+              data-testid="input-pin-confirm"
+              placeholder="Repite el nuevo PIN"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-mono tracking-widest font-bold text-slate-900 focus:border-slate-800 focus:outline-none" />
+          </div>
+
+          <div class="border-t border-slate-200 pt-5 flex justify-end">
+            <button
+              type="button"
+              (click)="submitChangePin()"
+              data-testid="btn-submit-change-pin"
+              class="h-11 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition-colors shadow-xs">
+              Actualizar PIN Criptográfico
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- =========================================================================
+         PESTAÑA 4: BITÁCORA DE AUDITORÍA ENCADENADA
+         ========================================================================= -->
+    @if (activeTab() === 'bitacora') {
+      <div class="space-y-6" data-testid="panel-bitacora">
+        <!-- Estado de la Cadena Criptográfica -->
+        <div class="rounded-2xl border p-5 flex flex-wrap items-center justify-between gap-4"
+          [class]="auditChainStatus().valid
+            ? 'border-emerald-300 bg-emerald-50/60 text-emerald-950'
+            : 'border-rose-300 bg-rose-50 text-rose-950'"
+          data-testid="audit-chain-status-banner">
+          <div class="flex items-center gap-3">
+            <span class="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-2xs font-bold"
+              [class]="auditChainStatus().valid ? 'text-emerald-700' : 'text-rose-700'">
+              <app-icon name="shield" [size]="20" />
+            </span>
+            <div>
+              <h3 class="text-sm font-bold">
+                {{ auditChainStatus().valid ? 'Cadena Criptográfica Íntegra e Inalterada' : 'Alerta: Alteración de Bitácora Detectada' }}
+              </h3>
+              <p class="text-xs opacity-80 mt-0.5">
+                {{ auditChainStatus().valid
+                  ? 'Cada evento vincula el hash SHA-256 del registro previo, garantizando trazabilidad total e inmutabilidad.'
+                  : (auditChainStatus().error || 'Se detectó manipulación no autorizada en las firmas hash.') }}
+              </p>
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="block text-xs font-bold font-mono">
+              {{ inv.securityAuditLog().length }} eventos registrados
+            </span>
+          </div>
+        </div>
+
+        <!-- Tabla de Eventos de la Bitácora -->
+        <div class="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+          <table class="w-full text-left text-xs" data-testid="audit-log-table">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+              <tr>
+                <th class="py-3 px-4">Fecha y Hora</th>
+                <th class="py-3 px-4">Acción / Tipo</th>
+                <th class="py-3 px-4">Detalle del Cambio</th>
+                <th class="py-3 px-4">Usuario Responsable</th>
+                <th class="py-3 px-4 text-right">Hash Criptográfico</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 font-medium">
+              @for (entry of inv.securityAuditLog(); track entry.id) {
+                <tr class="hover:bg-slate-50/60 transition-colors">
+                  <td class="py-3 px-4 text-slate-500 font-mono whitespace-nowrap tabular-nums">
+                    {{ entry.timestamp | date:'short' }}
+                  </td>
+                  <td class="py-3 px-4">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider font-mono bg-slate-100 text-slate-800">
+                      {{ entry.action }}
+                    </span>
+                  </td>
+                  <td class="py-3 px-4 text-slate-800 font-semibold max-w-md">
+                    {{ entry.details }}
+                  </td>
+                  <td class="py-3 px-4 text-slate-700 font-bold">
+                    {{ entry.actorUser }}
+                  </td>
+                  <td class="py-3 px-4 text-right font-mono text-[10px] text-slate-400 truncate max-w-[120px]" [title]="entry.entryHash">
+                    {{ entry.entryHash.slice(0, 12) }}…
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="5" class="py-8 text-center text-slate-400">
+                    No hay eventos de auditoría registrados aún.
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    }
+  }
+
+  <!-- =========================================================================
+       MODAL: ALTA DE NUEVO USUARIO
+       ========================================================================= -->
+  @if (userModalOpen()) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" data-testid="new-user-modal">
+      <div class="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div class="flex items-center gap-2.5">
+            <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-100 text-emerald-800">
+              <app-icon name="user" [size]="18" />
+            </span>
+            <h3 class="text-base font-bold text-slate-900">Alta de Nuevo Usuario</h3>
+          </div>
+          <button type="button" (click)="closeNewUserModal()" class="text-slate-400 hover:text-slate-600 font-bold text-sm">
+            Cerrar
+          </button>
+        </div>
+
+        @if (userModalFeedback()) {
+          <div class="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs font-bold text-emerald-900" data-testid="user-modal-feedback">
+            {{ userModalFeedback() }}
+          </div>
+        }
+        @if (userModalError()) {
+          <div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-bold text-rose-900" data-testid="user-modal-error">
+            {{ userModalError() }}
+          </div>
+        }
+
+        <div class="space-y-4">
+          <!-- Nombre del usuario -->
+          <div class="space-y-1.5">
+            <label for="modal-input-username" class="block text-xs font-bold text-slate-700">Nombre del Usuario / Empleado</label>
+            <input
+              id="modal-input-username"
+              type="text"
+              maxlength="50"
+              [ngModel]="newUserName()"
+              (ngModelChange)="newUserName.set($event)"
+              data-testid="modal-input-username"
+              placeholder="Ej. Rodrigo"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none" />
+          </div>
+
+          <!-- Rol asignado -->
+          <div class="space-y-1.5">
+            <label for="modal-select-role" class="block text-xs font-bold text-slate-700">Rol de Acceso</label>
+            <select
+              id="modal-select-role"
+              [ngModel]="newUserRole()"
+              (ngModelChange)="newUserRole.set($event)"
+              data-testid="modal-select-role"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-slate-800 focus:outline-none">
+              <option value="CAJERO">Cajero (Vender, Cobrar, Abonar)</option>
+              <option value="ENCARGADO">Encargado (+ Recepción, Mermas, Auditoría, Cortes)</option>
+              <option value="ADMINISTRADOR">Administrador (Control Total, Ajustes, Precios)</option>
+            </select>
+          </div>
+
+          <!-- PIN inicial -->
+          <div class="space-y-1.5">
+            <label for="modal-input-pin" class="block text-xs font-bold text-slate-700">PIN Numérico Inicial (Mínimo 6 dígitos)</label>
+            <input
+              id="modal-input-pin"
+              type="password"
+              maxlength="8"
+              pattern="[0-9]*"
+              inputmode="numeric"
+              [ngModel]="newUserPin()"
+              (ngModelChange)="newUserPin.set($event)"
+              data-testid="modal-input-pin"
+              placeholder="Mínimo 6 dígitos"
+              class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-mono tracking-widest font-bold text-slate-900 focus:border-slate-800 focus:outline-none" />
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2.5 pt-2">
+          <button
+            type="button"
+            (click)="closeNewUserModal()"
+            class="h-10 px-4 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            (click)="submitNewUser()"
+            data-testid="modal-btn-create-user"
+            class="h-10 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-white transition-colors shadow-xs">
+            Crear Usuario
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+</div>

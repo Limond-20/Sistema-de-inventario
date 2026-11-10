@@ -1,4 +1,6 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterOutlet } from '@angular/router';
 import { NavbarComponent } from './components/navbar/navbar.component';
 import { IconComponent } from './components/icon/icon.component';
@@ -6,7 +8,7 @@ import { MockInventoryService } from './services/mock-inventory.service';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, NavbarComponent, IconComponent],
+  imports: [CommonModule, FormsModule, RouterOutlet, NavbarComponent, IconComponent],
   template: `
     @if (!inv.isHydrated()) {
       <!-- Pantalla de carga durante la hidratación desde IndexedDB -->
@@ -49,6 +51,84 @@ import { MockInventoryService } from './services/mock-inventory.service';
           </div>
         </main>
       </div>
+
+      <!-- =====================================================================
+           PANTALLA DE BLOQUEO / INICIO DE SESIÓN POR PIN (BLOQUE G)
+           ===================================================================== -->
+      @if (inv.isSessionLocked()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-xs p-4 select-none"
+          role="dialog" aria-modal="true" data-testid="lock-screen-modal">
+          <div class="w-full max-w-sm overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 p-7 text-white shadow-2xl space-y-5">
+            <div class="text-center space-y-2">
+              <div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-amber-400 text-slate-900 shadow-xs mb-3">
+                <app-icon name="lock" [size]="24" />
+              </div>
+              <h2 class="text-xl font-bold tracking-tight">Terminal Bloqueada</h2>
+              <p class="text-xs text-slate-400">
+                {{ inv.businessSettings().storeName }} · Ingresa tu PIN personal para continuar
+              </p>
+            </div>
+
+            @if (unlockError()) {
+              <div class="rounded-xl border border-rose-400/40 bg-rose-500/15 p-3 text-xs font-bold text-rose-200 text-center"
+                data-testid="lock-screen-error">
+                {{ unlockError() }}
+              </div>
+            }
+
+            <div class="space-y-4">
+              <!-- Selección de usuario -->
+              <div class="space-y-1.5">
+                <label for="lock-select-user" class="block text-xs font-semibold text-slate-300">
+                  Usuario
+                </label>
+                <select
+                  id="lock-select-user"
+                  [ngModel]="selectedUserId()"
+                  (ngModelChange)="selectedUserId.set($event)"
+                  data-testid="lock-select-user"
+                  class="h-10 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-semibold text-white focus:border-amber-400 focus:outline-none">
+                  @for (user of activeUsersList(); track user.id) {
+                    <option [value]="user.id">{{ user.name }} ({{ user.role }})</option>
+                  }
+                </select>
+              </div>
+
+              <!-- Entrada de PIN -->
+              <div class="space-y-1.5">
+                <label for="lock-input-pin" class="block text-xs font-semibold text-slate-300">
+                  PIN de Acceso
+                </label>
+                <input
+                  id="lock-input-pin"
+                  type="password"
+                  maxlength="8"
+                  pattern="[0-9]*"
+                  inputmode="numeric"
+                  placeholder="••••••"
+                  [ngModel]="unlockPin()"
+                  (ngModelChange)="unlockPin.set($event)"
+                  (keydown.enter)="submitUnlock()"
+                  data-testid="lock-input-pin"
+                  class="h-11 w-full text-center text-xl tracking-widest font-mono rounded-xl border border-slate-700 bg-slate-800 px-3 font-bold text-white focus:border-amber-400 focus:outline-none" />
+              </div>
+
+              <button
+                type="button"
+                [disabled]="isSubmittingUnlock()"
+                (click)="submitUnlock()"
+                data-testid="btn-submit-unlock"
+                class="h-11 w-full rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-sm transition-colors shadow-xs flex items-center justify-center gap-2">
+                @if (isSubmittingUnlock()) {
+                  <span>Verificando credenciales…</span>
+                } @else {
+                  <span>Desbloquear</span>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      }
 
       <!-- Modal de Datos Dañados o Discrepancia de Continuidad (NO sobrescribe automáticamente) -->
       @if (inv.corruptedModalOpen()) {
@@ -151,6 +231,52 @@ import { MockInventoryService } from './services/mock-inventory.service';
     }
   `,
 })
-export class App {
+export class App implements OnInit, OnDestroy {
   protected readonly inv = inject(MockInventoryService);
+
+  // ---------- Control de Desbloqueo / Login ----------
+  protected readonly selectedUserId = signal<string>('');
+  protected readonly unlockPin = signal<string>('');
+  protected readonly unlockError = signal<string>('');
+  protected readonly isSubmittingUnlock = signal<boolean>(false);
+
+  protected readonly activeUsersList = () => this.inv.users().filter((u) => u.isActive);
+
+  ngOnInit(): void {
+    this.inv.initInactivityListener();
+    const current = this.inv.currentUser();
+    if (current) {
+      this.selectedUserId.set(current.id);
+    } else if (this.inv.users().length > 0) {
+      this.selectedUserId.set(this.inv.users()[0].id);
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.inv.teardownInactivityListener();
+  }
+
+  async submitUnlock(): Promise<void> {
+    this.unlockError.set('');
+    const uid = this.selectedUserId() || this.inv.currentUser()?.id || (this.inv.users()[0]?.id ?? '');
+    const pin = this.unlockPin().trim();
+
+    if (!pin) {
+      this.unlockError.set('Ingresa tu PIN de acceso.');
+      return;
+    }
+
+    this.isSubmittingUnlock.set(true);
+    try {
+      const res = await this.inv.loginWithPin(uid, pin);
+      if (!res.success) {
+        this.unlockError.set(res.message);
+      } else {
+        this.unlockPin.set('');
+        this.unlockError.set('');
+      }
+    } finally {
+      this.isSubmittingUnlock.set(false);
+    }
+  }
 }
