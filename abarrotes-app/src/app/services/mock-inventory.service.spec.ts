@@ -3247,4 +3247,159 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const legacyCheck = await adapter.load('binnitech_pos_state_v2');
     expect(legacyCheck).toBeNull();
   });
+
+  it('55. Seguimiento F2: Fórmula del efectivo teórico del cajón y aislamiento de abonos por transferencia o tarjeta', async () => {
+    // 1. Configurar valores conocidos de turno
+    service.cashShift.update((s) => ({
+      ...s,
+      openingCash: 500.0,
+      cashSalesTotal: 600.0,
+      creditPaymentsReceived: 0,
+      cashPayoutsTotal: 0,
+    }));
+    expect(service.getRealDrawerCash()).toBe(1100.0);
+    expect(service.getTheoreticalDrawerCash()).toBe(1100.0);
+
+    // 2. Dar de alta a un cliente con deuda
+    const custRes = service.createCustomer({
+      name: 'Cliente Prueba Transferencias',
+      phone: '951-666-8899',
+      creditLimit: 2000,
+    });
+    const custId = custRes.customer!.id;
+    service.processCreditSale([
+      { sku: 'ACE-NUT-850', barcode: '1', name: 'Aceite', emoji: '', saleUnit: 'Pieza', isBulk: false, qty: 10, unitPrice: 40.0, subtotal: 400.0 },
+    ], custId);
+    expect(service.getCustomerDetail(custId)?.currentBalance).toBe(400.0);
+
+    // 3. Registrar un abono por TRANSFERENCIA de $150.00
+    // Amortiza la deuda del cliente (baja a $250.00), pero NO entra al cajón físico
+    const abonoSpei = service.registerCreditPayment(custId, 150.0, { paymentMethod: 'TRANSFERENCIA' });
+    expect(abonoSpei.ok).toBeTrue();
+    expect(abonoSpei.paymentMethod).toBe('TRANSFERENCIA');
+    expect(service.getCustomerDetail(custId)?.currentBalance).toBe(250.0);
+
+    // El efectivo del cajón DEBE PERMANECER INTACTO en $1,100.00
+    expect(service.getRealDrawerCash()).toBe(1100.0);
+    expect(service.getTheoreticalDrawerCash()).toBe(1100.0);
+
+    // 4. Registrar un abono en EFECTIVO de $100.00
+    // Sí entra físicamente al cajón -> debe sumar a creditPaymentsReceived y al efectivo teórico
+    const abonoCash = service.registerCreditPayment(custId, 100.0, { paymentMethod: 'EFECTIVO' });
+    expect(abonoCash.ok).toBeTrue();
+    expect(abonoCash.paymentMethod).toBe('EFECTIVO');
+    expect(service.getCustomerDetail(custId)?.currentBalance).toBe(150.0);
+
+    // Cajón ahora tiene: 500 (fondo) + 600 (ventas) + 100 (abono efectivo) = $1,200.00
+    expect(service.getRealDrawerCash()).toBe(1200.0);
+    expect(service.getTheoreticalDrawerCash()).toBe(1200.0);
+
+    // 5. Registrar una salida (pago a proveedor en efectivo de $200.00)
+    const supRes = service.createSupplier({
+      name: 'Proveedor Salida Efectivo',
+      phone: '951-444-5555',
+      visitDays: ['LUNES'],
+      paymentTerms: 'CONTADO',
+      physicalExchangePolicy: true,
+    });
+    const supId = supRes.supplier!.id;
+    service.accountsPayable.update((list) => [
+      {
+        id: 'DEBT-SAL-01',
+        supplierId: supId,
+        supplierName: 'Proveedor Salida Efectivo',
+        receptionFolio: 'REM-SAL-01',
+        date: '2026-11-12',
+        dueDate: '2026-11-12',
+        totalAmount: 200.0,
+        remainingBalance: 200.0,
+        status: 'PENDIENTE',
+      },
+      ...list,
+    ]);
+    service.suppliers.update((list) => list.map((s) => s.id === supId ? { ...s, currentBalance: 200.0 } : s));
+
+    const payRes = await service.registerSupplierPayment(supId, 200.0, 'EFECTIVO', 'Encargado', { source: 'CAJA' });
+    expect(payRes.ok).toBeTrue();
+
+    // Cajón resultante: 1200 - 200 = $1,000.00 exactos
+    expect(service.getRealDrawerCash()).toBe(1000.0);
+    expect(service.getTheoreticalDrawerCash()).toBe(1000.0);
+  });
+
+  it('56. Seguimiento F2: CashMovement conserva fecha AAAA-MM-DD, timestamp ISO completo, ordenación y conciliación', () => {
+    // 1. Registrar movimientos para asegurar historial poblado
+    const custRes = service.createCustomer({
+      name: 'Cliente Para Movimientos',
+      phone: '951-555-0011',
+      creditLimit: 500,
+    });
+    service.processCreditSale([
+      { sku: 'ACE-NUT-850', barcode: '1', name: 'Aceite', emoji: '', saleUnit: 'Pieza', isBulk: false, qty: 2, unitPrice: 40.0, subtotal: 80.0 },
+    ], custRes.customer!.id);
+    service.registerCreditPayment(custRes.customer!.id, 40.0, 'EFECTIVO');
+    service.registerCreditPayment(custRes.customer!.id, 20.0, 'TRANSFERENCIA');
+
+    const movements = service.cashMovements();
+    expect(movements.length).toBeGreaterThan(0);
+
+    // Validar que cada movimiento tiene formato fecha y timestamp ISO
+    for (const m of movements) {
+      expect(m.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(m.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    }
+
+    // Validar que la lista de movimientos está ordenada por timestamp descendente
+    for (let i = 0; i < movements.length - 1; i++) {
+      expect(movements[i].timestamp.localeCompare(movements[i + 1].timestamp)).toBeGreaterThanOrEqual(0);
+    }
+
+    // Validar método de conciliación
+    const reconciliation = service.reconcileCashMovements();
+    expect(reconciliation).toBeDefined();
+    expect(reconciliation.theoreticalDrawerCash).toBe(service.getTheoreticalDrawerCash());
+    expect(reconciliation.items.length).toBe(movements.length);
+  });
+
+  it('57. Seguimiento F2: Duplicados exactos en servicio ("Coca-Cola FEMSA" vs "Coca Cola Femsa" y "Pedro" vs "Pedro Sánchez")', () => {
+    // 1. Alta de proveedor inicial "Coca-Cola FEMSA"
+    const altaCoca = service.createSupplier({
+      name: 'Coca-Cola FEMSA',
+      phone: '55-1111-2222',
+      visitDays: ['LUNES'],
+      paymentTerms: 'CONTADO',
+      physicalExchangePolicy: true,
+    });
+    expect(altaCoca.ok).toBeTrue();
+
+    // Intentar alta con "Coca Cola Femsa" -> Bloqueado por duplicado (guion y minúsculas)
+    const dupCoca = service.createSupplier({
+      name: 'Coca Cola Femsa',
+      phone: '55-9999-8888',
+      visitDays: ['MARTES'],
+      paymentTerms: 'CONTADO',
+      physicalExchangePolicy: true,
+    });
+    expect(dupCoca.ok).toBeFalse();
+    expect(dupCoca.duplicateWarning).toBeTrue();
+    expect(dupCoca.duplicateOf?.name).toBe('Coca-Cola FEMSA');
+    expect(dupCoca.message).toContain('Coca-Cola FEMSA');
+
+    // 2. Alta de cliente inicial "Pedro"
+    const altaPedro = service.createCustomer({
+      name: 'Pedro',
+      phone: '951-123-9999',
+      creditLimit: 1000,
+    });
+    expect(altaPedro.ok).toBeTrue();
+
+    // Intentar alta de "Pedro Sánchez" -> Permitido (no es duplicado)
+    const altaPedroSanchez = service.createCustomer({
+      name: 'Pedro Sánchez',
+      phone: '951-456-7777',
+      creditLimit: 1200,
+    });
+    expect(altaPedroSanchez.ok).toBeTrue();
+    expect(altaPedroSanchez.customer?.name).toBe('Pedro Sánchez');
+  });
 });

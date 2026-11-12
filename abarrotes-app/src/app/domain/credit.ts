@@ -54,12 +54,15 @@ export interface CreditDebtItem {
   description?: string;
 }
 
+export type CreditPaymentMethod = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA';
+
 export interface CreditPaymentRecord {
   id: string;
   date: string; // ISO YYYY-MM-DDTHH:mm:ss
   amount: number;
   previousBalance: number;
   remainingBalance: number;
+  paymentMethod?: CreditPaymentMethod;
   note?: string;
 }
 
@@ -123,11 +126,30 @@ export function parseLocalDate(baseDate: string | Date): Date {
 /**
  * Normaliza nombres de contacto eliminando diacríticos, acentos y espacios superfluos.
  */
+/**
+ * Normaliza nombres de contacto eliminando diacríticos, acentos, signos de puntuación y espacios superfluos.
+ *
+ * CRITERIO EXACTO DE "NOMBRE SIMILAR / DUPLICADO":
+ * 1. Insensibilidad a mayúsculas/minúsculas y acentos:
+ *    Se convierte a minúsculas y se descomponen los diacríticos Unicode (NFD), eliminando tildes (á->a, é->e, etc.).
+ * 2. Neutralización de signos de puntuación y separadores:
+ *    Signos como guiones (-), barras (/), puntos (.), comas (,), comillas y caracteres no alfanuméricos
+ *    se transforman en espacios para que variantes como "Coca-Cola FEMSA" y "Coca Cola Femsa"
+ *    colapsen en la misma clave canónica: "coca cola femsa" (DUPLICADO).
+ * 3. Colapso de espacios en blanco y recorte:
+ *    Múltiples espacios consecutivos se reducen a un solo espacio y se eliminan espacios iniciales/finales.
+ * 4. Correspondencia canónica completa:
+ *    Dos nombres son duplicados si y solo si sus claves canónicas normalizadas son idénticas.
+ *    No se consideran duplicados los nombres que comparten palabras pero añaden términos distintivos
+ *    (ejemplo: "Pedro" vs "Pedro Sánchez", "Distribuidora" vs "Distribuidora del Bajío"),
+ *    evitando falsos positivos entre personas o entidades comerciales distintas.
+ */
 export function normalizeContactName(name: string): string {
   return (name || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -452,7 +474,8 @@ export function applyCreditPaymentPure<T extends CreditCustomerLike>(
   cliente: T,
   paymentAmount: number,
   hoy: Date = new Date(),
-  paymentNote?: string
+  paymentNote?: string,
+  paymentMethod: CreditPaymentMethod = 'EFECTIVO'
 ): { updatedCustomer: T; appliedAmount: number; changeOrExcess: number } {
   const balanceCents = toCents(cliente.currentBalance);
   const payCents = toCents(paymentAmount);
@@ -498,7 +521,8 @@ export function applyCreditPaymentPure<T extends CreditCustomerLike>(
         amount: allocation.totalApplied,
         previousBalance: fromCents(balanceCents),
         remainingBalance: allocation.totalRemainingBalance,
-        note: paymentNote || 'Abono en efectivo',
+        paymentMethod,
+        note: paymentNote || (paymentMethod === 'EFECTIVO' ? 'Abono en efectivo' : `Abono por ${paymentMethod.toLowerCase()}`),
       };
       candidate.payments = Array.isArray(cliente.payments)
         ? [paymentRecord, ...cliente.payments]
@@ -538,7 +562,8 @@ export function applyCreditPaymentPure<T extends CreditCustomerLike>(
       amount: fromCents(appliedCents),
       previousBalance: fromCents(balanceCents),
       remainingBalance: newBalance,
-      note: paymentNote || 'Abono en efectivo',
+      paymentMethod,
+      note: paymentNote || (paymentMethod === 'EFECTIVO' ? 'Abono en efectivo' : `Abono por ${paymentMethod.toLowerCase()}`),
     };
     candidate.payments = Array.isArray(cliente.payments)
       ? [paymentRecord, ...cliente.payments]

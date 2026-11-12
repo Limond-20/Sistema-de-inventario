@@ -498,3 +498,50 @@ test('Clientes (F2 Seguimiento): Detección y prevención de clientes duplicados
   );
   assert.equal(inactiveCheck.isDuplicate, false);
 });
+
+test('Fiado (F2 Seguimiento 3): Casos exactos de duplicados ("Coca-Cola FEMSA" vs "Coca Cola Femsa" y "Pedro" vs "Pedro Sánchez")', () => {
+  const clientes: CreditCustomerLike[] = [
+    { id: 'CLI-COCA', name: 'Coca-Cola FEMSA', phone: '55-1234-5678', creditLimit: 5000, currentBalance: 0, isActive: true },
+    { id: 'CLI-PEDRO', name: 'Pedro', phone: '951-111-2222', creditLimit: 1000, currentBalance: 0, isActive: true },
+  ];
+
+  // Caso 1: "Coca-Cola FEMSA" vs "Coca Cola Femsa" -> DUPLICADO (variación en guion y mayúsculas)
+  const dupCoca = checkCustomerDuplicate(
+    { name: 'Coca Cola Femsa', phone: '55-9999-0000' },
+    clientes
+  );
+  assert.equal(dupCoca.isDuplicate, true);
+  assert.equal(dupCoca.duplicateOf?.id, 'CLI-COCA');
+
+  // Caso 2: "Pedro" vs "Pedro Sánchez" -> NO DUPLICADO (nombre con apellido distintivo)
+  const notDupPedro = checkCustomerDuplicate(
+    { name: 'Pedro Sánchez', phone: '951-333-4444' },
+    clientes
+  );
+  assert.equal(notDupPedro.isDuplicate, false);
+});
+
+test('Fiado (F2 Seguimiento 3): Abono con forma de pago TRANSFERENCIA y TARJETA en applyCreditPaymentPure', () => {
+  const cliente: CreditCustomerLike = {
+    id: 'CLI-01',
+    name: 'Don Ramón',
+    creditLimit: 1000,
+    currentBalance: 300,
+    isActive: true,
+    debts: [
+      { id: 'D-01', date: '2026-10-01', dueDate: '2026-10-15', originalAmount: 300, remainingBalance: 300 },
+    ],
+  };
+
+  const abonoSpei = applyCreditPaymentPure(cliente, 150, new Date('2026-10-25T12:00:00Z'), undefined, 'TRANSFERENCIA');
+  assert.equal(abonoSpei.appliedAmount, 150);
+  assert.equal(abonoSpei.updatedCustomer.currentBalance, 150);
+  assert.equal(abonoSpei.updatedCustomer.payments?.[0].paymentMethod, 'TRANSFERENCIA');
+  assert.match(abonoSpei.updatedCustomer.payments?.[0].note || '', /transferencia/i);
+
+  const abonoCard = applyCreditPaymentPure(abonoSpei.updatedCustomer, 150, new Date('2026-10-25T13:00:00Z'), undefined, 'TARJETA');
+  assert.equal(abonoCard.appliedAmount, 150);
+  assert.equal(abonoCard.updatedCustomer.currentBalance, 0);
+  assert.equal(abonoCard.updatedCustomer.payments?.[0].paymentMethod, 'TARJETA');
+  assert.match(abonoCard.updatedCustomer.payments?.[0].note || '', /tarjeta/i);
+});

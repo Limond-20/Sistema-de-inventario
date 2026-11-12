@@ -91,12 +91,14 @@ export class PosViewComponent implements OnInit, OnDestroy {
   );
   protected readonly abonoCustomerId = signal<string>('CLI-03');
   protected readonly abonoAmount = signal<number>(200);
+  protected readonly abonoPaymentMethod = signal<'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA'>('EFECTIVO');
   protected readonly abonoFeedback = signal<string | null>(null);
   protected readonly abonoSuccessSummary = signal<{
     customerName: string;
     previousBalance: number;
     applied: number;
     newBalance: number;
+    paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA';
   } | null>(null);
   private abonoDismissTimer: any = null;
 
@@ -741,7 +743,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
   executeAbono(): void {
     const customerId = this.abonoCustomerId();
     const amount = parseMoney(this.abonoAmount());
-    const res = this.inv.registerCreditPayment(customerId, amount);
+    const method = this.abonoPaymentMethod();
+    const res = this.inv.registerCreditPayment(customerId, amount, { paymentMethod: method });
     this.abonoFeedback.set(res.message);
     if (res.ok && res.applied !== undefined) {
       if (this.abonoDismissTimer) {
@@ -752,6 +755,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
         previousBalance: res.previousBalance ?? 0,
         applied: res.applied,
         newBalance: res.newBalance ?? 0,
+        paymentMethod: method,
       });
       this.abonoDismissTimer = setTimeout(() => {
         this.abonoSuccessSummary.set(null);

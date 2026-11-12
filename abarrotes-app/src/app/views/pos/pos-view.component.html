@@ -757,6 +757,16 @@
             </label>
 
             <label class="flex flex-col gap-1">
+              <span class="text-xs font-bold text-slate-700">Forma de pago del abono:</span>
+              <select [ngModel]="abonoPaymentMethod()" (ngModelChange)="abonoPaymentMethod.set($event)"
+                class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-900">
+                <option value="EFECTIVO">Efectivo (Entra al cajón)</option>
+                <option value="TRANSFERENCIA">Transferencia / SPEI (No entra a caja)</option>
+                <option value="TARJETA">Tarjeta (Terminal bancaria)</option>
+              </select>
+            </label>
+
+            <label class="flex flex-col gap-1">
               <span class="text-xs font-bold text-slate-700">Monto entregado ($):</span>
               <input type="number" min="10" step="10" [ngModel]="abonoAmount()" (ngModelChange)="abonoAmount.set($event)"
                 class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-base font-black font-mono text-slate-900" />
@@ -779,8 +789,9 @@
                     Cerrar
                   </button>
                 </div>
-                <div class="text-xs font-semibold text-emerald-900">
-                  Cliente: <span class="font-bold">{{ summary.customerName }}</span>
+                <div class="flex items-center justify-between text-xs font-semibold text-emerald-900">
+                  <span>Cliente: <strong class="font-bold">{{ summary.customerName }}</strong></span>
+                  <span class="rounded bg-emerald-200/80 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-950">{{ summary.paymentMethod }}</span>
                 </div>
                 <div class="flex flex-col gap-1.5 text-xs font-mono">
                   <div class="flex justify-between items-center text-slate-700">

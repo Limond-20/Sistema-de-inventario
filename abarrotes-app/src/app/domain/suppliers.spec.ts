@@ -359,3 +359,43 @@ test('Proveedores (F2 Seguimiento): Detección y prevención de proveedores dupl
   );
   assert.equal(inactiveCheck.isDuplicate, false);
 });
+
+test('Proveedores (F2 Seguimiento 3): Casos exactos de duplicados ("Coca-Cola FEMSA" vs "Coca Cola Femsa" y "Pedro" vs "Pedro Sánchez")', () => {
+  const proveedores: Supplier[] = [
+    {
+      id: 'SUP-COCA',
+      name: 'Coca-Cola FEMSA',
+      phone: '55-1234-5678',
+      visitDays: ['LUNES'],
+      paymentTerms: 'CONTADO',
+      acceptsPhysicalReturn: true,
+      currentBalance: 0,
+      isActive: true,
+    },
+    {
+      id: 'SUP-PEDRO',
+      name: 'Pedro',
+      phone: '951-111-2222',
+      visitDays: ['MARTES'],
+      paymentTerms: 'CONTADO',
+      acceptsPhysicalReturn: false,
+      currentBalance: 0,
+      isActive: true,
+    },
+  ];
+
+  // Caso 1: "Coca-Cola FEMSA" vs "Coca Cola Femsa" -> DUPLICADO
+  const dupCoca = checkSupplierDuplicate(
+    { name: 'Coca Cola Femsa', phone: '55-9999-0000' },
+    proveedores
+  );
+  assert.equal(dupCoca.isDuplicate, true);
+  assert.equal(dupCoca.duplicateOf?.id, 'SUP-COCA');
+
+  // Caso 2: "Pedro" vs "Pedro Sánchez" -> NO DUPLICADO
+  const notDupPedro = checkSupplierDuplicate(
+    { name: 'Pedro Sánchez', phone: '951-333-4444' },
+    proveedores
+  );
+  assert.equal(notDupPedro.isDuplicate, false);
+});

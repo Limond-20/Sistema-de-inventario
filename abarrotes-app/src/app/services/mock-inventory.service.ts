@@ -12,6 +12,7 @@ import {
 import {
   computeCreditStatus,
   applyCreditPaymentPure,
+  type CreditPaymentMethod,
   applyCreditSalePure,
   type CreditCustomerStatus,
   type CustomerInput,
@@ -44,6 +45,11 @@ import {
 import {
   CashMovement,
   createCashMovement,
+  calculateTheoreticalDrawerCash,
+  sortCashMovementsByTimestamp,
+  reconcileCashMovements,
+  type CashPaymentMethod,
+  type CashReconciliationSummary,
 } from '../domain/cash';
 import {
   createKardexEntry,
@@ -296,6 +302,8 @@ export interface CashShiftSummary {
   internalConsumptionTotalCost: number;
   shrinkTotalCost: number;
   cashPayoutsTotal?: number;
+  cashInTotal?: number;
+  electronicPaymentsReceived?: number;
 }
 
 export interface CashRegisterSummary {
@@ -308,6 +316,8 @@ export interface CashRegisterSummary {
   /** Abonos en efectivo recibidos hoy de deudas anteriores (sí entran al cajón). */
   creditPaymentsReceived: number;
   cashPayoutsTotal?: number;
+  cashInTotal?: number;
+  electronicPaymentsReceived?: number;
 }
 
 export interface PosSaleItem {
@@ -2957,19 +2967,46 @@ export class MockInventoryService implements OnDestroy {
   // ---------- Corte de Caja y Punto de Venta (POS) ----------
 
   /**
-   * Devuelve el efectivo real que debe existir físicamente en el cajón:
-   * openingCash ($500.00) + cashSalesTotal + creditPaymentsReceived
+   * Devuelve el efectivo teórico que debe existir físicamente en el cajón:
+   *
+   * FÓRMULA OFICIAL:
+   *   Fondo Inicial (openingCash / openingFloat)
+   *   + Ventas de Contado en Efectivo (cashSalesTotal)
+   *   + Abonos de Clientes en Efectivo (creditPaymentsReceived)
+   *   + Entradas Extraordinarias de Caja (cashInTotal)
+   *   - Salidas de Efectivo del Cajón (cashPayoutsTotal)
+   *     [Pagos a proveedores pagados desde CAJA + Retiros / Gastos menores]
+   *
+   * NOTA: Un abono por transferencia bancaria o tarjeta amortiza la deuda del cliente
+   * pero NO entra en billetes/monedas al cajón, por lo que NO suma al efectivo teórico.
    */
   getRealDrawerCash(): number {
     const s = this.cashShift();
-    const totalIn = sumMoney([s.openingCash, s.cashSalesTotal, s.creditPaymentsReceived]);
-    const totalOut = s.cashPayoutsTotal || 0;
-    return subtractMoney(totalIn, totalOut);
+    return calculateTheoreticalDrawerCash({
+      openingFloat: s.openingCash,
+      cashSales: s.cashSalesTotal,
+      cashCreditPayments: s.creditPaymentsReceived,
+      cashIn: s.cashInTotal || 0,
+      cashPayouts: s.cashPayoutsTotal || 0,
+    });
+  }
+
+  /** Alias explícito para la fórmula del efectivo teórico del cajón. */
+  getTheoreticalDrawerCash(): number {
+    return this.getRealDrawerCash();
   }
 
   /** Alias para compatibilidad con vistas y componentes existentes. */
   getExpectedDrawerCash(): number {
     return this.getRealDrawerCash();
+  }
+
+  /**
+   * Concilia los movimientos de caja cronológicamente por timestamp ISO completo.
+   */
+  reconcileCashMovements(): CashReconciliationSummary {
+    const s = this.cashShift();
+    return reconcileCashMovements(s.openingCash, s.cashSalesTotal, this.cashMovements());
   }
 
   /**
@@ -3470,13 +3507,21 @@ export class MockInventoryService implements OnDestroy {
    * - Suma el dinero recibido a creditPaymentsReceived (¡SÍ ENTRA EFECTIVO FÍSICO AL CAJÓN!).
    * - Registra entrada en Kardex encadenada.
    */
-  registerCreditPayment(customerId: string, amount: number): {
+  registerCreditPayment(
+    customerId: string,
+    amount: number,
+    options?: {
+      paymentMethod?: CreditPaymentMethod;
+      note?: string;
+    } | CreditPaymentMethod
+  ): {
     ok: boolean;
     message: string;
     applied?: number;
     previousBalance?: number;
     newBalance?: number;
     customerName?: string;
+    paymentMethod?: CreditPaymentMethod;
   } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
@@ -3489,8 +3534,15 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: 'Cliente no encontrado.' };
     }
 
+    const resolvedMethod: CreditPaymentMethod =
+      typeof options === 'string'
+        ? options
+        : options?.paymentMethod || 'EFECTIVO';
+    const isCash = resolvedMethod === 'EFECTIVO';
+    const noteText = (typeof options === 'object' ? options?.note : undefined) || `Abono deudor: ${customer.name}`;
+
     const previousBalance = customer.currentBalance;
-    const paymentResult = applyCreditPaymentPure(customer, amount, new Date(), `Abono deudor: ${customer.name}`);
+    const paymentResult = applyCreditPaymentPure(customer, amount, new Date(), noteText, resolvedMethod);
     const applied = paymentResult.appliedAmount;
     if (applied <= 0) {
       return { ok: false, message: `${customer.name} no tiene deuda pendiente.` };
@@ -3500,15 +3552,28 @@ export class MockInventoryService implements OnDestroy {
       list.map((c) => (c.id === customerId ? paymentResult.updatedCustomer : c)),
     );
 
-    this.cashShift.update((s) => ({
-      ...s,
-      creditPaymentsReceived: sumMoney([s.creditPaymentsReceived, applied]),
-    }));
+    // REGLA: Un abono por transferencia o tarjeta NO debe contar como efectivo en cajón
+    if (isCash) {
+      this.cashShift.update((s) => ({
+        ...s,
+        creditPaymentsReceived: sumMoney([s.creditPaymentsReceived, applied]),
+      }));
 
-    this.cashRegister.update((reg) => ({
-      ...reg,
-      creditPaymentsReceived: sumMoney([reg.creditPaymentsReceived, applied]),
-    }));
+      this.cashRegister.update((reg) => ({
+        ...reg,
+        creditPaymentsReceived: sumMoney([reg.creditPaymentsReceived, applied]),
+      }));
+    } else {
+      this.cashShift.update((s) => ({
+        ...s,
+        electronicPaymentsReceived: sumMoney([s.electronicPaymentsReceived || 0, applied]),
+      }));
+
+      this.cashRegister.update((reg) => ({
+        ...reg,
+        electronicPaymentsReceived: sumMoney([reg.electronicPaymentsReceived || 0, applied]),
+      }));
+    }
 
     const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
     const entry = createKardexEntry({
@@ -3520,10 +3585,12 @@ export class MockInventoryService implements OnDestroy {
       saldoResultante: paymentResult.updatedCustomer.currentBalance,
       stockAfter: paymentResult.updatedCustomer.currentBalance,
       usuario: this.activeUser(),
-      referencia: `Abono deudor: ${customer.name}`,
+      referencia: `Abono deudor (${resolvedMethod}): ${customer.name}`,
       amount: applied,
       amountCents: Math.round(applied * 100),
-      description: `Abono en efectivo recibido de ${customer.name}`,
+      description: isCash
+        ? `Abono en efectivo recibido de ${customer.name}`
+        : `Abono por ${resolvedMethod.toLowerCase()} recibido de ${customer.name} (no entra al cajón de efectivo)`,
     }, previousHash);
 
     this.kardex.update((entries) => [entry, ...entries]);
@@ -3536,10 +3603,11 @@ export class MockInventoryService implements OnDestroy {
       reference: `ABONO-${customer.id}-${Date.now()}`,
       date: formatLocalDate(new Date()),
       timestamp: new Date().toISOString(),
-      source: 'CAJA',
-      notes: `Abono a crédito recibido en efectivo de ${customer.name}: $${applied.toFixed(2)}. Saldo restante: $${paymentResult.updatedCustomer.currentBalance.toFixed(2)}`,
+      source: isCash ? 'CAJA' : 'FONDO_EXTERNO',
+      paymentMethod: resolvedMethod,
+      notes: `Abono a crédito recibido en ${resolvedMethod.toLowerCase()} de ${customer.name}: $${applied.toFixed(2)}. Saldo restante: $${paymentResult.updatedCustomer.currentBalance.toFixed(2)}`,
     });
-    this.cashMovements.update((list) => [cashMov, ...list]);
+    this.cashMovements.update((list) => sortCashMovementsByTimestamp([cashMov, ...list], 'desc'));
 
     void this.flushSave();
 
@@ -3549,7 +3617,8 @@ export class MockInventoryService implements OnDestroy {
       previousBalance,
       newBalance: paymentResult.updatedCustomer.currentBalance,
       customerName: customer.name,
-      message: `Se registró abono de ${applied.toFixed(2)} en efectivo de ${customer.name}.`,
+      paymentMethod: resolvedMethod,
+      message: `Se registró abono de $${applied.toFixed(2)} (${resolvedMethod.toLowerCase()}) de ${customer.name}.`,
     };
   }
 
@@ -4327,11 +4396,12 @@ export class MockInventoryService implements OnDestroy {
       date: formatLocalDate(new Date()),
       timestamp: new Date().toISOString(),
       source,
+      paymentMethod: paymentMethod === 'EFECTIVO' ? 'EFECTIVO' : paymentMethod === 'TRANSFERENCIA' ? 'TRANSFERENCIA' : paymentMethod === 'TARJETA' ? 'TARJETA' : 'OTRO',
       supplierId: supplier.id,
       debtId: options?.targetDebtId,
       notes: `Pago CxP (${paymentMethod}/${source}). Saldo restante: $${allocation.totalRemainingBalance.toFixed(2)}`,
     });
-    this.cashMovements.update((list) => [cashMov, ...list]);
+    this.cashMovements.update((list) => sortCashMovementsByTimestamp([cashMov, ...list], 'desc'));
 
     // Actualizar alertas del tablero: retirar alertas de deudas pagadas
     this.morningAlerts.update((alerts) =>
