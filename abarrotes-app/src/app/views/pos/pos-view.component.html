@@ -29,8 +29,42 @@
         {{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }}
       </span>
     </button>
+
+    <button type="button" (click)="openCashMovementModal()" data-testid="btn-cash-movement"
+      class="h-10 px-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all">
+      <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+      <span>Movimiento $</span>
+    </button>
+
+    <button type="button" (click)="openShiftModal()" data-testid="btn-shift-cut"
+      class="h-10 px-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all">
+      <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+      <span>Corte / Turno</span>
+    </button>
+
+    <button type="button" (click)="openSalesHistoryModal()" data-testid="btn-sales-history"
+      class="h-10 px-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all">
+      <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+      <span>Ventas / Tickets</span>
+    </button>
   </div>
 </section>
+
+@if (!inv.isShiftOpen()) {
+  <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 flex items-center justify-between gap-4 shadow-2xs" data-testid="shift-closed-banner">
+    <div class="flex items-center gap-3">
+      <svg class="w-5 h-5 text-amber-700 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+      <div>
+        <p class="font-bold text-sm">Turno de caja cerrado</p>
+        <p class="text-xs text-amber-800">El registro y cobro de ventas está bloqueado para proteger la contabilidad. Abre un nuevo turno para continuar vendiendo.</p>
+      </div>
+    </div>
+    <button type="button" (click)="openShiftModal()" data-testid="btn-open-shift-banner"
+      class="h-9 px-4 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs transition-colors shrink-0">
+      Abrir Nuevo Turno
+    </button>
+  </div>
+}
 
 <!-- ===================== NOTIFICACIONES DE EVENTOS ===================== -->
 @if (syncNotification(); as syncMsg) {
@@ -45,8 +79,18 @@
 @if (saleFeedback(); as fb) {
   <div class="mb-3 rounded-xl border px-4 py-3 font-bold text-sm flex items-center justify-between gap-4"
     [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900'">
-    <span>{{ fb.text }}</span>
-    <button type="button" (click)="saleFeedback.set(null)" class="h-8 px-3 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800">
+    <div class="flex flex-wrap items-center gap-3">
+      <span>{{ fb.text }}</span>
+      @if (fb.ok && fb.sale) {
+        <button type="button" (click)="openTicketModal(fb.sale, false)"
+          class="h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-colors flex items-center gap-1.5"
+          data-testid="btn-print-last-ticket">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+          <span>Imprimir Ticket (#{{ fb.sale.folio }})</span>
+        </button>
+      }
+    </div>
+    <button type="button" (click)="saleFeedback.set(null)" class="h-8 px-3 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 shrink-0">
       Aceptar
     </button>
   </div>
@@ -338,7 +382,7 @@
       <!-- Cobrar en Efectivo (Principal) -->
       <button
         type="button"
-        [disabled]="cart().length === 0"
+        [disabled]="cart().length === 0 || !inv.isShiftOpen()"
         (click)="openCashModal()"
         class="h-14 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-lg font-bold shadow-2xs flex items-center justify-center gap-2 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition-colors">
         <span>Cobrar Efectivo</span>
@@ -349,7 +393,7 @@
       <div class="grid grid-cols-2 gap-2">
         <button
           type="button"
-          [disabled]="cart().length === 0"
+          [disabled]="cart().length === 0 || !inv.isShiftOpen()"
           (click)="openCreditModal()"
           class="h-11 rounded-xl border border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-950 text-sm font-bold flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors">
           Cargar a Crédito
@@ -357,7 +401,7 @@
 
         <button
           type="button"
-          [disabled]="cart().length === 0"
+          [disabled]="cart().length === 0 || !inv.isShiftOpen()"
           (click)="openInternalConsumptionModal()"
           class="h-11 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-bold flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none transition-colors">
           Consumo Interno
@@ -1186,4 +1230,727 @@
       </div>
     </div>
   </div>
+}
+
+
+<!-- =========================================================================
+     MODAL 6: MOVIMIENTO DE EFECTIVO EN CAJA (ENTRADA / SALIDA) - BLOQUE H
+     ========================================================================= -->
+@if (cashMovementModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-cash-movement">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-md overflow-hidden">
+      <!-- Cabecera -->
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Tesorería y Flujo</p>
+          <h3 class="text-base font-bold leading-tight">Movimiento de Efectivo en Caja</h3>
+        </div>
+        <button type="button" (click)="closeCashMovementModal()" class="text-xs text-slate-400 hover:text-white">
+          Cerrar
+        </button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-4">
+        <!-- Selector Tipo: Entrada vs Salida -->
+        <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            (click)="onCashMovementTypeChange('ENTRADA')"
+            class="h-10 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+            [class]="cashMovementType() === 'ENTRADA'
+              ? 'bg-emerald-600 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900'">
+            <span>(+) Entrada</span>
+          </button>
+          <button
+            type="button"
+            (click)="onCashMovementTypeChange('SALIDA')"
+            class="h-10 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+            [class]="cashMovementType() === 'SALIDA'
+              ? 'bg-rose-700 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-900'">
+            <span>(-) Salida / Retiro</span>
+          </button>
+        </div>
+
+        <!-- Efectivo disponible en cajón -->
+        <div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2 text-xs">
+          <span class="text-slate-600 font-semibold">Efectivo en Cajón:</span>
+          <span class="font-mono font-bold text-slate-900">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
+        </div>
+
+        <!-- Motivo / Categoría -->
+        <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+          <span>Motivo / Concepto:</span>
+          <select
+            data-testid="select-movement-motive"
+            [ngModel]="cashMovementMotive()"
+            (ngModelChange)="cashMovementMotive.set($event)"
+            class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900 focus:outline-none">
+            @if (cashMovementType() === 'ENTRADA') {
+              <option value="FONDO">Fondo adicional de caja</option>
+              <option value="COBRANZA">Cobranza externa / cliente</option>
+              <option value="OTRO_INGRESO">Otro ingreso extraordinario</option>
+            } @else {
+              <option value="RETIRO">Retiro parcial por seguridad</option>
+              <option value="GASTO">Gasto menor / Servicios tienda</option>
+              <option value="PAGO_PROVEEDOR">Pago a proveedor en efectivo</option>
+              <option value="OTRO_EGRESO">Otro egreso / salida</option>
+            }
+          </select>
+        </label>
+
+        <!-- Monto ($) -->
+        <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+          <span>Monto en pesos ($):</span>
+          <input
+            type="number"
+            min="1"
+            step="10"
+            data-testid="input-movement-amount"
+            [ngModel]="cashMovementAmount()"
+            (ngModelChange)="cashMovementAmount.set($event)"
+            class="h-11 rounded-lg border border-slate-300 bg-white px-3 font-mono text-base font-bold text-slate-900 focus:border-slate-500 focus:outline-none"
+          />
+        </label>
+
+        <!-- Notas / Observaciones -->
+        <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+          <span>Notas o comprobante (opcional):</span>
+          <input
+            type="text"
+            data-testid="input-movement-notes"
+            [ngModel]="cashMovementNotes()"
+            (ngModelChange)="cashMovementNotes.set($event)"
+            placeholder="Ej. Pago de garrafones Bonafont, Retiro caja fuerte..."
+            class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 focus:outline-none"
+          />
+        </label>
+
+        <!-- Advertencia si salida excede disponible -->
+        @if (cashMovementType() === 'SALIDA' && !canSubmitCashMovement()) {
+          <div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 font-semibold">
+            El monto a retirar (${{ cashMovementAmount() | number:'1.2-2' }}) excede el efectivo disponible en cajón (${{ inv.getExpectedDrawerCash() | number:'1.2-2' }}).
+          </div>
+        }
+
+        <!-- Feedback -->
+        @if (cashMovementFeedback(); as fb) {
+          <div class="rounded-xl border p-3 text-xs font-semibold"
+            [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-rose-300 bg-rose-50 text-rose-900'">
+            {{ fb.message }}
+          </div>
+        }
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+          <button
+            type="button"
+            (click)="closeCashMovementModal()"
+            class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            [disabled]="!canSubmitCashMovement()"
+            (click)="submitCashMovement()"
+            data-testid="btn-confirm-movement"
+            class="h-10 px-5 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:text-slate-500 text-white text-xs font-bold shadow-2xs transition-all">
+            Registrar Movimiento
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =========================================================================
+     MODAL 7: CORTE DE CAJA Y CONTROL DE TURNO - BLOQUE H
+     ========================================================================= -->
+@if (shiftModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-shift-cut">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-lg overflow-hidden">
+      <!-- Cabecera -->
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Control de Turnos</p>
+          <h3 class="text-base font-bold leading-tight">
+            {{ shiftData().isShiftOpen ? ('Corte de Caja · ' + shiftData().shiftId) : 'Turno Cerrado' }}
+          </h3>
+        </div>
+        <button type="button" (click)="closeShiftModal()" class="text-xs text-slate-400 hover:text-white">
+          Cerrar
+        </button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-4">
+        @if (shiftData().isShiftOpen) {
+          <!-- Resumen contable acumulado -->
+          <div class="space-y-1.5 text-xs">
+            <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+              <span class="text-slate-600 font-semibold">Fondo Inicial de Caja:</span>
+              <span class="font-mono font-bold text-slate-900">{{ shiftData().openingFloat | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+            <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+              <span class="text-slate-600 font-semibold">(+) Ventas en Efectivo:</span>
+              <span class="font-mono font-bold text-emerald-700">+{{ shiftData().cashSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+            <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+              <span class="text-slate-600 font-semibold">(+) Abonos en Efectivo:</span>
+              <span class="font-mono font-bold text-emerald-700">+{{ shiftData().creditPaymentsReceived | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+            <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+              <span class="text-slate-600 font-semibold">(+) Entradas Extraordinarias:</span>
+              <span class="font-mono font-bold text-emerald-700">+{{ shiftData().cashInTotal | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+            <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 border border-slate-200">
+              <span class="text-slate-600 font-semibold">(-) Salidas y Retiros de Caja:</span>
+              <span class="font-mono font-bold text-rose-700">-{{ shiftData().cashOutTotal | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+          </div>
+
+          <!-- Total Teórico Esperado -->
+          <div class="flex items-center justify-between rounded-xl bg-slate-800 p-4 text-white">
+            <div>
+              <span class="block text-xs text-slate-300">Efectivo Teórico Esperado:</span>
+              <span class="font-mono text-2xl font-bold">{{ shiftData().expectedCash | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+            <span class="text-[11px] text-slate-400 text-right">Fondo + Ventas + Abonos + Entradas - Salidas</span>
+          </div>
+
+          <!-- Conteo Físico Real -->
+          <div class="bg-amber-50/70 rounded-xl border border-amber-200 p-3.5 flex flex-col gap-2">
+            <label class="flex flex-col gap-1 text-xs font-bold text-amber-950">
+              <span>Efectivo Físico Contado en Cajón ($):</span>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                data-testid="input-counted-cash"
+                [ngModel]="shiftCountedCash()"
+                (ngModelChange)="shiftCountedCash.set($event)"
+                class="h-11 rounded-lg border border-amber-300 bg-white px-3 font-mono text-lg font-bold text-slate-900 focus:outline-none"
+              />
+            </label>
+
+            <!-- Comparativo de Diferencia -->
+            <div class="flex items-center justify-between pt-1 border-t border-amber-200/80 text-xs font-bold" data-testid="shift-diff-badge">
+              <span>Estado del Arqueo:</span>
+              @if (shiftData().differenceStatus === 'CUADRADA') {
+                <span class="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800">
+                  Caja Cuadrada ($0.00 diferencia)
+                </span>
+              } @else if (shiftData().differenceStatus === 'SOBRANTE') {
+                <span class="px-2.5 py-1 rounded-md bg-blue-100 text-blue-800">
+                  Sobrante de +{{ shiftData().difference | currency:'MXN':'symbol-narrow' }}
+                </span>
+              } @else {
+                <span class="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800">
+                  Faltante de {{ shiftData().difference | currency:'MXN':'symbol-narrow' }}
+                </span>
+              }
+            </div>
+          </div>
+
+          <!-- PIN de Cierre -->
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+              <span>PIN Encargado / Admin *:</span>
+              <input
+                type="password"
+                data-testid="input-shift-pin"
+                [ngModel]="shiftPin()"
+                (ngModelChange)="shiftPin.set($event)"
+                placeholder="PIN supervisor"
+                class="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm font-bold text-slate-900"
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+              <span>Notas de corte (opcional):</span>
+              <input
+                type="text"
+                data-testid="input-shift-notes"
+                [ngModel]="shiftNotes()"
+                (ngModelChange)="shiftNotes.set($event)"
+                placeholder="Observaciones de entrega"
+                class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900"
+              />
+            </label>
+          </div>
+
+          @if (shiftFeedback(); as fb) {
+            <div class="rounded-xl border p-3 text-xs font-semibold"
+              [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-rose-300 bg-rose-50 text-rose-900'">
+              {{ fb.message }}
+            </div>
+          }
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+            <button
+              type="button"
+              (click)="closeShiftModal()"
+              class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              (click)="executeCloseShift()"
+              data-testid="btn-close-shift-confirm"
+              class="h-10 px-5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-2xs transition-all">
+              Confirmar Corte y Cerrar Turno
+            </button>
+          </div>
+        } @else {
+          <!-- Formulario de Apertura de Nuevo Turno -->
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950 flex flex-col gap-2">
+            <p class="font-bold text-sm">El turno actual está cerrado</p>
+            <p>Para desbloquear la terminal e iniciar ventas o movimientos, ingresa el fondo de caja inicial y autoriza con tu PIN.</p>
+          </div>
+
+          <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+            <span>Fondo Inicial de Caja ($):</span>
+            <input
+              type="number"
+              min="0"
+              step="50"
+              data-testid="input-new-shift-float"
+              [ngModel]="newShiftFloat()"
+              (ngModelChange)="newShiftFloat.set($event)"
+              class="h-11 rounded-lg border border-slate-300 bg-white px-3 font-mono text-base font-bold text-slate-900"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+            <span>PIN de Encargado o Administrador *:</span>
+            <input
+              type="password"
+              data-testid="input-new-shift-pin"
+              [ngModel]="newShiftPin()"
+              (ngModelChange)="newShiftPin.set($event)"
+              placeholder="PIN de autorización"
+              class="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm font-bold text-slate-900"
+            />
+          </label>
+
+          @if (shiftFeedback(); as fb) {
+            <div class="rounded-xl border p-3 text-xs font-semibold"
+              [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-rose-300 bg-rose-50 text-rose-900'">
+              {{ fb.message }}
+            </div>
+          }
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+            <button
+              type="button"
+              (click)="closeShiftModal()"
+              class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100">
+              Cerrar
+            </button>
+            <button
+              type="button"
+              (click)="executeOpenNewShift()"
+              data-testid="btn-open-shift-confirm"
+              class="h-10 px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-all">
+              Abrir Nuevo Turno
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =========================================================================
+     MODAL 8: HISTORIAL DE VENTAS Y TICKETS - BLOQUE H
+     ========================================================================= -->
+@if (salesHistoryModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-sales-history">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <!-- Cabecera -->
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+        <div>
+          <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Registro de Ventas</p>
+          <h3 class="text-lg font-bold leading-tight">Historial de Ventas y Tickets</h3>
+        </div>
+        <button type="button" (click)="closeSalesHistoryModal()" class="text-xs text-slate-400 hover:text-white">
+          Cerrar
+        </button>
+      </div>
+
+      <!-- Filtros -->
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-slate-600">Filtrar:</span>
+          <div class="flex rounded-lg border border-slate-300 bg-white p-0.5 text-xs font-bold">
+            <button
+              type="button"
+              (click)="salesHistoryFilter.set('ALL')"
+              class="px-3 py-1 rounded"
+              [class]="salesHistoryFilter() === 'ALL' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:text-slate-900'">
+              Todas ({{ inv.salesHistory().length }})
+            </button>
+            <button
+              type="button"
+              (click)="salesHistoryFilter.set('EFECTIVO')"
+              class="px-3 py-1 rounded"
+              [class]="salesHistoryFilter() === 'EFECTIVO' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:text-slate-900'">
+              Efectivo
+            </button>
+            <button
+              type="button"
+              (click)="salesHistoryFilter.set('FIADO')"
+              class="px-3 py-1 rounded"
+              [class]="salesHistoryFilter() === 'FIADO' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:text-slate-900'">
+              Fiado
+            </button>
+          </div>
+        </div>
+
+        <span class="text-xs text-slate-500 font-semibold">
+          Mostrando {{ filteredSalesHistory().length }} ventas
+        </span>
+      </div>
+
+      <!-- Tabla de ventas -->
+      <div class="flex-1 overflow-y-auto p-4">
+        @if (filteredSalesHistory().length === 0) {
+          <div class="text-center py-12 text-slate-400 text-sm">
+            No hay ventas registradas en este turno o filtro.
+          </div>
+        } @else {
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                <th class="py-2.5 px-3">Folio</th>
+                <th class="py-2.5 px-3">Hora / Fecha</th>
+                <th class="py-2.5 px-3">Cajero</th>
+                <th class="py-2.5 px-3">Partidas</th>
+                <th class="py-2.5 px-3">Forma de Pago</th>
+                <th class="py-2.5 px-3 text-right">Total</th>
+                <th class="py-2.5 px-3 text-center">Estado</th>
+                <th class="py-2.5 px-3 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (sale of filteredSalesHistory(); track sale.id) {
+                <tr class="hover:bg-slate-50/80 transition-colors">
+                  <td class="py-3 px-3 font-mono font-bold text-slate-900">#{{ sale.folio }}</td>
+                  <td class="py-3 px-3 text-slate-600 whitespace-nowrap">
+                    <div>{{ sale.date }}</div>
+                    <div class="text-[10px] text-slate-400 font-mono">{{ sale.timestamp | date:'hh:mm:ss a' }}</div>
+                  </td>
+                  <td class="py-3 px-3 font-medium text-slate-700">{{ sale.cashier }}</td>
+                  <td class="py-3 px-3 text-slate-600">{{ sale.items.length }} prod.</td>
+                  <td class="py-3 px-3 font-semibold">
+                    @if (sale.paymentType === 'FIADO') {
+                      <span class="text-amber-800">Fiado ({{ sale.customerName }})</span>
+                    } @else {
+                      <span class="text-emerald-800">Efectivo</span>
+                    }
+                  </td>
+                  <td class="py-3 px-3 text-right font-mono font-bold text-slate-900">
+                    {{ sale.total | currency:'MXN':'symbol-narrow' }}
+                  </td>
+                  <td class="py-3 px-3 text-center">
+                    @if (sale.status === 'COMPLETADA') {
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Completada</span>
+                    } @else if (sale.status === 'DEVOLUCION_PARCIAL') {
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Devolución Parcial</span>
+                    } @else {
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">Cancelada</span>
+                    }
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        (click)="openTicketModal(sale, true, $event)"
+                        [attr.data-testid]="'btn-view-ticket-' + sale.folio"
+                        class="h-7 px-2.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 font-bold text-[11px] transition-colors"
+                        title="Ver y reimprimir ticket">
+                        Ticket
+                      </button>
+                      @if (sale.status !== 'CANCELADA') {
+                        <button
+                          type="button"
+                          (click)="openReturnModal(sale, $event)"
+                          [attr.data-testid]="'btn-return-sale-' + sale.folio"
+                          class="h-7 px-2.5 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-[11px] transition-colors"
+                          title="Devolver mercancía o cancelar venta">
+                          Devolver
+                        </button>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =========================================================================
+     MODAL 9: DEVOLUCIÓN O CANCELACIÓN DE VENTA - BLOQUE H
+     ========================================================================= -->
+@if (returnModalOpen(); as _) {
+  @if (selectedSaleForReturn(); as sale) {
+    <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-sale-return">
+      <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
+        <!-- Cabecera -->
+        <div class="bg-rose-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
+          <div>
+            <p class="text-xs text-rose-300 uppercase tracking-wider font-semibold">Contra-Asiento de Kardex</p>
+            <h3 class="text-lg font-bold leading-tight">Devolver Mercancía · Ticket #{{ sale.folio }}</h3>
+          </div>
+          <button type="button" (click)="closeReturnModal()" class="text-xs text-rose-300 hover:text-white">
+            Cerrar
+          </button>
+        </div>
+
+        <div class="p-5 flex-1 overflow-y-auto flex flex-col gap-4">
+          <!-- Info de la venta original -->
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3.5 flex items-center justify-between text-xs">
+            <div>
+              <span class="text-slate-500 font-semibold block">Venta Original:</span>
+              <span class="font-bold text-slate-800">{{ sale.date }} · Cajero: {{ sale.cashier }}</span>
+              <span class="block text-slate-600">Forma de Pago: <b>{{ sale.paymentType }}</b> {{ sale.customerName ? ('(' + sale.customerName + ')') : '' }}</span>
+            </div>
+            <div class="text-right">
+              <span class="text-slate-500 font-semibold block">Total Original:</span>
+              <span class="font-mono text-base font-bold text-slate-900">{{ sale.total | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+          </div>
+
+          <!-- Selección de artículos a devolver -->
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700">Artículos y Cantidades a Devolver:</span>
+            <button type="button" (click)="setReturnAllLines()" data-testid="btn-return-all"
+              class="text-xs font-bold text-rose-700 hover:underline">
+              Devolver Todo (Cancelar Venta)
+            </button>
+          </div>
+
+          <div class="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-48 overflow-y-auto">
+            @for (item of sale.items; track item.sku) {
+              <div class="p-3 flex items-center justify-between gap-3 text-xs">
+                <div class="flex-1 min-w-0">
+                  <p class="font-bold text-slate-900 truncate">{{ item.name }}</p>
+                  <p class="text-slate-500 text-[11px]">
+                    Comprado: {{ item.qty }} {{ item.saleUnit || 'pz' }} · P.U: {{ item.unitPrice | currency:'MXN':'symbol-narrow' }}
+                    @if (item.returnedQty > 0) {
+                      <span class="text-rose-700 font-semibold">(Ya devuelto: {{ item.returnedQty }})</span>
+                    }
+                  </p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <label class="flex items-center gap-1.5 font-semibold text-slate-600">
+                    <span>Devolver:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      [max]="item.qty - (item.returnedQty || 0)"
+                      step="1"
+                      [attr.data-testid]="'input-return-qty-' + item.sku"
+                      [ngModel]="returnLineQuantities()[item.sku] || 0"
+                      (ngModelChange)="setReturnLineQty(item.sku, $event)"
+                      class="h-8 w-16 rounded border border-slate-300 bg-white px-2 text-center font-mono font-bold text-slate-900"
+                    />
+                  </label>
+                  <span class="font-mono font-bold text-slate-800 min-w-[65px] text-right">
+                    {{ getReturnLinePreview(item) | currency:'MXN':'symbol-narrow' }}
+                  </span>
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Total a reembolsar y advertencia de dinero -->
+          <div class="flex items-center justify-between rounded-xl bg-rose-50 border border-rose-200 p-3.5 text-rose-950 text-xs">
+            <div>
+              <span class="font-bold block">Total a Reembolsar / Revertir:</span>
+              <span class="text-[11px] text-rose-800">
+                @if (sale.paymentType === 'EFECTIVO') {
+                  Se entregará efectivo al cliente del cajón y repondrá stock en Kardex.
+                } @else {
+                  Se descontará de la deuda en libreta de crédito de {{ sale.customerName }}.
+                }
+              </span>
+            </div>
+            <span class="font-mono text-xl font-bold text-rose-900">
+              {{ returnTotalRefund() | currency:'MXN':'symbol-narrow' }}
+            </span>
+          </div>
+
+          <!-- Destino físico del producto devuelto -->
+          <div class="flex flex-col gap-1.5 text-xs">
+            <span class="font-bold text-slate-700">Destino físico del producto devuelto *:</span>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                data-testid="btn-return-cond-vendible"
+                (click)="returnCondition.set('VENDIBLE')"
+                [class]="returnCondition() === 'VENDIBLE'
+                  ? 'rounded-lg border-2 border-emerald-600 bg-emerald-50 px-3 py-2 text-left font-bold text-emerald-900'
+                  : 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-left font-semibold text-slate-600'">
+                Stock vendible
+                <span class="block text-[10px] font-normal text-slate-500">Reingresa a inventario activo</span>
+              </button>
+              <button
+                type="button"
+                data-testid="btn-return-cond-merma"
+                (click)="returnCondition.set('MERMA')"
+                [class]="returnCondition() === 'MERMA'
+                  ? 'rounded-lg border-2 border-amber-600 bg-amber-50 px-3 py-2 text-left font-bold text-amber-900'
+                  : 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-left font-semibold text-slate-600'">
+                Merma directa (Dañado/Caduco)
+                <span class="block text-[10px] font-normal text-slate-500">Salida MERMA; no infla stock</span>
+              </button>
+            </div>
+          </div>
+
+          @if (sale.paymentType === 'FIADO') {
+            <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+              <span>Si el reembolso supera la deuda pendiente del cliente:</span>
+              <select
+                data-testid="select-return-fiado-excess"
+                [ngModel]="returnFiadoExcessMode()"
+                (ngModelChange)="returnFiadoExcessMode.set($event)"
+                class="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-900">
+                <option value="SALDO_A_FAVOR">Registrar excedente como Saldo a Favor del cliente</option>
+                <option value="REEMBOLSO_EFECTIVO">Entregar excedente en Efectivo desde el cajón</option>
+              </select>
+            </label>
+          }
+
+          <!-- Motivo obligatorio -->
+          <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+            <span>Motivo de la devolución o cancelación *:</span>
+            <input
+              type="text"
+              data-testid="input-return-reason"
+              [ngModel]="returnReason()"
+              (ngModelChange)="returnReason.set($event)"
+              placeholder="Ej. Mercancía dañada, caducada, cambio por otro producto..."
+              class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 focus:outline-none"
+            />
+          </label>
+
+          <!-- PIN de Encargado o Administrador -->
+          <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+            <span>PIN de Encargado o Administrador *:</span>
+            <input
+              type="password"
+              data-testid="input-return-pin"
+              [ngModel]="returnPin()"
+              (ngModelChange)="returnPin.set($event)"
+              placeholder="PIN de autorización"
+              class="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm font-bold text-slate-900"
+            />
+          </label>
+
+          @if (returnFeedback(); as fb) {
+            <div class="rounded-xl border p-3 text-xs font-semibold"
+              [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-rose-300 bg-rose-50 text-rose-900'">
+              {{ fb.message }}
+            </div>
+          }
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+            <button
+              type="button"
+              (click)="closeReturnModal()"
+              class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              (click)="confirmSaleReturn()"
+              data-testid="btn-confirm-return"
+              class="h-10 px-5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-2xs transition-all">
+              Confirmar Contra-Asiento
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+}
+
+<!-- =========================================================================
+     MODAL 10: TICKET IMPRIMIBLE (58 MM Y 80 MM, REIMPRESIÓN COPIA) - BLOQUE H
+     ========================================================================= -->
+@if (ticketModalOpen(); as _) {
+  @if (selectedSaleForTicket(); as sale) {
+    <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-printable-ticket">
+      <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden">
+        <!-- Cabecera -->
+        <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
+          <div>
+            <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Comprobante Térmico</p>
+            <h3 class="text-base font-bold leading-tight">Ticket de Venta #{{ sale.folio }}</h3>
+          </div>
+          <button type="button" (click)="closeTicketModal()" class="text-xs text-slate-400 hover:text-white">
+            Cerrar
+          </button>
+        </div>
+
+        <!-- Controles de Formato -->
+        <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3 shrink-0 text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold text-slate-600">Ancho:</span>
+            <div class="flex rounded-md border border-slate-300 bg-white p-0.5 text-xs font-bold">
+              <button
+                type="button"
+                (click)="setTicketPaperWidth('58mm')"
+                class="px-2.5 py-0.5 rounded"
+                [class]="ticketPaperWidth() === '58mm' ? 'bg-slate-800 text-white' : 'text-slate-600'">
+                58 mm
+              </button>
+              <button
+                type="button"
+                (click)="setTicketPaperWidth('80mm')"
+                class="px-2.5 py-0.5 rounded"
+                [class]="ticketPaperWidth() === '80mm' ? 'bg-slate-800 text-white' : 'text-slate-600'">
+                80 mm
+              </button>
+            </div>
+          </div>
+
+          @if (ticketIsCopy()) {
+            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[11px] border border-amber-300">
+              Marca COPIA
+            </span>
+          }
+        </div>
+
+        <!-- Vista previa monoespaciada en formato de rollo térmico -->
+        <div class="flex-1 overflow-y-auto p-4 bg-slate-200/60 flex justify-center">
+          <div class="bg-white border border-slate-300 rounded shadow-xs p-4 font-mono text-[11px] leading-tight text-slate-900 whitespace-pre max-w-full overflow-x-auto"
+            data-testid="ticket-text-preview"
+            [class]="ticketPaperWidth() === '80mm' ? 'w-[320px]' : 'w-[240px]'">{{ ticketText() }}</div>
+        </div>
+
+        <!-- Acciones de impresión nativa -->
+        <div class="p-3 bg-white border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+          <button
+            type="button"
+            (click)="closeTicketModal()"
+            class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100">
+            Cerrar
+          </button>
+          <button
+            type="button"
+            (click)="printTicket()"
+            data-testid="btn-print-ticket-action"
+            class="h-10 px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-all flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+            <span>Imprimir Ticket</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 }

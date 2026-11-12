@@ -45,6 +45,8 @@ function fromCents(cents: number): number {
 
 export type CreditCustomerStatus = 'AL_CORRIENTE' | 'LIMITE_ALCANZADO' | 'VENCIDO';
 
+export type CreditExcessResolution = 'SALDO_A_FAVOR' | 'REEMBOLSO_EFECTIVO' | 'NINGUNO';
+
 export interface CreditDebtItem {
   id: string;
   date: string; // ISO yyyy-mm-dd
@@ -52,6 +54,7 @@ export interface CreditDebtItem {
   originalAmount: number;
   remainingBalance: number;
   description?: string;
+  saleFolio?: string;
 }
 
 export type CreditPaymentMethod = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA';
@@ -83,6 +86,7 @@ export interface CreditCustomerLike {
   creditLimit: number;
   creditDays?: number;
   currentBalance: number;
+  creditFavorBalance?: number;
   dueDate?: string | Date;
   status?: CreditCustomerStatus;
   overdueBalance?: number;
@@ -91,6 +95,16 @@ export interface CreditCustomerLike {
   debts?: CreditDebtItem[];
   payments?: CreditPaymentRecord[];
   [key: string]: any;
+}
+
+export interface CreditCustomer extends CreditCustomerLike {
+  id: string;
+  name: string;
+  creditLimit: number;
+  currentBalance: number;
+  creditFavorBalance?: number;
+  debts: CreditDebtItem[];
+  payments: CreditPaymentRecord[];
 }
 
 /**
@@ -587,11 +601,15 @@ export function applyCreditSalePure<T extends CreditCustomerLike>(
   cliente: T,
   saleAmount: number,
   hoy: Date = new Date(),
-  saleDetails?: { id?: string; date?: string; dueDate?: string; description?: string }
-): { ok: boolean; message: string; updatedCustomer?: T; availableCredit: number } {
+  saleDetails?: { id?: string; date?: string; dueDate?: string; description?: string; saleFolio?: string }
+): { ok: boolean; message: string; updatedCustomer?: T; availableCredit: number; favorAppliedAmount?: number } {
   const balanceCents = toCents(cliente.currentBalance);
   const limitCents = toCents(cliente.creditLimit);
   const saleCents = toCents(saleAmount);
+  const favorCents = Math.max(0, toCents(cliente.creditFavorBalance || 0));
+  const appliedFavorCents = Math.min(favorCents, saleCents);
+  const netNewDebtCents = Math.max(0, saleCents - appliedFavorCents);
+  const newFavorCents = favorCents - appliedFavorCents;
   const availableCents = Math.max(0, limitCents - balanceCents);
 
   const currentStatus = computeCreditStatus(cliente, hoy);
@@ -603,7 +621,7 @@ export function applyCreditSalePure<T extends CreditCustomerLike>(
     };
   }
 
-  if (balanceCents + saleCents > limitCents) {
+  if (balanceCents + netNewDebtCents > limitCents) {
     return {
       ok: false,
       message: `Límite de crédito excedido. Disponible: $${fromCents(availableCents).toFixed(2)} de su límite de $${fromCents(limitCents).toFixed(2)}.`,
@@ -611,28 +629,32 @@ export function applyCreditSalePure<T extends CreditCustomerLike>(
     };
   }
 
-  const newBalanceCents = balanceCents + saleCents;
+  const newBalanceCents = balanceCents + netNewDebtCents;
   const newDebts = Array.isArray(cliente.debts) ? [...cliente.debts] : (saleDetails ? [] : undefined);
   let saleDueDateStr: string | undefined;
 
-  if (saleDetails) {
+  if (saleDetails && netNewDebtCents > 0) {
     const defaultDays = cliente.creditDays || 15;
-    const saleDateStr = saleDetails.date || hoy.toISOString().slice(0, 10);
+    const saleDateStr = saleDetails.date || formatLocalDate(hoy);
     saleDueDateStr = saleDetails.dueDate || calculateCustomerDueDate(saleDateStr, defaultDays);
 
     newDebts?.push({
       id: saleDetails.id || `FIADO-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       date: saleDateStr,
       dueDate: saleDueDateStr,
-      originalAmount: fromCents(saleCents),
-      remainingBalance: fromCents(saleCents),
+      originalAmount: fromCents(netNewDebtCents),
+      remainingBalance: fromCents(netNewDebtCents),
       description: saleDetails.description || 'Compra a crédito POS',
+      ...(saleDetails.saleFolio ? { saleFolio: saleDetails.saleFolio } : {}),
     });
   }
 
   const candidate: T = {
     ...cliente,
     currentBalance: fromCents(newBalanceCents),
+    ...(cliente.creditFavorBalance !== undefined || newFavorCents > 0
+      ? { creditFavorBalance: fromCents(newFavorCents) }
+      : {}),
     ...(newDebts !== undefined ? { debts: newDebts } : {}),
     ...(saleDueDateStr && (!cliente.dueDate || cliente.currentBalance === 0) ? { dueDate: saleDueDateStr } : {}),
   };
@@ -642,8 +664,139 @@ export function applyCreditSalePure<T extends CreditCustomerLike>(
 
   return {
     ok: true,
-    message: `Venta cargada con éxito. Saldo total: $${candidate.currentBalance.toFixed(2)}.`,
+    message:
+      appliedFavorCents > 0
+        ? `Venta cargada con éxito (se aplicaron $${fromCents(appliedFavorCents).toFixed(2)} de saldo a favor). Saldo total: $${candidate.currentBalance.toFixed(2)}.`
+        : `Venta cargada con éxito. Saldo total: $${candidate.currentBalance.toFixed(2)}.`,
     updatedCustomer: candidate,
     availableCredit: fromCents(remainingAvailableCents),
+    favorAppliedAmount: fromCents(appliedFavorCents),
+  };
+}
+
+/**
+ * Absorbe deuda pendiente de un cliente ante una devolución de venta a fiado (Bloque H seguimiento):
+ * - Nunca permite saldos de deuda negativos (topa la absorción en currentBalance -> $0.00).
+ * - Prioriza partidas vinculadas al folio original y luego deuda pendiente por FIFO.
+ * - Si la devolución supera el saldo deudor pendiente, registra el remanente como
+ *   'SALDO_A_FAVOR' (creditFavorBalance) o como 'REEMBOLSO_EFECTIVO'.
+ */
+export function applyCreditReturnAbsorptionPure<T extends CreditCustomerLike>(
+  cliente: T,
+  refundAmount: number,
+  options?: {
+    saleFolio?: string;
+    date?: Date;
+    excessMode?: 'SALDO_A_FAVOR' | 'REEMBOLSO_EFECTIVO';
+  }
+): {
+  updatedCustomer: T;
+  revertedAmount: number;
+  excessAmount: number;
+  favorBalanceAdded: number;
+  cashRefundAmount: number;
+  excessResolution: CreditExcessResolution;
+} {
+  const hoy = options?.date || new Date();
+  const excessMode = options?.excessMode || 'SALDO_A_FAVOR';
+  const refundCents = Math.max(0, toCents(refundAmount));
+  const oldBalanceCents = Math.max(0, toCents(cliente.currentBalance));
+  const priorFavorCents = Math.max(0, toCents(cliente.creditFavorBalance || 0));
+
+  if (refundCents <= 0) {
+    return {
+      updatedCustomer: { ...cliente },
+      revertedAmount: 0,
+      excessAmount: 0,
+      favorBalanceAdded: 0,
+      cashRefundAmount: 0,
+      excessResolution: 'NINGUNO',
+    };
+  }
+
+  let remainingRefundCents = refundCents;
+  const folioTag = options?.saleFolio || '';
+  const debtsCopy: CreditDebtItem[] = Array.isArray(cliente.debts)
+    ? cliente.debts.map((d) => ({ ...d }))
+    : [];
+
+  if (debtsCopy.length > 0 && oldBalanceCents > 0) {
+    if (folioTag) {
+      for (const debt of debtsCopy) {
+        if (remainingRefundCents <= 0) break;
+        const matchesSale =
+          debt.saleFolio === folioTag || (debt.description && debt.description.includes(folioTag));
+        if (matchesSale) {
+          const debtBalCents = Math.max(0, toCents(debt.remainingBalance));
+          const deductCents = Math.min(debtBalCents, remainingRefundCents);
+          debt.remainingBalance = fromCents(debtBalCents - deductCents);
+          remainingRefundCents -= deductCents;
+        }
+      }
+    }
+
+    if (remainingRefundCents > 0) {
+      for (const debt of debtsCopy) {
+        if (remainingRefundCents <= 0) break;
+        const debtBalCents = Math.max(0, toCents(debt.remainingBalance));
+        if (debtBalCents > 0) {
+          const deductCents = Math.min(debtBalCents, remainingRefundCents);
+          debt.remainingBalance = fromCents(debtBalCents - deductCents);
+          remainingRefundCents -= deductCents;
+        }
+      }
+    }
+  } else if (oldBalanceCents > 0) {
+    const deductCents = Math.min(oldBalanceCents, remainingRefundCents);
+    remainingRefundCents -= deductCents;
+  }
+
+  const maxAbsorbableCents = Math.min(oldBalanceCents, refundCents);
+  const absorbedByLoopCents = refundCents - remainingRefundCents;
+  const actualRevertedCents = Math.min(oldBalanceCents, absorbedByLoopCents);
+  const newBalanceCents = Math.max(0, oldBalanceCents - actualRevertedCents);
+  const excessCents = Math.max(0, refundCents - actualRevertedCents);
+
+  const activeDebts = debtsCopy.filter((d) => toCents(d.remainingBalance) > 0);
+  const favorAddedCents = excessMode === 'SALDO_A_FAVOR' ? excessCents : 0;
+  const cashRefundCents = excessMode === 'REEMBOLSO_EFECTIVO' ? excessCents : 0;
+  const excessResolution: CreditExcessResolution =
+    excessCents > 0 ? excessMode : 'NINGUNO';
+
+  const newFavorCents = priorFavorCents + favorAddedCents;
+
+  let newOverdueBalance = cliente.overdueBalance;
+  if (activeDebts.length > 0) {
+    const overdueCents = activeDebts
+      .filter((d) => isDueDatePassed(d.dueDate, hoy))
+      .reduce((acc, d) => acc + toCents(d.remainingBalance), 0);
+    newOverdueBalance = fromCents(overdueCents);
+  } else if (newBalanceCents === 0) {
+    newOverdueBalance = 0;
+  } else if (typeof cliente.overdueBalance === 'number') {
+    newOverdueBalance = fromCents(Math.max(0, toCents(cliente.overdueBalance) - actualRevertedCents));
+  }
+
+  const candidate: T = {
+    ...cliente,
+    currentBalance: fromCents(newBalanceCents),
+    overdueBalance: newOverdueBalance,
+    debts: activeDebts,
+    ...(cliente.creditFavorBalance !== undefined || favorAddedCents > 0
+      ? { creditFavorBalance: fromCents(newFavorCents) }
+      : {}),
+  };
+  candidate.status = newBalanceCents === 0 ? 'AL_CORRIENTE' : computeCreditStatus(candidate, hoy);
+
+  // Asegurar invariant maxAbsorbableCents >= actualRevertedCents >= 0
+  void maxAbsorbableCents;
+
+  return {
+    updatedCustomer: candidate,
+    revertedAmount: fromCents(actualRevertedCents),
+    excessAmount: fromCents(excessCents),
+    favorBalanceAdded: fromCents(favorAddedCents),
+    cashRefundAmount: fromCents(cashRefundCents),
+    excessResolution,
   };
 }

@@ -13,6 +13,7 @@ import {
   computeCreditStatus,
   applyCreditPaymentPure,
   type CreditPaymentMethod,
+  type CreditExcessResolution,
   applyCreditSalePure,
   type CreditCustomerStatus,
   type CustomerInput,
@@ -50,12 +51,41 @@ import {
   reconcileCashMovements,
   type CashPaymentMethod,
   type CashReconciliationSummary,
+  calculateShiftCut,
+  assertShiftOpen,
+  type CashMovementType,
+  type CashMovementSource,
+  type ShiftCloseRecord,
+  type ShiftCutResult,
+  type ShiftStatus,
 } from '../domain/cash';
+import {
+  createSaleRecord,
+  peekNextSaleFolio,
+  validateSaleReturn,
+  applySaleReturnPure,
+  revertCustomerCreditDebtFromReturn,
+  type SaleRecord,
+  type SaleReturnRecord,
+  type SaleLineItem,
+  type SaleReturnLineItem,
+  type SaleStatus,
+  type SalePaymentType,
+  type ReturnCondition,
+  type ReturnItemRequest,
+} from '../domain/sales';
+import {
+  formatTicketText,
+  formatTicketHtml,
+  type TicketFormatOptions,
+  type TicketPaperWidth,
+} from '../domain/ticket';
 import {
   createKardexEntry,
   generateKardexId,
   appendKardexEntry,
   deductStock,
+  restoreStockFromReturn,
   deductStockForDisposal,
   resolveShortageAlertAdjustment,
   verifyKardexChain,
@@ -81,6 +111,7 @@ import {
 import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY_V4,
   LEGACY_STATE_STORAGE_KEY_V3,
   LEGACY_STATE_STORAGE_KEY_V2,
   LEGACY_STATE_STORAGE_KEY_V1,
@@ -301,6 +332,7 @@ export interface CreditCustomer {
   creditLimit: number;
   creditDays?: number;
   currentBalance: number;
+  creditFavorBalance?: number;
   dueDate: string;
   status: CreditCustomerStatus;
   notes?: string;
@@ -365,6 +397,9 @@ export interface PosSaleItem {
   activeTier?: PriceTierCode;
   /** Descuento porcentual aplicado a la línea (0 a 100). */
   discountPct?: number;
+  grossSubtotal?: number;
+  grossSubtotalCents?: number;
+  netSubtotalCents?: number;
 }
 
 export type CartItem = PosSaleItem;
@@ -374,6 +409,7 @@ export interface SaleResult {
   message: string;
   total: number;
   change: number;
+  sale?: SaleRecord;
 }
 
 export interface CreditResult {
@@ -381,9 +417,11 @@ export interface CreditResult {
   message: string;
   total: number;
   availableCredit?: number;
+  sale?: SaleRecord;
 }
 
-export type { KardexEntry, KardexType } from '../domain/kardex';
+export type { KardexEntry, KardexType, ReturnCondition } from '../domain/kardex';
+export type { CreditExcessResolution } from '../domain/credit';
 
 export type AlertKind = 'cambio-fisico' | 'por-agotarse' | 'margen' | 'auditoria' | 'vencimiento_proveedor' | 'alza_precio';
 
@@ -1880,6 +1918,7 @@ export class MockInventoryService implements OnDestroy {
       (s.cashSalesTotal || 0) > 0 ||
       (s.creditSalesTotal || 0) > 0 ||
       (s.creditPaymentsReceived || 0) > 0 ||
+      (s.cashInTotal || 0) > 0 ||
       (s.cashPayoutsTotal || 0) > 0 ||
       (s.internalConsumptionTotalCost || 0) > 0 ||
       (s.shrinkTotalCost || 0) > 0 ||
@@ -2360,6 +2399,11 @@ export class MockInventoryService implements OnDestroy {
       settings: this.businessSettings(),
       users: this.users(),
       securityAuditLog: this.securityAuditLog(),
+      salesHistory: this.salesHistory(),
+      saleReturns: this.saleReturns(),
+      shiftCloseRecords: this.shiftCloseRecords(),
+      isShiftOpen: this.isShiftOpen(),
+      currentShiftId: this.currentShiftId(),
     };
   }
 
@@ -2572,6 +2616,7 @@ export class MockInventoryService implements OnDestroy {
     if (stateToValidate.cashMovements) this.cashMovements.set(structuredClone(stateToValidate.cashMovements));
     if (stateToValidate.settings) {
       this.businessSettings.set(structuredClone(stateToValidate.settings));
+      this.maxDiscountPctWithoutPin.set(stateToValidate.settings.maxDiscountPctWithoutPin);
     }
     if (stateToValidate.users && stateToValidate.users.length > 0) {
       this.users.set(structuredClone(stateToValidate.users));
@@ -2584,6 +2629,17 @@ export class MockInventoryService implements OnDestroy {
     if (stateToValidate.securityAuditLog) {
       this.securityAuditLog.set(structuredClone(stateToValidate.securityAuditLog));
     }
+    if (stateToValidate.salesHistory) this.salesHistory.set(structuredClone(stateToValidate.salesHistory));
+    if (stateToValidate.saleReturns) {
+      this.saleReturns.set(structuredClone(stateToValidate.saleReturns));
+    } else if (stateToValidate.salesHistory) {
+      this.saleReturns.set(
+        structuredClone(stateToValidate.salesHistory.flatMap((s: any) => (Array.isArray(s?.returns) ? s.returns : [])))
+      );
+    }
+    if (stateToValidate.shiftCloseRecords) this.shiftCloseRecords.set(structuredClone(stateToValidate.shiftCloseRecords));
+    if (typeof stateToValidate.isShiftOpen === 'boolean') this.isShiftOpen.set(stateToValidate.isShiftOpen);
+    if (stateToValidate.currentShiftId) this.currentShiftId.set(stateToValidate.currentShiftId);
   }
 
   private async savePreRestoreSnapshot(): Promise<string> {
@@ -2837,6 +2893,13 @@ export class MockInventoryService implements OnDestroy {
       let loadedFromLegacy = false;
       let legacyKeyLoaded: string | null = null;
       if (!raw) {
+        raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V4);
+        if (raw) {
+          loadedFromLegacy = true;
+          legacyKeyLoaded = LEGACY_STATE_STORAGE_KEY_V4;
+        }
+      }
+      if (!raw) {
         raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V3);
         if (raw) {
           loadedFromLegacy = true;
@@ -2945,6 +3008,7 @@ export class MockInventoryService implements OnDestroy {
       if (stateToValidate.cashMovements) this.cashMovements.set(stateToValidate.cashMovements);
       if (stateToValidate.settings) {
         this.businessSettings.set(stateToValidate.settings);
+        this.maxDiscountPctWithoutPin.set(stateToValidate.settings.maxDiscountPctWithoutPin);
       }
       if (stateToValidate.users && stateToValidate.users.length > 0) {
         this.users.set(stateToValidate.users);
@@ -2957,6 +3021,17 @@ export class MockInventoryService implements OnDestroy {
       if (stateToValidate.securityAuditLog) {
         this.securityAuditLog.set(stateToValidate.securityAuditLog);
       }
+      if (stateToValidate.salesHistory) this.salesHistory.set(stateToValidate.salesHistory);
+      if (stateToValidate.saleReturns) {
+        this.saleReturns.set(stateToValidate.saleReturns);
+      } else if (stateToValidate.salesHistory) {
+        this.saleReturns.set(
+          stateToValidate.salesHistory.flatMap((s: any) => (Array.isArray(s?.returns) ? s.returns : []))
+        );
+      }
+      if (stateToValidate.shiftCloseRecords) this.shiftCloseRecords.set(stateToValidate.shiftCloseRecords);
+      if (typeof stateToValidate.isShiftOpen === 'boolean') this.isShiftOpen.set(stateToValidate.isShiftOpen);
+      if (stateToValidate.currentShiftId) this.currentShiftId.set(stateToValidate.currentShiftId);
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
@@ -2966,19 +3041,19 @@ export class MockInventoryService implements OnDestroy {
           await this.flushSave();
           // REGLA MIGRACIÓN: no borres la clave de versión anterior (v3, v2 o v1) hasta verificar
           // que el estado v4 recién escrito se puede leer y pasa validateStoredState
-          const writtenV4 = await this.storageAdapter.load(STATE_STORAGE_KEY);
-          const v4Validation = validateStoredState(
-            writtenV4,
+          const writtenV5 = await this.storageAdapter.load(STATE_STORAGE_KEY);
+          const v5Validation = validateStoredState(
+            writtenV5,
             (k) => verifyKardexChain(k, 'newest-first'),
             (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
           );
-          if (v4Validation.valid && this.storageAdapter.delete) {
+          if (v5Validation.valid && this.storageAdapter.delete) {
             if (legacyKeyLoaded) {
               await this.storageAdapter.delete(legacyKeyLoaded);
             }
           }
         } catch (saveErr) {
-          console.warn('[MockInventoryService] Falló el guardado/verificación de v4 durante migración; datos anteriores permanecen intactos:', saveErr);
+          console.warn('[MockInventoryService] Falló el guardado/verificación de v5 durante migración; datos anteriores permanecen intactos:', saveErr);
         }
       }
 
@@ -3092,6 +3167,11 @@ export class MockInventoryService implements OnDestroy {
     this.accountsPayable.set([]);
     this.productPriceHistory.set([]);
     this.cashMovements.set([]);
+    this.salesHistory.set([]);
+    this.saleReturns.set([]);
+    this.shiftCloseRecords.set([]);
+    this.isShiftOpen.set(true);
+    this.currentShiftId.set('TURNO-1');
     this.activeUser.set('Don Lupe (Encargado)');
     this.maxDiscountPctWithoutPin.set(DEFAULT_MAX_DISCOUNT_PCT_WITHOUT_PIN);
     this.processedMobileProductRequests.clear();
@@ -3215,6 +3295,13 @@ export class MockInventoryService implements OnDestroy {
   readonly accountsPayable = signal<AccountsPayableDebt[]>([]);
   readonly productPriceHistory = signal<ProductPriceHistoryRecord[]>([]);
   readonly cashMovements = signal<CashMovement[]>([]);
+  readonly salesHistory = signal<SaleRecord[]>([]);
+  readonly saleReturns = signal<SaleReturnRecord[]>([]);
+  readonly shiftCloseRecords = signal<ShiftCloseRecord[]>([]);
+  readonly isShiftOpen = signal<boolean>(true);
+  readonly currentShiftId = signal<string>('TURNO-1');
+  readonly shiftOpenedBy = signal<string>('Don Lupe (Encargado)');
+  readonly lastCompletedSale = signal<SaleRecord | null>(null);
   readonly perishableBatches = signal<PerishableBatch[]>(structuredClone(PERISHABLE_BATCHES));
   readonly blindAuditMission = signal<BlindAuditItem[]>([]);
 
@@ -3575,9 +3662,17 @@ export class MockInventoryService implements OnDestroy {
    * - Suma a cashSalesTotal en el arqueo del cajón.
    * - Registra en Kardex como 'VENTA_EFECTIVO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
-  processCashSale(items: CartItem[], cashReceived: number): SaleResult {
+  processCashSale(
+    items: CartItem[],
+    cashReceived: number,
+    options?: { discountAmount?: number; itemsAlreadyNet?: boolean; folio?: string; cashier?: string }
+  ): SaleResult {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0, change: 0 };
+    }
+    const shiftCheck = assertShiftOpen(this.isShiftOpen());
+    if (!shiftCheck.allowed) {
+      return { ok: false, message: shiftCheck.error || 'Turno cerrado.', total: 0, change: 0 };
     }
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0, change: 0 };
@@ -3684,6 +3779,33 @@ export class MockInventoryService implements OnDestroy {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
+    // Registrar venta en historial inmutable (Bloque H)
+    const saleRecord = createSaleRecord({
+      folio: options?.folio,
+      existingSalesCount: this.salesHistory().length,
+      cashier: options?.cashier || currentUser,
+      paymentType: 'EFECTIVO',
+      items: items.map((i) => ({
+        sku: i.sku,
+        name: i.name,
+        qty: i.qty,
+        unitPrice: i.unitPrice,
+        subtotal: i.subtotal,
+        grossSubtotal: i.grossSubtotal,
+        grossSubtotalCents: i.grossSubtotalCents,
+        netSubtotalCents: i.netSubtotalCents,
+        discountPct: i.discountPct,
+        saleUnit: i.saleUnit,
+        tier: i.selectedTier || i.activeTier,
+      })),
+      discountAmount: options?.discountAmount || 0,
+      itemsAlreadyNet: options?.itemsAlreadyNet,
+      cashReceived,
+      change,
+    });
+    this.salesHistory.update((list) => [saleRecord, ...list]);
+    this.lastCompletedSale.set(saleRecord);
+
     void this.flushSave();
 
     return {
@@ -3691,6 +3813,7 @@ export class MockInventoryService implements OnDestroy {
       message: `Venta cobrada con éxito. Cambio: $${change.toFixed(2)}`,
       total,
       change,
+      sale: saleRecord,
     };
   }
 
@@ -3702,9 +3825,17 @@ export class MockInventoryService implements OnDestroy {
    * - Descuenta existencias de inventario físico con deductStock.
    * - Registra en Kardex como 'VENTA_FIADO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
-  processCreditSale(items: CartItem[], customerId: string): CreditResult {
+  processCreditSale(
+    items: CartItem[],
+    customerId: string,
+    options?: { discountAmount?: number; itemsAlreadyNet?: boolean; folio?: string; cashier?: string }
+  ): CreditResult {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0 };
+    }
+    const shiftCheck = assertShiftOpen(this.isShiftOpen());
+    if (!shiftCheck.allowed) {
+      return { ok: false, message: shiftCheck.error || 'Turno cerrado.', total: 0 };
     }
     if (!items.length) {
       return { ok: false, message: 'El carrito está vacío.', total: 0 };
@@ -3728,8 +3859,11 @@ export class MockInventoryService implements OnDestroy {
       return { ok: false, message: 'Selecciona un cliente para cargar el fiado.', total };
     }
 
+    const plannedFolio = options?.folio || peekNextSaleFolio(this.salesHistory().length);
     const saleResult = applyCreditSalePure(customer, total, new Date(), {
-      description: `Fiado POS: ${items.map((i) => `${i.qty}x ${i.name}`).join(', ').slice(0, 80)}`,
+      id: `FIADO-${plannedFolio}-${Date.now()}`,
+      saleFolio: plannedFolio,
+      description: `Fiado POS #${plannedFolio}: ${items.map((i) => `${i.qty}x ${i.name}`).join(', ').slice(0, 80)}`,
     });
     if (!saleResult.ok) {
       return {
@@ -3821,6 +3955,35 @@ export class MockInventoryService implements OnDestroy {
       this.morningAlerts.update((alerts) => [...shortageAlerts, ...alerts]);
     }
 
+    // Registrar venta en historial inmutable (Bloque H)
+    const saleRecord = createSaleRecord({
+      folio: plannedFolio,
+      existingSalesCount: this.salesHistory().length,
+      cashier: options?.cashier || currentUser,
+      paymentType: 'FIADO',
+      customerId: customer.id,
+      customerName: customer.name,
+      customerPreviousBalance: customer.currentBalance,
+      customerNewBalance: saleResult.updatedCustomer?.currentBalance,
+      items: items.map((i) => ({
+        sku: i.sku,
+        name: i.name,
+        qty: i.qty,
+        unitPrice: i.unitPrice,
+        subtotal: i.subtotal,
+        grossSubtotal: i.grossSubtotal,
+        grossSubtotalCents: i.grossSubtotalCents,
+        netSubtotalCents: i.netSubtotalCents,
+        discountPct: i.discountPct,
+        saleUnit: i.saleUnit,
+        tier: i.selectedTier || i.activeTier,
+      })),
+      discountAmount: options?.discountAmount || 0,
+      itemsAlreadyNet: options?.itemsAlreadyNet,
+    });
+    this.salesHistory.update((list) => [saleRecord, ...list]);
+    this.lastCompletedSale.set(saleRecord);
+
     void this.flushSave();
 
     return {
@@ -3828,6 +3991,7 @@ export class MockInventoryService implements OnDestroy {
       message: saleResult.message,
       total,
       availableCredit: saleResult.availableCredit,
+      sale: saleRecord,
     };
   }
 
@@ -4083,6 +4247,10 @@ export class MockInventoryService implements OnDestroy {
   } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const shiftCheck = assertShiftOpen(this.isShiftOpen());
+    if (!shiftCheck.allowed) {
+      return { ok: false, message: shiftCheck.error || 'Turno cerrado.' };
     }
     if (isNaN(amount) || amount <= 0) {
       return { ok: false, message: 'Ingresa un monto de abono mayor a $0.00.' };
@@ -6313,6 +6481,7 @@ export class MockInventoryService implements OnDestroy {
     change: number;
     requiresPin?: boolean;
     evaluation?: CartDiscountEvaluation;
+    sale?: SaleRecord;
   }> {
     if (!this.assertWritable()) {
       return {
@@ -6366,6 +6535,9 @@ export class MockInventoryService implements OnDestroy {
       return {
         ...item,
         subtotal: netSubtotal,
+        grossSubtotal: lineEval ? lineEval.grossSubtotal : item.subtotal,
+        grossSubtotalCents: lineEval ? lineEval.grossCents : Math.round(item.subtotal * 100),
+        netSubtotalCents: lineEval ? lineEval.finalNetCents : Math.round(netSubtotal * 100),
       };
     });
 
@@ -6376,7 +6548,10 @@ export class MockInventoryService implements OnDestroy {
 
     const mode = params.paymentType || params.paymentMethod || 'EFECTIVO';
     if (mode === 'FIADO') {
-      const res = this.processCreditSale(netItems, params.customerId || '');
+      const res = this.processCreditSale(netItems, params.customerId || '', {
+        discountAmount: evaluation.totalDiscountAmount,
+        itemsAlreadyNet: true,
+      });
       if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
         this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
       }
@@ -6388,10 +6563,14 @@ export class MockInventoryService implements OnDestroy {
         totalCharged: res.total,
         change: 0,
         evaluation,
+        sale: res.sale,
       };
     } else {
       const cash = params.cashReceived ?? params.receivedAmount ?? evaluation.finalTotal;
-      const res = this.processCashSale(netItems, cash);
+      const res = this.processCashSale(netItems, cash, {
+        discountAmount: evaluation.totalDiscountAmount,
+        itemsAlreadyNet: true,
+      });
       if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
         this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
       }
@@ -6403,6 +6582,7 @@ export class MockInventoryService implements OnDestroy {
         totalCharged: res.total,
         change: res.change,
         evaluation,
+        sale: res.sale,
       };
     }
   }
@@ -6692,4 +6872,510 @@ export class MockInventoryService implements OnDestroy {
       message: `Producto "${prod.name}" rechazado.`,
     };
   }
+
+  // =====================================================================================
+  // BLOQUE H: CAJA, DEVOLUCIONES, CORTE DE TURNO Y TICKETS IMPRIMIBLES
+  // =====================================================================================
+
+  /**
+   * Cancela o devuelve una venta (total o por línea) con contra-asientos inmutables (Bloque H):
+   * - Requiere PIN de encargado o administrador y un motivo obligatorio.
+   * - Repone existencias en catálogo y registra DEVOLUCION_VENTA encadenada en Kardex.
+   * - Si la venta fue en EFECTIVO: Reembolsa efectivo (CashMovement SALIDA), reduciendo el cajón.
+   * - Si la venta fue a FIADO: Reduce la deuda del cliente en libreta sin tocar el efectivo ($0.00).
+   * - Nunca edita ni borra la venta original en el historial, solo anexa el contra-asiento.
+   */
+  async processSaleReturn(params: {
+    saleIdOrFolio: string;
+    itemsToReturn: ReturnItemRequest[];
+    reason: string;
+    pin: string;
+    authorizerName?: string;
+    condition?: ReturnCondition;
+    fiadoExcessMode?: 'SALDO_A_FAVOR' | 'REEMBOLSO_EFECTIVO';
+  }): Promise<{
+    ok: boolean;
+    message: string;
+    returnRecord?: SaleReturnRecord;
+    updatedSale?: SaleRecord;
+    revertedCreditAmount?: number;
+    creditFavorAdded?: number;
+    cashRefundedAmount?: number;
+    remainingAttempts?: number;
+    isLocked?: boolean;
+  }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const shiftCheck = assertShiftOpen(this.isShiftOpen());
+    if (!shiftCheck.allowed) {
+      return { ok: false, message: shiftCheck.error || 'Turno cerrado.' };
+    }
+
+    const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName);
+    if (!pinCheck.success) {
+      return {
+        ok: false,
+        message: pinCheck.message,
+        remainingAttempts: pinCheck.remainingAttempts,
+        isLocked: pinCheck.isLocked,
+      };
+    }
+
+    const sale = this.salesHistory().find(
+      (s) => s.id === params.saleIdOrFolio || s.folio === params.saleIdOrFolio
+    );
+    if (!sale) {
+      return { ok: false, message: `Venta #${params.saleIdOrFolio} no encontrada en el historial.` };
+    }
+
+    const defaultCondition: ReturnCondition = params.condition || 'VENDIBLE';
+    const validation = validateSaleReturn(sale, params.itemsToReturn, params.reason, {
+      condition: defaultCondition,
+    });
+    if (!validation.valid) {
+      return { ok: false, message: validation.error || 'Devolución inválida.' };
+    }
+
+    const authorizer = pinCheck.authorizedBy || params.authorizerName || 'Encargado';
+    const currentUser = this.activeUser();
+
+    return this.enqueueKardexOperation(async () => {
+      const { returnRecord, updatedSale } = applySaleReturnPure(sale, {
+        itemsToReturn: params.itemsToReturn,
+        user: currentUser,
+        authorizedBy: authorizer,
+        reason: params.reason,
+        condition: defaultCondition,
+      });
+
+      let cashRefundNeeded = 0;
+      let creditAbsorption:
+        | ReturnType<typeof revertCustomerCreditDebtFromReturn<CreditCustomer>>
+        | undefined;
+
+      if (sale.paymentType === 'EFECTIVO') {
+        cashRefundNeeded = returnRecord.totalRefund;
+      } else if (sale.paymentType === 'FIADO' && sale.customerId) {
+        const customer = this.creditCustomers().find((c) => c.id === sale.customerId);
+        if (customer) {
+          creditAbsorption = revertCustomerCreditDebtFromReturn(customer, returnRecord, {
+            date: new Date(),
+            excessMode: params.fiadoExcessMode || 'SALDO_A_FAVOR',
+          });
+          cashRefundNeeded = creditAbsorption.cashRefundAmount;
+        }
+      }
+
+      // Validar efectivo disponible en cajón ANTES de afectar inventario o cuentas
+      if (cashRefundNeeded > 0) {
+        const drawerCash = this.getRealDrawerCash();
+        if (cashRefundNeeded > drawerCash) {
+          return {
+            ok: false,
+            message: `Efectivo insuficiente en cajón ($${drawerCash.toFixed(2)} disponible) para reembolsar $${cashRefundNeeded.toFixed(2)}.`,
+          };
+        }
+      }
+
+      const enrichedReturnRecord: SaleReturnRecord = creditAbsorption
+        ? {
+            ...returnRecord,
+            creditDebtReverted: creditAbsorption.revertedAmount,
+            creditDebtRevertedCents: toCents(creditAbsorption.revertedAmount),
+            excessRefundAmount: creditAbsorption.excessAmount,
+            excessRefundAmountCents: toCents(creditAbsorption.excessAmount),
+            excessResolution: creditAbsorption.excessResolution,
+            cashRefundAmount: creditAbsorption.cashRefundAmount,
+            cashRefundAmountCents: toCents(creditAbsorption.cashRefundAmount),
+          }
+        : returnRecord;
+
+      const enrichedUpdatedSale: SaleRecord = {
+        ...updatedSale,
+        returns: updatedSale.returns.map((r, idx) =>
+          idx === updatedSale.returns.length - 1 ? enrichedReturnRecord : r
+        ),
+      };
+
+      // 1. Destino físico e inventario en Kardex encadenado (VENDIBLE -> DEVOLUCION_VENTA; MERMA -> DEVOLUCION_VENTA + MERMA)
+      let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
+      const newKardexEntries: KardexEntry[] = [];
+      let totalMermaCost = 0;
+
+      this.products.update((list) =>
+        list.map((prod) => {
+          const retLine = enrichedReturnRecord.items.find((r) => r.sku === prod.sku);
+          if (!retLine) return prod;
+
+          const itemCondition: ReturnCondition = retLine.condition || defaultCondition;
+          const unitCost = prod.weightedAvgCost ?? prod.unitCost ?? 0;
+          const costAmount = Math.round(unitCost * retLine.qty * 100) / 100;
+          if (itemCondition === 'MERMA') {
+            totalMermaCost = sumMoney([totalMermaCost, costAmount]);
+          }
+
+          const res = restoreStockFromReturn(prod, retLine.qty, {
+            usuario: authorizer,
+            referencia: `Devolución Venta #${sale.folio} (${enrichedReturnRecord.id})`,
+            previousHash: currentHash,
+            amount: retLine.refundAmount,
+            description: `Devolución venta #${sale.folio}: +${retLine.qty} ${prod.saleUnit || 'pz'} de ${prod.name}. Motivo: ${params.reason}`,
+            condition: itemCondition,
+            costAmount,
+            mermaReason: params.reason.trim(),
+          });
+
+          for (const entry of res.kardexEntries) {
+            newKardexEntries.push(entry);
+            currentHash = entry.entryHash;
+          }
+          return res.updatedProduct;
+        })
+      );
+
+      this.kardex.update((entries) => [...newKardexEntries.reverse(), ...entries]);
+      if (totalMermaCost > 0) {
+        this.cashShift.update((s) => ({
+          ...s,
+          shrinkTotalCost: sumMoney([s.shrinkTotalCost || 0, totalMermaCost]),
+        }));
+      }
+
+      // 2. Reversión monetaria (Efectivo y/o Fiado con abonos previos)
+      if (sale.paymentType === 'FIADO' && sale.customerId && creditAbsorption) {
+        this.creditCustomers.update((list) =>
+          list.map((c) => (c.id === sale.customerId ? creditAbsorption!.updatedCustomer : c))
+        );
+      }
+
+      if (cashRefundNeeded > 0) {
+        const mov = createCashMovement({
+          type: 'SALIDA',
+          amount: cashRefundNeeded,
+          reason:
+            sale.paymentType === 'FIADO'
+              ? `Reembolso excedente por devolución fiado #${sale.folio}: ${params.reason.trim()}`
+              : `Devolución de venta #${sale.folio}: ${params.reason.trim()}`,
+          user: currentUser,
+          reference: enrichedReturnRecord.id,
+          source: 'CAJA',
+          paymentMethod: 'EFECTIVO',
+        });
+        this.cashMovements.update((list) => sortCashMovementsByTimestamp([mov, ...list], 'desc'));
+
+        this.cashShift.update((s) => ({
+          ...s,
+          cashPayoutsTotal: sumMoney([s.cashPayoutsTotal || 0, cashRefundNeeded]),
+        }));
+        this.cashRegister.update((r) => ({
+          ...r,
+          cashPayoutsTotal: sumMoney([r.cashPayoutsTotal || 0, cashRefundNeeded]),
+        }));
+      }
+
+      // 3. Actualizar historial de ventas y de contra-asientos
+      this.salesHistory.update((list) =>
+        list.map((s) => (s.id === sale.id ? enrichedUpdatedSale : s))
+      );
+      this.saleReturns.update((list) => [enrichedReturnRecord, ...list]);
+
+      await this.flushSave();
+
+      return {
+        ok: true,
+        message: `Devolución de venta #${sale.folio} procesada con éxito (${enrichedUpdatedSale.status === 'CANCELADA' ? 'Cancelación Total' : 'Devolución Parcial'}). Reembolso: $${enrichedReturnRecord.totalRefund.toFixed(2)}.`,
+        returnRecord: enrichedReturnRecord,
+        updatedSale: enrichedUpdatedSale,
+        revertedCreditAmount: creditAbsorption?.revertedAmount ?? 0,
+        creditFavorAdded: creditAbsorption?.favorBalanceAdded ?? 0,
+        cashRefundedAmount: cashRefundNeeded,
+      };
+    });
+  }
+
+  /**
+   * Registra un movimiento extraordinario de efectivo (Entrada o Salida) en el turno actual (Bloque H).
+   */
+  async registerCashMovement(params: {
+    type: CashMovementType;
+    amount: number;
+    reason: string;
+    user?: string;
+    reference?: string;
+    source?: CashMovementSource;
+    paymentMethod?: CashPaymentMethod;
+    pin?: string;
+    authorizerName?: string;
+  }): Promise<{ ok: boolean; message: string; movement?: CashMovement; remainingAttempts?: number; isLocked?: boolean }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const shiftCheck = assertShiftOpen(this.isShiftOpen());
+    if (!shiftCheck.allowed) {
+      return { ok: false, message: shiftCheck.error || 'Turno cerrado.' };
+    }
+
+    if (isNaN(params.amount) || params.amount <= 0) {
+      return { ok: false, message: 'El monto del movimiento debe ser mayor a $0.00.' };
+    }
+    if (!params.reason || params.reason.trim().length < 3) {
+      return { ok: false, message: 'Debes ingresar un motivo descriptivo (mínimo 3 caracteres).' };
+    }
+
+    const source = params.source || 'CAJA';
+    const isCashDrawer = source === 'CAJA';
+
+    // Si es salida de caja, validar fondos disponibles
+    if (isCashDrawer && params.type === 'SALIDA') {
+      const drawerCash = this.getRealDrawerCash();
+      if (params.amount > drawerCash) {
+        return {
+          ok: false,
+          message: `Efectivo insuficiente en cajón ($${drawerCash.toFixed(2)} disponible). Ajusta el monto o selecciona 'Fondo Externo'.`,
+        };
+      }
+    }
+
+    // Si se proporcionó PIN, validarlo
+    let authorizer = params.user || this.activeUser();
+    if (params.pin && params.pin.trim()) {
+      const pinResult = await this.verifyAdminPin(params.pin, params.authorizerName || authorizer);
+      if (!pinResult.success) {
+        return {
+          ok: false,
+          message: pinResult.message,
+          remainingAttempts: pinResult.remainingAttempts,
+          isLocked: pinResult.isLocked,
+        };
+      }
+      authorizer = pinResult.authorizedBy || authorizer;
+    }
+
+    const mov = createCashMovement({
+      type: params.type,
+      amount: params.amount,
+      reason: params.reason.trim(),
+      user: authorizer,
+      reference: params.reference || (params.type === 'ENTRADA' ? 'ENTRADA-CAJA' : 'SALIDA-CAJA'),
+      source,
+      paymentMethod: params.paymentMethod || (isCashDrawer ? 'EFECTIVO' : 'OTRO'),
+    });
+
+    this.cashMovements.update((list) => sortCashMovementsByTimestamp([mov, ...list], 'desc'));
+
+    if (isCashDrawer && (!params.paymentMethod || params.paymentMethod === 'EFECTIVO')) {
+      if (params.type === 'ENTRADA') {
+        this.cashShift.update((s) => ({
+          ...s,
+          cashInTotal: sumMoney([s.cashInTotal || 0, params.amount]),
+        }));
+        this.cashRegister.update((r) => ({
+          ...r,
+          cashInTotal: sumMoney([r.cashInTotal || 0, params.amount]),
+        }));
+      } else {
+        this.cashShift.update((s) => ({
+          ...s,
+          cashPayoutsTotal: sumMoney([s.cashPayoutsTotal || 0, params.amount]),
+        }));
+        this.cashRegister.update((r) => ({
+          ...r,
+          cashPayoutsTotal: sumMoney([r.cashPayoutsTotal || 0, params.amount]),
+        }));
+      }
+    }
+
+    await this.flushSave();
+
+    return {
+      ok: true,
+      message: `Movimiento de ${params.type === 'ENTRADA' ? 'entrada' : 'salida'} registrado ($${params.amount.toFixed(2)}).`,
+      movement: mov,
+    };
+  }
+
+  /**
+   * Calcula el arqueo y corte de caja del turno actual con conteo físico (Bloque H).
+   */
+  getShiftCutSummary(physicalCash?: number): ShiftCutResult {
+    const s = this.cashShift();
+    return calculateShiftCut({
+      openingCash: s.openingCash,
+      cashSales: s.cashSalesTotal,
+      creditPayments: s.creditPaymentsReceived,
+      cashIn: s.cashInTotal || 0,
+      cashOut: s.cashPayoutsTotal || 0,
+      physicalCash: physicalCash !== undefined ? physicalCash : this.getRealDrawerCash(),
+    });
+  }
+
+  /**
+   * Cierra el turno de caja con PIN de encargado y bloqueo de edición (Bloque H).
+   */
+  async closeShift(params: {
+    physicalCash: number;
+    pin: string;
+    authorizerName?: string;
+    notes?: string;
+  }): Promise<{
+    ok: boolean;
+    message: string;
+    record?: ShiftCloseRecord;
+    remainingAttempts?: number;
+    isLocked?: boolean;
+  }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    if (!this.isShiftOpen()) {
+      return { ok: false, message: 'El turno actual ya se encuentra cerrado.' };
+    }
+
+    const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName || 'Encargado');
+    if (!pinCheck.success) {
+      return {
+        ok: false,
+        message: pinCheck.message,
+        remainingAttempts: pinCheck.remainingAttempts,
+        isLocked: pinCheck.isLocked,
+      };
+    }
+
+    const cut = this.getShiftCutSummary(params.physicalCash);
+    const s = this.cashShift();
+    const authorizer = pinCheck.authorizedBy || params.authorizerName || 'Encargado';
+
+    const record: ShiftCloseRecord = {
+      id: `CORTE-${Date.now()}`,
+      shiftId: this.currentShiftId(),
+      openedAt: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
+      closedAt: new Date().toISOString(),
+      openedBy: this.shiftOpenedBy(),
+      closedBy: this.activeUser(),
+      authorizedBy: authorizer,
+      openingCash: s.openingCash,
+      cashSales: s.cashSalesTotal,
+      creditPayments: s.creditPaymentsReceived,
+      cashIn: s.cashInTotal || 0,
+      cashOut: s.cashPayoutsTotal || 0,
+      theoreticalCash: cut.theoreticalCash,
+      physicalCash: cut.physicalCash,
+      difference: cut.difference,
+      status: cut.status,
+      notes: params.notes,
+    };
+
+    this.shiftCloseRecords.update((list) => [record, ...list]);
+    this.isShiftOpen.set(false);
+
+    await this.flushSave();
+
+    return {
+      ok: true,
+      message: `Turno cerrado exitosamente con corte de caja. ${cut.statusLabel}.`,
+      record,
+    };
+  }
+
+  /**
+   * Abre un nuevo turno de caja con nuevo fondo inicial tras un cierre (Bloque H).
+   */
+  async openNewShift(params: {
+    openingCash: number;
+    pin: string;
+    authorizerName?: string;
+    openedBy?: string;
+  }): Promise<{ ok: boolean; message: string; remainingAttempts?: number; isLocked?: boolean }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    if (this.isShiftOpen()) {
+      return { ok: false, message: 'El turno actual todavía está abierto.' };
+    }
+    if (isNaN(params.openingCash) || params.openingCash < 0) {
+      return { ok: false, message: 'Ingresa un fondo de apertura válido (>= $0.00).' };
+    }
+
+    const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName || 'Encargado');
+    if (!pinCheck.success) {
+      return {
+        ok: false,
+        message: pinCheck.message,
+        remainingAttempts: pinCheck.remainingAttempts,
+        isLocked: pinCheck.isLocked,
+      };
+    }
+
+    const opener = params.openedBy || pinCheck.authorizedBy || this.activeUser();
+    const newShiftId = `TURNO-${Date.now()}`;
+
+    this.currentShiftId.set(newShiftId);
+    this.shiftOpenedBy.set(opener);
+    this.cashShift.set({
+      openingCash: params.openingCash,
+      cashSalesTotal: 0.0,
+      creditPaymentsReceived: 0.0,
+      creditSalesTotal: 0.0,
+      internalConsumptionTotalCost: 0.0,
+      shrinkTotalCost: 0.0,
+      cashPayoutsTotal: 0.0,
+      cashInTotal: 0.0,
+    });
+    this.cashRegister.set({
+      openingFloat: params.openingCash,
+      cashSalesTotal: 0.0,
+      creditSalesTotal: 0.0,
+      creditPaymentsReceived: 0.0,
+      cashPayoutsTotal: 0.0,
+      cashInTotal: 0.0,
+    });
+
+    this.isShiftOpen.set(true);
+    await this.flushSave();
+
+    return {
+      ok: true,
+      message: `Nuevo turno abierto por ${opener} con fondo inicial de $${params.openingCash.toFixed(2)}.`,
+    };
+  }
+
+  /**
+   * Genera el ticket imprimible (@media print, 58mm y 80mm) con soporte para reimpresión "COPIA" (Bloque H).
+   */
+  getPrintableTicket(
+    saleIdOrFolio: string,
+    options?: { isCopy?: boolean; paperWidth?: TicketPaperWidth }
+  ): { text: string; html: string; sale?: SaleRecord } {
+    const sale = this.salesHistory().find(
+      (s) => s.id === saleIdOrFolio || s.folio === saleIdOrFolio
+    );
+    if (!sale) {
+      return { text: 'Venta no encontrada.', html: '<p>Venta no encontrada.</p>' };
+    }
+
+    const isCopy = Boolean(options?.isCopy);
+    if (isCopy) {
+      const updatedSale: SaleRecord = {
+        ...sale,
+        reprintCount: (sale.reprintCount || 0) + 1,
+      };
+      this.salesHistory.update((list) =>
+        list.map((s) => (s.id === sale.id ? updatedSale : s))
+      );
+    }
+
+    const currentSale = this.salesHistory().find((s) => s.id === sale.id) || sale;
+    const formatOpts: TicketFormatOptions = {
+      storeName: this.storeName,
+      isCopy,
+      paperWidth: options?.paperWidth || '58mm',
+    };
+
+    const text = formatTicketText(currentSale, formatOpts);
+    const html = formatTicketHtml(currentSale, formatOpts);
+
+    return { text, html, sale: currentSale };
+  }
+
 }

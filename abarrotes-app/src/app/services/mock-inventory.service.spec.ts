@@ -12,6 +12,7 @@ import {
   CORRUPT_STATE_KEY_PREFIX,
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY_V4,
   LEGACY_STATE_STORAGE_KEY,
   IndexedDbStateStorageAdapter,
   MemoryStateStorageAdapter,
@@ -3614,7 +3615,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     // Verificar que el estado guardado ahora está en v4
     const v4Saved = await adapter.load(STATE_STORAGE_KEY);
     expect(v4Saved).toBeDefined();
-    expect(v4Saved.schemaVersion).toBe(4);
+    expect(v4Saved.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(v4Saved.settings).toBeDefined();
     expect(v4Saved.users).toBeDefined();
 
@@ -3865,5 +3866,481 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const res = await service.updateBusinessSettings({ storeName: 'Súper Abarrotes San Miguel' });
     expect(res.ok).toBeTrue();
     expect(service.storeName).toBe('Súper Abarrotes San Miguel');
+  });
+
+  // =========================================================================
+  // PRUEBAS BLOQUE H: CAJA, DEVOLUCIONES, CORTE DE TURNO Y TICKETS IMPRIMIBLES
+  // =========================================================================
+
+  it('70. Bloque H (Integración): Vender en efectivo, devolver parcialmente con PIN y contra-asiento, repone stock con DEVOLUCION_VENTA y cuadra Kardex y caja', async () => {
+    await service.setupInitialPin('984312');
+    const prod = service.products().find((p) => p.sku === 'ACE-1L') || service.products()[0];
+    const initialStock = prod.stock;
+    const initialCash = service.getRealDrawerCash();
+
+    // 1. Venta en efectivo de 2 unidades
+    const saleRes = service.processCashSale(
+      [{ ...prod, qty: 2, subtotal: prod.salePrice * 2 } as any],
+      prod.salePrice * 2
+    );
+    expect(saleRes.ok).toBeTrue();
+    expect(saleRes.sale).toBeDefined();
+    const folio = saleRes.sale!.folio;
+
+    // Verificar deducción de stock y aumento en caja
+    const prodAfterSale = service.products().find((p) => p.sku === prod.sku)!;
+    expect(prodAfterSale.stock).toBe(initialStock - 2);
+    expect(service.getRealDrawerCash()).toBe(initialCash + prod.salePrice * 2);
+
+    // 2. Intento de devolución sin PIN -> Rechazado
+    const noPinDev = await service.processSaleReturn({
+      saleIdOrFolio: folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 1 }],
+      reason: 'Aceite con sello roto',
+      pin: '000000',
+    });
+    expect(noPinDev.ok).toBeFalse();
+
+    // 3. Devolución parcial de 1 unidad con PIN correcto
+    const devRes = await service.processSaleReturn({
+      saleIdOrFolio: folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 1 }],
+      reason: 'Aceite con sello roto',
+      pin: '984312',
+      authorizerName: 'Don Lupe (Encargado)',
+    });
+    expect(devRes.ok).toBeTrue();
+    expect(devRes.returnRecord).toBeDefined();
+    expect(devRes.returnRecord!.totalRefund).toBe(prod.salePrice);
+    expect(devRes.updatedSale!.status).toBe('DEVOLUCION_PARCIAL');
+
+    // 4. Reposición de stock en catálogo y Kardex
+    const prodAfterDev = service.products().find((p) => p.sku === prod.sku)!;
+    expect(prodAfterDev.stock).toBe(initialStock - 1);
+
+    const latestKardex = service.kardex()[0];
+    expect(latestKardex.type).toBe('DEVOLUCION_VENTA');
+    expect(latestKardex.cantidad).toBe(1);
+    expect(latestKardex.saldoResultante).toBe(prodAfterDev.stock);
+
+    // 5. Reversión en caja: genera CashMovement SALIDA y descuenta del cajón
+    expect(service.getRealDrawerCash()).toBe(initialCash + prod.salePrice);
+    const latestCashMov = service.cashMovements()[0];
+    expect(latestCashMov.type).toBe('SALIDA');
+    expect(latestCashMov.amount).toBe(prod.salePrice);
+    expect(latestCashMov.paymentMethod).toBe('EFECTIVO');
+
+    // 6. Cadena criptográfica SHA-256 y continuidad de stock siguen siendo 100% íntegras
+    const kardexCheck = service.verifyKardexIntegrity();
+    expect(kardexCheck.valid).toBeTrue();
+    const continuityCheck = verifyProductContinuity(service.products(), service.kardex());
+    expect(continuityCheck.valid).toBeTrue();
+  });
+
+  it('71. Bloque H (Integración): Venta a fiado, cancelación total con PIN y reversión en libreta de crédito sin afectar efectivo de caja', async () => {
+    await service.setupInitialPin('984312');
+    const createCust = service.createCustomer({
+      name: 'Vecina Lety Fiado H',
+      phone: '477-111-2233',
+      creditLimit: 1000.0,
+      creditDays: 15,
+    });
+    expect(createCust.ok).toBeTrue();
+    const customer = createCust.customer!;
+    const initialCustomerBal = customer.currentBalance;
+    const initialCash = service.getRealDrawerCash();
+    const prod = service.products()[0];
+    const initialStock = prod.stock;
+
+    // 1. Venta a fiado de 3 unidades
+    const totalSale = prod.salePrice * 3;
+    const fiadoRes = service.processCreditSale(
+      [{ ...prod, qty: 3, subtotal: totalSale } as any],
+      customer.id
+    );
+    expect(fiadoRes.ok).toBeTrue();
+    const folio = fiadoRes.sale!.folio;
+
+    // Saldo del cliente sube, efectivo del cajón no cambia
+    const custAfterSale = service.creditCustomers().find((c) => c.id === customer.id)!;
+    expect(custAfterSale.currentBalance).toBe(initialCustomerBal + totalSale);
+    expect(service.getRealDrawerCash()).toBe(initialCash);
+
+    // 2. Cancelación total de la venta por cambio de opinión
+    const cancelRes = await service.processSaleReturn({
+      saleIdOrFolio: folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 3 }],
+      reason: 'Cliente olvidó la cartera y no llevará fiado',
+      pin: '984312',
+    });
+    expect(cancelRes.ok).toBeTrue();
+    expect(cancelRes.updatedSale!.status).toBe('CANCELADA');
+    expect(cancelRes.returnRecord!.isFullCancellation).toBeTrue();
+
+    // 3. Deuda del cliente se revierte a su saldo inicial
+    const custAfterCancel = service.creditCustomers().find((c) => c.id === customer.id)!;
+    expect(custAfterCancel.currentBalance).toBe(initialCustomerBal);
+
+    // 4. Efectivo del cajón sigue exactamente igual ($0.00 de afectación)
+    expect(service.getRealDrawerCash()).toBe(initialCash);
+
+    // 5. Stock se reincorpora al 100% y Kardex se mantiene íntegro
+    const prodAfterCancel = service.products().find((p) => p.sku === prod.sku)!;
+    expect(prodAfterCancel.stock).toBe(initialStock);
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+  });
+
+  it('72. Bloque H (Integración): Movimientos de efectivo (entradas, gastos, retiros), corte de caja con diferencias, cierre de turno y bloqueo de edición', async () => {
+    await service.setupInitialPin('984312');
+    const cashBefore = service.getRealDrawerCash();
+
+    // 1. Entrada extraordinaria de efectivo ($250.00 por cobranza externa)
+    const inRes = await service.registerCashMovement({
+      type: 'ENTRADA',
+      amount: 250.0,
+      reason: 'Cobranza foránea ruta sur',
+    });
+    expect(inRes.ok).toBeTrue();
+    expect(service.getRealDrawerCash()).toBe(cashBefore + 250.0);
+
+    // 2. Salida de efectivo ($100.00 por compra de insumos de limpieza)
+    const outRes = await service.registerCashMovement({
+      type: 'SALIDA',
+      amount: 100.0,
+      reason: 'Compra de bolsas y franelas',
+    });
+    expect(outRes.ok).toBeTrue();
+    expect(service.getRealDrawerCash()).toBe(cashBefore + 250.0 - 100.0);
+
+    // 3. Intento de salida que supera el efectivo en cajón -> Rechazado
+    const overOut = await service.registerCashMovement({
+      type: 'SALIDA',
+      amount: 999999.0,
+      reason: 'Retiro exorbitante',
+    });
+    expect(overOut.ok).toBeFalse();
+    expect(overOut.message).toContain('insuficiente');
+
+    // 4. Corte de caja con cálculo de diferencia
+    const theoretical = service.getRealDrawerCash();
+    // Supongamos que en el conteo físico hay $20.00 menos (faltante)
+    const cutSummary = service.getShiftCutSummary(theoretical - 20.0);
+    expect(cutSummary.theoreticalCash).toBe(theoretical);
+    expect(cutSummary.physicalCash).toBe(theoretical - 20.0);
+    expect(cutSummary.difference).toBe(-20.0);
+    expect(cutSummary.status).toBe('FALTANTE');
+
+    // 5. Cierre de turno con PIN de encargado
+    const closeRes = await service.closeShift({
+      physicalCash: theoretical - 20.0,
+      pin: '984312',
+      notes: 'Faltante de $20 en monedas',
+    });
+    expect(closeRes.ok).toBeTrue();
+    expect(service.isShiftOpen()).toBeFalse();
+    expect(service.shiftCloseRecords().length).toBe(1);
+
+    // 6. Bloqueo de edición: Venta, abono o movimiento rechazados mientras el turno esté cerrado
+    const prod = service.products()[0];
+    const saleAttempt = service.processCashSale([{ ...prod, qty: 1, subtotal: prod.salePrice } as any], prod.salePrice);
+    expect(saleAttempt.ok).toBeFalse();
+    expect(saleAttempt.message).toContain('cerrado');
+
+    const movAttempt = await service.registerCashMovement({
+      type: 'ENTRADA',
+      amount: 50.0,
+      reason: 'Dinero extemporáneo',
+    });
+    expect(movAttempt.ok).toBeFalse();
+    expect(movAttempt.message).toContain('cerrado');
+
+    // 7. Apertura de nuevo turno con PIN y nuevo fondo inicial
+    const openRes = await service.openNewShift({
+      openingCash: 600.0,
+      pin: '984312',
+    });
+    expect(openRes.ok).toBeTrue();
+    expect(service.isShiftOpen()).toBeTrue();
+    expect(service.cashShift().openingCash).toBe(600.0);
+    expect(service.getRealDrawerCash()).toBe(600.0);
+  });
+
+  it('73. Bloque H: Ticket imprimible (@media print, 58mm y 80mm) con reimpresión y marca COPIA', async () => {
+    const prod = service.products()[0];
+    const saleRes = service.processCashSale(
+      [{ ...prod, qty: 2, subtotal: prod.salePrice * 2 } as any],
+      prod.salePrice * 2 + 50
+    );
+    expect(saleRes.ok).toBeTrue();
+    const folio = saleRes.sale!.folio;
+
+    // 1. Primera impresión (ticket original sin COPIA)
+    const ticketOriginal = service.getPrintableTicket(folio, { isCopy: false, paperWidth: '58mm' });
+    expect(ticketOriginal.text).toContain(service.storeName);
+    expect(ticketOriginal.text).toContain(folio);
+    expect(ticketOriginal.text).not.toContain('*** COPIA DE TICKET ***');
+    expect(ticketOriginal.html).toContain('ticket-58mm');
+    expect(ticketOriginal.html).toContain('@media print');
+
+    // 2. Reimpresión desde el historial (debe incluir la marca destacada de COPIA)
+    const ticketCopia = service.getPrintableTicket(folio, { isCopy: true, paperWidth: '80mm' });
+    expect(ticketCopia.text).toContain('*** COPIA DE TICKET ***');
+    expect(ticketCopia.html).toContain('*** COPIA DE TICKET ***');
+    expect(ticketCopia.html).toContain('ticket-80mm');
+    expect(ticketCopia.sale?.reprintCount).toBe(1);
+  });
+
+  it('74. Bloque H Seguimiento: Devolución parcial repetida rechaza exceder originalSoldQty - alreadyReturnedQty', async () => {
+    const prod = service.products()[0];
+    const initialStock = prod.stock;
+    const saleRes = service.processCashSale(
+      [{ ...prod, qty: 3, subtotal: prod.salePrice * 3 } as any],
+      prod.salePrice * 3
+    );
+    expect(saleRes.ok).toBeTrue();
+    const folio = saleRes.sale!.folio;
+
+    // 1. Primera devolución parcial: 2 unidades
+    const ret1 = await service.processSaleReturn({
+      saleIdOrFolio: folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 2 }],
+      reason: 'Devolución parcial inicial',
+      pin: '984312',
+    });
+    expect(ret1.ok).toBeTrue();
+    expect(ret1.updatedSale!.items[0].returnedQty).toBe(2);
+
+    // 2. Segunda devolución intentando 2 unidades más (cuando solo queda 3 - 2 = 1 disponible) -> RECHAZADO
+    const retOver = await service.processSaleReturn({
+      saleIdOrFolio: folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 2 }],
+      reason: 'Intento duplicado por encima del remanente',
+      pin: '984312',
+    });
+    expect(retOver.ok).toBeFalse();
+    expect(retOver.message).toContain('Solo quedan 1 disponibles');
+
+    // 3. Devolver exactamente 1 unidad restante -> APROBADO y marca CANCELADA
+    const retExact = await service.processSaleReturn({
+      saleIdOrFolio: folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 1 }],
+      reason: 'Cierre de devolución por unidad faltante',
+      pin: '984312',
+    });
+    expect(retExact.ok).toBeTrue();
+    expect(retExact.updatedSale!.status).toBe('CANCELADA');
+    expect(service.products().find((p) => p.sku === prod.sku)!.stock).toBe(initialStock);
+  });
+
+  it('75. Bloque H Seguimiento: Devolución sobre venta con descuento calcula reembolso neto en centavos sin exceder lo efectivamente pagado', async () => {
+    const prod = { ...service.products()[0], salePrice: 100.0 };
+    service.products.update((list) => list.map((p, idx) => (idx === 0 ? prod : p)));
+
+    // Descuento total de 20% autorizado con PIN sobre 3 piezas ($300 lista -> $240 neto pagado)
+    const items: PosSaleItem[] = [
+      {
+        sku: prod.sku,
+        barcode: prod.barcode,
+        name: prod.name,
+        emoji: '',
+        saleUnit: prod.saleUnit,
+        isBulk: prod.isBulk,
+        qty: 3,
+        unitPrice: 100.0,
+        subtotal: 300.0,
+      },
+    ];
+    const cashBefore = service.getRealDrawerCash();
+    const saleRes = await service.processSaleWithDiscounts({
+      items,
+      ticketDiscountPct: 20,
+      paymentType: 'EFECTIVO',
+      cashReceived: 240.0,
+      pin: '984312',
+    });
+    expect(saleRes.ok).toBeTrue();
+    expect(saleRes.totalCharged).toBe(240.0);
+    expect(saleRes.sale).toBeDefined();
+    expect(saleRes.sale!.totalCents).toBe(24000);
+    expect(service.getRealDrawerCash()).toBe(cashBefore + 240.0);
+
+    // Devolver 1 unidad: debe reembolsar $80.00 netos (8000 centavos), NUNCA $100.00 de lista
+    const ret1 = await service.processSaleReturn({
+      saleIdOrFolio: saleRes.sale!.folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 1 }],
+      reason: 'Cliente devuelve 1 unidad de paquete con descuento',
+      pin: '984312',
+    });
+    expect(ret1.ok).toBeTrue();
+    expect(ret1.returnRecord!.totalRefund).toBe(80.0);
+    expect(ret1.returnRecord!.totalRefundCents).toBe(8000);
+    expect(service.getRealDrawerCash()).toBe(cashBefore + 160.0);
+
+    // Devolver las 2 restantes: reembolsa $160.00; acumulado = $240.00 (jamás excede totalCents)
+    const ret2 = await service.processSaleReturn({
+      saleIdOrFolio: saleRes.sale!.folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 2 }],
+      reason: 'Devolución de las últimas 2 piezas',
+      pin: '984312',
+    });
+    expect(ret2.ok).toBeTrue();
+    expect(ret2.returnRecord!.totalRefundCents).toBe(16000);
+    expect(ret1.returnRecord!.totalRefundCents + ret2.returnRecord!.totalRefundCents).toBe(24000);
+    expect(service.getRealDrawerCash()).toBe(cashBefore);
+  });
+
+  it('76. Bloque H Seguimiento: Venta a fiado con abono previo absorbe deuda a $0.00 sin saldos negativos y registra excedente', async () => {
+    const custRes = service.createCustomer({
+      name: 'Don Beto Abono Previo',
+      phone: '477-999-8877',
+      creditLimit: 1000.0,
+      creditDays: 15,
+    });
+    expect(custRes.ok).toBeTrue();
+    const customerId = custRes.customer!.id;
+
+    // Venta a fiado de 2 unidades a $100 = $200.00
+    const prod = { ...service.products()[0], salePrice: 100.0 };
+    service.products.update((list) => list.map((p, idx) => (idx === 0 ? prod : p)));
+
+    const fiadoRes = service.processCreditSale(
+      [{ ...prod, qty: 2, subtotal: 200.0 } as any],
+      customerId
+    );
+    expect(fiadoRes.ok).toBeTrue();
+    const folio = fiadoRes.sale!.folio;
+
+    // Abono en efectivo de $150.00 -> deuda queda en $50.00 y entra $150 al cajón
+    const payRes = service.registerCreditPayment(customerId, 150.0, { paymentMethod: 'EFECTIVO' });
+    expect(payRes.ok).toBeTrue();
+    expect(service.creditCustomers().find((c) => c.id === customerId)!.currentBalance).toBe(50.0);
+
+    // Devolución total de $200.00 con modo REEMBOLSO_EFECTIVO para devolver los $150 abonados del cajón
+    const drawerBeforeRet = service.getRealDrawerCash();
+    const retRes = await service.processSaleReturn({
+      saleIdOrFolio: folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 2 }],
+      reason: 'Devolución total con abono previo en efectivo',
+      pin: '984312',
+      fiadoExcessMode: 'REEMBOLSO_EFECTIVO',
+    });
+    expect(retRes.ok).toBeTrue();
+    expect(retRes.revertedCreditAmount).toBe(50.0);
+    expect(retRes.cashRefundedAmount).toBe(150.0);
+    expect(retRes.creditFavorAdded).toBe(0);
+
+    const custAfter = service.creditCustomers().find((c) => c.id === customerId)!;
+    expect(custAfter.currentBalance).toBe(0); // Sin saldo negativo
+    expect(service.getRealDrawerCash()).toBe(drawerBeforeRet - 150.0);
+
+    // Segundo escenario: si el exceso se envía a SALDO_A_FAVOR, incrementa creditFavorBalance sin tocar cajón
+    const fiadoRes2 = service.processCreditSale(
+      [{ ...prod, qty: 1, subtotal: 100.0 } as any],
+      customerId
+    );
+    service.registerCreditPayment(customerId, 60.0, { paymentMethod: 'TRANSFERENCIA' });
+    const drawerBeforeFavor = service.getRealDrawerCash();
+    const retFavor = await service.processSaleReturn({
+      saleIdOrFolio: fiadoRes2.sale!.folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 1 }],
+      reason: 'Cliente conserva saldo a favor',
+      pin: '984312',
+      fiadoExcessMode: 'SALDO_A_FAVOR',
+    });
+    expect(retFavor.ok).toBeTrue();
+    expect(retFavor.revertedCreditAmount).toBe(40.0);
+    expect(retFavor.creditFavorAdded).toBe(60.0);
+    expect(retFavor.cashRefundedAmount).toBe(0);
+    expect(service.getRealDrawerCash()).toBe(drawerBeforeFavor);
+    const custFavor = service.creditCustomers().find((c) => c.id === customerId)!;
+    expect(custFavor.currentBalance).toBe(0);
+    expect(custFavor.creditFavorBalance).toBe(60.0);
+  });
+
+  it('77. Bloque H Seguimiento: Devolución con condition MERMA encadena DEVOLUCION_VENTA + MERMA en Kardex sin aumentar stock vendible y preserva SHA-256', async () => {
+    const prod = service.products().find((p) => p.sku === 'ACE-1L') || service.products()[0];
+    const initialStock = prod.stock;
+    const cashBefore = service.getRealDrawerCash();
+
+    // Venta de 2 unidades
+    const saleRes = service.processCashSale(
+      [{ ...prod, qty: 2, subtotal: prod.salePrice * 2 } as any],
+      prod.salePrice * 2
+    );
+    expect(saleRes.ok).toBeTrue();
+    const stockAfterSale = service.products().find((p) => p.sku === prod.sku)!.stock;
+    expect(stockAfterSale).toBe(initialStock - 2);
+
+    // Devolución de 1 unidad dañada/caducada (MERMA)
+    const mermaRet = await service.processSaleReturn({
+      saleIdOrFolio: saleRes.sale!.folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 1 }],
+      reason: 'Producto caducado devuelto por cliente',
+      pin: '984312',
+      condition: 'MERMA',
+    });
+    expect(mermaRet.ok).toBeTrue();
+    expect(mermaRet.returnRecord!.condition).toBe('MERMA');
+
+    // Contabilidad financiera sí reembolsó al cliente del cajón
+    expect(service.getRealDrawerCash()).toBe(cashBefore + prod.salePrice);
+
+    // Stock vendible disponible NO debe haber aumentado (se mantiene en initialStock - 2)
+    const stockAfterMerma = service.products().find((p) => p.sku === prod.sku)!.stock;
+    expect(stockAfterMerma).toBe(stockAfterSale);
+
+    // Kardex (newest-first): [0] = MERMA, [1] = DEVOLUCION_VENTA
+    expect(service.kardex()[0].type).toBe('MERMA');
+    expect(service.kardex()[0].saldoResultante).toBe(stockAfterSale);
+    expect(service.kardex()[1].type).toBe('DEVOLUCION_VENTA');
+    expect(service.kardex()[1].saldoResultante).toBe(stockAfterSale + 1);
+
+    // Cadena criptográfica SHA-256 y continuidad de inventario 100% válidas
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+    expect(verifyProductContinuity(service.products(), service.kardex()).valid).toBeTrue();
+  });
+
+  it('78. Bloque H Seguimiento: Migración de esquema v4 -> v5 hidrata Bloque H preservando Bloque G y elimina v4 tras validar v5', async () => {
+    const adapter = (service as any).storageAdapter;
+    const v4Data = {
+      schemaVersion: 4,
+      timestamp: '2026-11-12T18:00:00.000Z',
+      activeUser: 'Administrador',
+      products: service.products(),
+      creditCustomers: service.creditCustomers(),
+      cashShift: service.cashShift(),
+      cashRegister: service.cashRegister(),
+      kardex: service.kardex(),
+      shrinkRecords: service.shrinkRecords(),
+      auditLines: service.auditLines(),
+      suppliers: service.suppliers(),
+      accountsPayable: service.accountsPayable(),
+      priceHistory: service.productPriceHistory(),
+      cashMovements: service.cashMovements(),
+      settings: {
+        ...DEFAULT_BUSINESS_SETTINGS,
+        storeName: 'Abarrotes v4 Migrado',
+      },
+      users: service.users(),
+      securityAuditLog: service.securityAuditLog(),
+    };
+
+    await adapter.save(LEGACY_STATE_STORAGE_KEY_V4, v4Data);
+    const restoreRes = await service.restorePersistedState();
+    expect(restoreRes.success).toBeTrue();
+
+    expect(service.businessSettings().storeName).toBe('Abarrotes v4 Migrado');
+    expect(Array.isArray(service.salesHistory())).toBeTrue();
+    expect(Array.isArray(service.saleReturns())).toBeTrue();
+    expect(Array.isArray(service.shiftCloseRecords())).toBeTrue();
+    expect(service.isShiftOpen()).toBeTrue();
+
+    const v5Saved = await adapter.load(STATE_STORAGE_KEY);
+    expect(v5Saved).toBeDefined();
+    expect(v5Saved.schemaVersion).toBe(5);
+    expect(v5Saved.settings.storeName).toBe('Abarrotes v4 Migrado');
+
+    const v4AfterSuccess = await adapter.load(LEGACY_STATE_STORAGE_KEY_V4);
+    expect(v4AfterSuccess).toBeNull();
   });
 });

@@ -155,12 +155,13 @@ export type ProductContinuityVerifier = (
   entries: any[]
 ) => { valid: boolean; error?: string; affectedSkus: string[] };
 
-export const CURRENT_SCHEMA_VERSION = 4;
-export const STATE_STORAGE_KEY = 'binnitech_pos_state_v4';
+export const CURRENT_SCHEMA_VERSION = 5;
+export const STATE_STORAGE_KEY = 'binnitech_pos_state_v5';
+export const LEGACY_STATE_STORAGE_KEY_V4 = 'binnitech_pos_state_v4';
 export const LEGACY_STATE_STORAGE_KEY_V3 = 'binnitech_pos_state_v3';
 export const LEGACY_STATE_STORAGE_KEY_V2 = 'binnitech_pos_state_v2';
 export const LEGACY_STATE_STORAGE_KEY_V1 = 'binnitech_pos_state_v1';
-export const LEGACY_STATE_STORAGE_KEY = 'binnitech_pos_state_v3';
+export const LEGACY_STATE_STORAGE_KEY = 'binnitech_pos_state_v4';
 export const CORRUPT_STATE_KEY_PREFIX = 'binnitech_pos_state_corrupt_';
 export const MAX_CORRUPT_BACKUPS = 3;
 export const WRITER_LOCK_NAME = 'binnitech_pos_writer';
@@ -187,6 +188,11 @@ export interface PersistedAppState {
   settings?: BusinessSettings;
   users?: AppUser[];
   securityAuditLog?: SecurityAuditEntry[];
+  salesHistory?: any[];
+  saleReturns?: any[];
+  shiftCloseRecords?: any[];
+  isShiftOpen?: boolean;
+  currentShiftId?: string;
 }
 
 export interface ValidationResult {
@@ -311,6 +317,10 @@ export function migrateCustomerDefaults(c: any): any {
     isActive: c?.isActive !== false,
     debts: Array.isArray(c?.debts) ? c.debts : [],
     payments: Array.isArray(c?.payments) ? c.payments : [],
+    creditFavorBalance:
+      typeof c?.creditFavorBalance === 'number' && !isNaN(c.creditFavorBalance)
+        ? Math.max(0, c.creditFavorBalance)
+        : 0,
   };
 }
 
@@ -481,8 +491,6 @@ export function migrateState(data: any): MigrationResult {
       activeUser: working.activeUser || 'Don Lupe (Encargado)',
       products: migratedProducts,
       creditCustomers: Array.isArray(working.creditCustomers)
-        ? working.creditCustomers
-        : working.creditCustomers !== undefined
         ? working.creditCustomers.map(migrateCustomerDefaults)
         : [],
       cashShift: working.cashShift || {
@@ -537,6 +545,18 @@ export function migrateState(data: any): MigrationResult {
           },
       users: Array.isArray(working.users) && working.users.length > 0 ? working.users : buildDefaultDemoUsers(),
       securityAuditLog: Array.isArray(working.securityAuditLog) ? working.securityAuditLog : [],
+      salesHistory: Array.isArray(working.salesHistory) ? working.salesHistory : [],
+      saleReturns: Array.isArray(working.saleReturns)
+        ? working.saleReturns
+        : Array.isArray(working.salesHistory)
+        ? working.salesHistory.flatMap((s: any) => (Array.isArray(s?.returns) ? s.returns : []))
+        : [],
+      shiftCloseRecords: Array.isArray(working.shiftCloseRecords) ? working.shiftCloseRecords : [],
+      isShiftOpen: typeof working.isShiftOpen === 'boolean' ? working.isShiftOpen : true,
+      currentShiftId:
+        typeof working.currentShiftId === 'string' && working.currentShiftId.trim()
+          ? working.currentShiftId
+          : 'TURNO-1',
     };
   }
 

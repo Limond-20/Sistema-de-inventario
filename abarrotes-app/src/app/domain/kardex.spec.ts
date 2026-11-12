@@ -5,6 +5,7 @@ import {
   createKardexEntry,
   appendKardexEntry,
   deductStock,
+  restoreStockFromReturn,
   deductStockForDisposal,
   resolveShortageAlertAdjustment,
   verifyKardexChain,
@@ -477,4 +478,48 @@ test('Kardex (F2 Seguimiento): verifyProductContinuity y verifyKardexChain sigue
   // C. Verificación individual
   assert.equal(verifyProductContinuity('ACEITE-850', history, 7, 'newest-first').valid, true);
   assert.equal(verifyProductContinuity('ARROZ-1K', history, 15, 'newest-first').valid, true);
+});
+
+test('Kardex (Bloque H seguimiento): restoreStockFromReturn con condition MERMA encadena DEVOLUCION_VENTA + MERMA sin inflar stock físico y mantiene SHA-256 íntegro', () => {
+  const initialProd = { sku: 'LECHE-1L', name: 'Leche Entera 1L', saleUnit: 'Pz', stock: 10 };
+  const sale = deductStock(initialProd, 3, {
+    saleType: 'VENTA_EFECTIVO',
+    usuario: 'Cajero 1',
+    referencia: 'Ticket #V-1001',
+    amount: 84,
+    previousHash: 'GENESIS',
+  });
+  const prodAfterSale = sale.updatedProduct;
+  assert.equal(prodAfterSale.stock, 7);
+
+  let currentHash = sale.kardexEntries[sale.kardexEntries.length - 1].entryHash;
+
+  // Devolución de 2 piezas dañadas/caducadas (MERMA)
+  const mermaReturn = restoreStockFromReturn(prodAfterSale, 2, {
+    usuario: 'Don Lupe (Encargado)',
+    referencia: 'Devolución #V-1001',
+    previousHash: currentHash,
+    amount: 56,
+    condition: 'MERMA',
+    costAmount: 40,
+    mermaReason: 'Envase inflado/caducado',
+  });
+
+  // El stock físico vendible NO debe aumentar tras devolver producto merma
+  assert.equal(mermaReturn.updatedProduct.stock, 7);
+  assert.equal(mermaReturn.kardexEntries.length, 2);
+  assert.equal(mermaReturn.kardexEntries[0].type, 'DEVOLUCION_VENTA');
+  assert.equal(mermaReturn.kardexEntries[0].saldoAnterior, 7);
+  assert.equal(mermaReturn.kardexEntries[0].saldoResultante, 9);
+  assert.equal(mermaReturn.kardexEntries[1].type, 'MERMA');
+  assert.equal(mermaReturn.kardexEntries[1].saldoAnterior, 9);
+  assert.equal(mermaReturn.kardexEntries[1].saldoResultante, 7);
+  assert.equal(mermaReturn.kardexEntries[1].previousHash, mermaReturn.kardexEntries[0].entryHash);
+
+  const chronoEntries = [...sale.kardexEntries, ...mermaReturn.kardexEntries];
+  assert.equal(verifyKardexChain(chronoEntries, 'chronological').valid, true);
+  assert.equal(
+    verifyProductContinuity([mermaReturn.updatedProduct], chronoEntries, 'chronological').valid,
+    true
+  );
 });
