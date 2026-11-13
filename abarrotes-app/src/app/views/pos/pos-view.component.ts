@@ -16,6 +16,14 @@ import {
   multiplyMoney,
 } from '../../domain/money';
 import { getAllProductBarcodes } from '../../domain/catalog';
+import type { CashMovementType } from '../../domain/cash';
+import {
+  previewSaleReturnRefund,
+  type SaleRecord,
+  type SaleLineItem,
+  type ReturnCondition,
+} from '../../domain/sales';
+import type { TicketPaperWidth } from '../../domain/ticket';
 
 type BulkCalcMode = 'weight' | 'amount';
 
@@ -32,7 +40,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Búsqueda y Feedback ----------
   protected readonly searchQuery = signal<string>('');
   protected readonly syncNotification = signal<string | null>(null);
-  protected readonly saleFeedback = signal<{ ok: boolean; text: string } | null>(null);
+  protected readonly saleFeedback = signal<{ ok: boolean; text: string; sale?: SaleRecord } | null>(null);
 
   // ---------- Carrito Activo ----------
   protected readonly cart = signal<PosSaleItem[]>([
@@ -636,7 +644,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
         pin: this.discountAuthPin(),
       });
       if (res.ok) {
-        this.saleFeedback.set({ ok: true, text: res.message });
+        const lastSale = this.inv.lastCompletedSale();
+        this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
         this.cart.set([]);
         this.ticketDiscountPct.set(0);
         this.discountAuthPin.set('');
@@ -649,7 +658,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
     const res = this.inv.processCashSale(this.cart(), parseMoney(this.cashReceived() || 0));
     if (res.ok) {
-      this.saleFeedback.set({ ok: true, text: res.message });
+      const lastSale = this.inv.lastCompletedSale();
+      this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
       this.cart.set([]);
       this.ticketDiscountPct.set(0);
       this.closeCashModal();
@@ -689,7 +699,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
         pin: this.discountAuthPin(),
       });
       if (res.ok) {
-        this.saleFeedback.set({ ok: true, text: res.message });
+        const lastSale = this.inv.lastCompletedSale();
+        this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
         this.cart.set([]);
         this.ticketDiscountPct.set(0);
         this.discountAuthPin.set('');
@@ -702,7 +713,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
     const res = this.inv.processCreditSale(this.cart(), customer.id);
     if (res.ok) {
-      this.saleFeedback.set({ ok: true, text: res.message });
+      const lastSale = this.inv.lastCompletedSale();
+      this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
       this.cart.set([]);
       this.ticketDiscountPct.set(0);
       this.closeCreditModal();
@@ -730,7 +742,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
       this.consumptionReason(),
     );
     if (res.ok) {
-      this.saleFeedback.set({ ok: true, text: res.message });
+      const lastSale = this.inv.lastCompletedSale();
+      this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
       this.cart.set([]);
       this.consumptionPin.set('');
       this.consumptionReason.set('');
@@ -902,5 +915,347 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   closeCustomerFichaModal(): void {
     this.customerFichaModalOpen.set(false);
+  }
+
+  // =========================================================================
+  // BLOQUE H: MOVIMIENTOS DE EFECTIVO, CORTE/TURNO, HISTORIAL, DEVOLUCIONES Y TICKET
+  // =========================================================================
+
+  // ---------- 1. Movimientos de Efectivo ----------
+  protected readonly cashMovementModalOpen = signal<boolean>(false);
+  protected readonly cashMovementType = signal<CashMovementType>('ENTRADA');
+  protected readonly cashMovementMotive = signal<string>('FONDO');
+  protected readonly cashMovementAmount = signal<number>(50);
+  protected readonly cashMovementNotes = signal<string>('');
+  protected readonly cashMovementFeedback = signal<{ ok: boolean; message: string } | null>(null);
+
+  protected readonly canSubmitCashMovement = computed(() => {
+    const amt = Number(this.cashMovementAmount()) || 0;
+    if (amt <= 0) return false;
+    if (this.cashMovementType() === 'SALIDA') {
+      return amt <= this.inv.getExpectedDrawerCash();
+    }
+    return true;
+  });
+
+  openCashMovementModal(): void {
+    this.cashMovementType.set('ENTRADA');
+    this.cashMovementMotive.set('FONDO');
+    this.cashMovementAmount.set(50);
+    this.cashMovementNotes.set('');
+    this.cashMovementFeedback.set(null);
+    this.cashMovementModalOpen.set(true);
+  }
+
+  closeCashMovementModal(): void {
+    this.cashMovementModalOpen.set(false);
+  }
+
+  onCashMovementTypeChange(t: CashMovementType): void {
+    this.cashMovementType.set(t);
+    this.cashMovementMotive.set(t === 'ENTRADA' ? 'FONDO' : 'GASTO');
+  }
+
+  async submitCashMovement(): Promise<void> {
+    const amt = parseMoney(this.cashMovementAmount() || 0);
+    const reasonText = (this.cashMovementNotes().trim() || this.cashMovementMotive()).trim();
+    const res = await this.inv.registerCashMovement({
+      type: this.cashMovementType(),
+      amount: amt,
+      reason: reasonText,
+      reference: this.cashMovementMotive(),
+    });
+    this.cashMovementFeedback.set({ ok: res.ok, message: res.message });
+    if (res.ok) {
+      setTimeout(() => {
+        this.closeCashMovementModal();
+      }, 1000);
+    }
+  }
+
+  // ---------- 2. Corte de Turno y Apertura de Turno ----------
+  protected readonly shiftModalOpen = signal<boolean>(false);
+  protected readonly shiftCountedCash = signal<number>(0);
+  protected readonly shiftPin = signal<string>('');
+  protected readonly shiftNotes = signal<string>('');
+  protected readonly shiftFeedback = signal<{ ok: boolean; message: string } | null>(null);
+  protected readonly newShiftFloat = signal<number>(200);
+  protected readonly newShiftPin = signal<string>('');
+
+  protected readonly shiftData = computed(() => {
+    const s = this.inv.cashShift();
+    const isShiftOpen = this.inv.isShiftOpen();
+    const shiftId = this.inv.currentShiftId();
+    const counted = parseMoney(this.shiftCountedCash() || 0);
+    const cut = this.inv.getShiftCutSummary(counted);
+    return {
+      isShiftOpen,
+      shiftId,
+      openingFloat: s.openingCash,
+      cashSalesTotal: s.cashSalesTotal,
+      creditPaymentsReceived: s.creditPaymentsReceived,
+      cashInTotal: s.cashInTotal || 0,
+      cashOutTotal: s.cashPayoutsTotal || 0,
+      expectedCash: cut.theoreticalCash,
+      difference: cut.difference,
+      differenceStatus: cut.status,
+    };
+  });
+
+  openShiftModal(): void {
+    this.shiftCountedCash.set(this.inv.getExpectedDrawerCash());
+    this.shiftPin.set('');
+    this.shiftNotes.set('');
+    this.shiftFeedback.set(null);
+    this.newShiftFloat.set(this.inv.cashRegister().openingFloat || 200);
+    this.newShiftPin.set('');
+    this.shiftModalOpen.set(true);
+  }
+
+  closeShiftModal(): void {
+    this.shiftModalOpen.set(false);
+  }
+
+  async executeCloseShift(): Promise<void> {
+    const counted = parseMoney(this.shiftCountedCash() || 0);
+    const pin = this.shiftPin().trim();
+    if (!pin) {
+      this.shiftFeedback.set({ ok: false, message: 'Ingresa el PIN de Encargado o Administrador.' });
+      return;
+    }
+    const res = await this.inv.closeShift({
+      physicalCash: counted,
+      pin,
+      notes: this.shiftNotes().trim() || undefined,
+    });
+    this.shiftFeedback.set({ ok: res.ok, message: res.message });
+    if (res.ok) {
+      this.shiftPin.set('');
+    }
+  }
+
+  async executeOpenNewShift(): Promise<void> {
+    const floatAmt = parseMoney(this.newShiftFloat() || 0);
+    const pin = this.newShiftPin().trim();
+    if (!pin) {
+      this.shiftFeedback.set({ ok: false, message: 'Ingresa el PIN de Encargado o Administrador.' });
+      return;
+    }
+    const res = await this.inv.openNewShift({
+      openingCash: floatAmt,
+      pin,
+    });
+    this.shiftFeedback.set({ ok: res.ok, message: res.message });
+    if (res.ok) {
+      this.newShiftPin.set('');
+      setTimeout(() => this.closeShiftModal(), 1200);
+    }
+  }
+
+  // ---------- 3. Historial de Ventas ----------
+  protected readonly salesHistoryModalOpen = signal<boolean>(false);
+  protected readonly salesHistoryFilter = signal<'ALL' | 'EFECTIVO' | 'FIADO'>('ALL');
+  protected readonly filteredSalesHistory = computed(() => {
+    const f = this.salesHistoryFilter();
+    const list = [...this.inv.salesHistory()].reverse();
+    if (f === 'ALL') return list;
+    return list.filter((s) => s.paymentType === f);
+  });
+
+  openSalesHistoryModal(): void {
+    this.salesHistoryModalOpen.set(true);
+  }
+
+  closeSalesHistoryModal(): void {
+    this.salesHistoryModalOpen.set(false);
+  }
+
+  // ---------- 4. Devolución / Cancelación de Venta ----------
+  protected readonly returnModalOpen = signal<boolean>(false);
+  protected readonly selectedSaleForReturn = signal<SaleRecord | null>(null);
+  protected readonly returnLineQuantities = signal<Record<string, number>>({});
+  protected readonly returnReason = signal<string>('');
+  protected readonly returnPin = signal<string>('');
+  protected readonly returnCondition = signal<ReturnCondition>('VENDIBLE');
+  protected readonly returnFiadoExcessMode = signal<'SALDO_A_FAVOR' | 'REEMBOLSO_EFECTIVO'>('SALDO_A_FAVOR');
+  protected readonly returnFeedback = signal<{ ok: boolean; message: string } | null>(null);
+
+  protected readonly returnTotalRefund = computed(() => {
+    const sale = this.selectedSaleForReturn();
+    if (!sale) return 0;
+    const qtys = this.returnLineQuantities();
+    const itemsToReturn = Object.entries(qtys)
+      .filter(([_, q]) => q > 0)
+      .map(([sku, qty]) => ({ sku, qty }));
+    return previewSaleReturnRefund(sale, itemsToReturn).totalRefund;
+  });
+
+  getReturnLinePreview(item: SaleLineItem): number {
+    const sale = this.selectedSaleForReturn();
+    if (!sale) return 0;
+    const q = this.returnLineQuantities()[item.sku] || 0;
+    if (q <= 0) return 0;
+    return previewSaleReturnRefund(sale, [{ sku: item.sku, qty: q }]).totalRefund;
+  }
+
+  openReturnModal(sale: SaleRecord, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.selectedSaleForReturn.set(sale);
+    const initialQtys: Record<string, number> = {};
+    for (const item of sale.items) {
+      initialQtys[item.sku] = 0;
+    }
+    this.returnLineQuantities.set(initialQtys);
+    this.returnReason.set('');
+    this.returnPin.set('');
+    this.returnCondition.set('VENDIBLE');
+    this.returnFiadoExcessMode.set('SALDO_A_FAVOR');
+    this.returnFeedback.set(null);
+    this.returnModalOpen.set(true);
+  }
+
+  closeReturnModal(): void {
+    this.returnModalOpen.set(false);
+    this.selectedSaleForReturn.set(null);
+  }
+
+  setReturnLineQty(sku: string, qty: number): void {
+    const sale = this.selectedSaleForReturn();
+    if (!sale) return;
+    const item = sale.items.find((x) => x.sku === sku);
+    if (!item) return;
+    const maxAvailable = Math.max(0, item.qty - (item.returnedQty || 0));
+    const safeQty = Math.min(Math.max(0, qty), maxAvailable);
+    this.returnLineQuantities.update((map) => ({
+      ...map,
+      [sku]: safeQty,
+    }));
+  }
+
+  setReturnAllLines(): void {
+    const sale = this.selectedSaleForReturn();
+    if (!sale) return;
+    const allQtys: Record<string, number> = {};
+    for (const item of sale.items) {
+      allQtys[item.sku] = Math.max(0, item.qty - (item.returnedQty || 0));
+    }
+    this.returnLineQuantities.set(allQtys);
+  }
+
+  async confirmSaleReturn(): Promise<void> {
+    const sale = this.selectedSaleForReturn();
+    if (!sale) return;
+    const qtys = this.returnLineQuantities();
+    const itemsToReturn = Object.entries(qtys)
+      .filter(([_, q]) => q > 0)
+      .map(([sku, qty]) => ({ sku, qty }));
+
+    if (itemsToReturn.length === 0) {
+      this.returnFeedback.set({ ok: false, message: 'Indica al menos una cantidad a devolver.' });
+      return;
+    }
+
+    const reason = this.returnReason().trim();
+    if (reason.length < 3) {
+      this.returnFeedback.set({ ok: false, message: 'Ingresa un motivo válido para la devolución (mínimo 3 caracteres).' });
+      return;
+    }
+
+    const pin = this.returnPin().trim();
+    if (!pin) {
+      this.returnFeedback.set({ ok: false, message: 'Ingresa el PIN de Encargado o Administrador.' });
+      return;
+    }
+
+    const res = await this.inv.processSaleReturn({
+      saleIdOrFolio: sale.id,
+      itemsToReturn,
+      reason,
+      pin,
+      condition: this.returnCondition(),
+      fiadoExcessMode: this.returnFiadoExcessMode(),
+    });
+
+    this.returnFeedback.set({ ok: res.ok, message: res.message });
+    if (res.ok) {
+      const updated = this.inv.salesHistory().find((s) => s.id === sale.id);
+      if (updated) {
+        this.selectedSaleForReturn.set(updated);
+      }
+      this.returnPin.set('');
+      setTimeout(() => {
+        this.closeReturnModal();
+      }, 1500);
+    }
+  }
+
+  // ---------- 5. Vista Previa e Impresión de Ticket ----------
+  protected readonly ticketModalOpen = signal<boolean>(false);
+  protected readonly selectedSaleForTicket = signal<SaleRecord | null>(null);
+  protected readonly ticketPaperWidth = signal<TicketPaperWidth>('58mm');
+  protected readonly ticketIsCopy = signal<boolean>(false);
+  protected readonly ticketText = signal<string>('');
+  protected readonly ticketHtml = signal<string>('');
+
+  openTicketModal(sale: SaleRecord, forceCopy?: boolean, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.selectedSaleForTicket.set(sale);
+    const isCopy = forceCopy !== undefined ? forceCopy : (sale.reprintCount || 0) > 0;
+    this.ticketIsCopy.set(isCopy);
+    this.refreshTicketPreview(sale, this.ticketPaperWidth(), isCopy);
+    this.ticketModalOpen.set(true);
+  }
+
+  closeTicketModal(): void {
+    this.ticketModalOpen.set(false);
+    this.selectedSaleForTicket.set(null);
+  }
+
+  setTicketPaperWidth(width: TicketPaperWidth): void {
+    this.ticketPaperWidth.set(width);
+    const sale = this.selectedSaleForTicket();
+    if (sale) {
+      this.refreshTicketPreview(sale, width, this.ticketIsCopy());
+    }
+  }
+
+  private refreshTicketPreview(sale: SaleRecord, width: TicketPaperWidth, isCopy: boolean): void {
+    const res = this.inv.getPrintableTicket(sale.id, {
+      paperWidth: width,
+      isCopy,
+    });
+    this.ticketText.set(res.text);
+    this.ticketHtml.set(res.html);
+  }
+
+  printTicket(): void {
+    const html = this.ticketHtml();
+    if (!html) return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    iframe.contentWindow?.document.open();
+    iframe.contentWindow?.document.write(html);
+    iframe.contentWindow?.document.close();
+    iframe.contentWindow?.focus();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.print();
+      } finally {
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            iframe.parentNode.removeChild(iframe);
+          }
+        }, 1000);
+      }
+    }, 250);
   }
 }

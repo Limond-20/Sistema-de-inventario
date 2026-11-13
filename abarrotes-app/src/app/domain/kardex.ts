@@ -14,7 +14,11 @@ export type KardexType =
   | 'CONSUMO_INTERNO'
   | 'FALTANTE_SISTEMA'
   | 'CAMBIO_USUARIO'
-  | 'PAGO_PROVEEDOR';
+  | 'PAGO_PROVEEDOR'
+  | 'DEVOLUCION_VENTA'
+  | 'MERMA';
+
+export type ReturnCondition = 'VENDIBLE' | 'MERMA';
 
 export interface KardexProductInfo {
   sku: string;
@@ -517,6 +521,98 @@ export function deductStock<T extends StockItemLike>(
     shortageAlert,
   };
 }
+
+export interface StockReturnResult<T extends StockItemLike> {
+  updatedProduct: T;
+  kardexEntry: KardexEntry;
+  kardexEntries: KardexEntry[];
+}
+
+/**
+ * Procesa el destino físico del inventario tras una devolución o cancelación de venta (Bloque H):
+ * - Si condition === 'VENDIBLE' (predeterminado): suma la cantidad al stock activo con DEVOLUCION_VENTA.
+ * - Si condition === 'MERMA': registra la entrada contable DEVOLUCION_VENTA e inmediatamente
+ *   encadena una salida MERMA para que el stock físico vendible no se infle con mercancía inservible,
+ *   manteniendo intactas la continuidad de stock y la cadena criptográfica SHA-256.
+ */
+export function restoreStockFromReturn<T extends StockItemLike>(
+  product: T,
+  qtyReturned: number,
+  context: {
+    usuario: string;
+    referencia: string;
+    previousHash?: string;
+    amount?: number;
+    description?: string;
+    condition?: ReturnCondition;
+    costAmount?: number;
+    mermaReason?: string;
+  }
+): StockReturnResult<T> {
+  const condition: ReturnCondition = context.condition || 'VENDIBLE';
+  const saldoAnterior = product.stock;
+  const saldoTrasDevolucion = Math.round((saldoAnterior + qtyReturned) * 1000) / 1000;
+  const returnEntry = createKardexEntry(
+    {
+      type: 'DEVOLUCION_VENTA',
+      producto: { sku: product.sku, name: product.name, saleUnit: product.saleUnit },
+      cantidad: qtyReturned,
+      quantity: qtyReturned,
+      saldoAnterior,
+      saldoResultante: saldoTrasDevolucion,
+      stockAfter: saldoTrasDevolucion,
+      sku: product.sku,
+      usuario: context.usuario,
+      referencia: context.referencia,
+      amount: context.amount ?? 0,
+      description:
+        context.description ||
+        `Devolución de venta: +${qtyReturned} ${product.saleUnit || 'pz'} de ${product.name}`,
+    },
+    context.previousHash || 'GENESIS'
+  );
+
+  if (condition === 'MERMA') {
+    const mermaEntry = createKardexEntry(
+      {
+        type: 'MERMA',
+        producto: { sku: product.sku, name: product.name, saleUnit: product.saleUnit },
+        cantidad: -qtyReturned,
+        quantity: -qtyReturned,
+        saldoAnterior: saldoTrasDevolucion,
+        saldoResultante: saldoAnterior,
+        stockAfter: saldoAnterior,
+        sku: product.sku,
+        usuario: context.usuario,
+        referencia: `${context.referencia} [MERMA]`,
+        amount: context.costAmount ?? 0,
+        description: context.mermaReason
+          ? `Merma directa por devolución (${context.mermaReason}): -${qtyReturned} ${product.saleUnit || 'pz'} de ${product.name}`
+          : `Merma directa por devolución dañada/caducada: -${qtyReturned} ${product.saleUnit || 'pz'} de ${product.name}`,
+      },
+      returnEntry.entryHash
+    );
+
+    return {
+      updatedProduct: {
+        ...product,
+        stock: saldoAnterior,
+      },
+      kardexEntry: returnEntry,
+      kardexEntries: [returnEntry, mermaEntry],
+    };
+  }
+
+  return {
+    updatedProduct: {
+      ...product,
+      stock: saldoTrasDevolucion,
+    },
+    kardexEntry: returnEntry,
+    kardexEntries: [returnEntry],
+  };
+}
+
 
 export interface DisposalParams<T extends StockItemLike> {
   product: T;

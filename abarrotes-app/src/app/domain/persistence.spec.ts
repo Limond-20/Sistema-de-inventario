@@ -628,7 +628,7 @@ test('Persistencia (Bloque G): Migración v3 -> v4 incorpora settings, users y s
 
   const migration = migrateState(v3State);
   assert.equal(migration.migrated, true);
-  assert.equal(migration.state.schemaVersion, 4);
+  assert.equal(migration.state.schemaVersion, CURRENT_SCHEMA_VERSION);
 
   // Verifica que settings fue creado con los valores por defecto
   assert.ok(migration.state.settings);
@@ -641,6 +641,87 @@ test('Persistencia (Bloque G): Migración v3 -> v4 incorpora settings, users y s
   assert.ok(Array.isArray(migration.state.securityAuditLog));
 
   // Valida que el estado cumple con validateStoredState
+  const validation = validateStoredState(migration.state);
+  assert.equal(validation.valid, true);
+});
+
+test('Persistencia (Bloque H seguimiento): Migración v4 -> v5 integra salesHistory, saleReturns y shiftCloseRecords preservando Bloque G', () => {
+  const v4State = {
+    schemaVersion: 4,
+    timestamp: '2026-11-12T10:00:00.000Z',
+    activeUser: 'Administrador',
+    products: [],
+    creditCustomers: [
+      {
+        id: 'CLI-V4',
+        name: 'Cliente V4',
+        phone: '477-000-1122',
+        creditLimit: 500,
+        currentBalance: 100,
+        dueDate: '2026-11-30',
+      },
+    ],
+    cashShift: { openingCash: 750 },
+    cashRegister: { openingFloat: 750 },
+    kardex: [],
+    shrinkRecords: [],
+    auditLines: [],
+    suppliers: [],
+    accountsPayable: [],
+    priceHistory: [],
+    cashMovements: [],
+    settings: {
+      storeName: 'Abarrotes La Estrella',
+      initialCashFloat: 750,
+      initialCashFloatCents: 75000,
+      marginThresholdPct: 22,
+      defaultIvaPct: 16,
+      defaultIepsPct: 8,
+      inactivityTimeoutMinutes: 10,
+      maxDiscountPctWithoutPin: 15,
+    },
+    users: [
+      {
+        id: 'USR-ADMIN-1',
+        name: 'Administrador',
+        role: 'ADMINISTRADOR',
+        pinHash: 'abc',
+        pinSalt: 'def',
+        pinIterations: 100000,
+        isActive: true,
+        failedAttempts: 0,
+        lockedUntil: null,
+        lockoutCount: 0,
+      },
+    ],
+    securityAuditLog: [
+      {
+        id: 'SEC-1',
+        timestamp: '2026-11-12T09:00:00.000Z',
+        action: 'SETTINGS_UPDATED',
+        actorUser: 'Administrador',
+        details: 'Cambio inicial',
+        previousHash: 'GENESIS',
+        entryHash: 'hash1',
+      },
+    ],
+  };
+
+  const migration = migrateState(v4State);
+  assert.equal(migration.migrated, true);
+  assert.equal(migration.fromVersion, 4);
+  assert.equal(migration.toVersion, CURRENT_SCHEMA_VERSION);
+  assert.equal(migration.state.schemaVersion, 5);
+  assert.equal(migration.state.settings?.storeName, 'Abarrotes La Estrella');
+  assert.equal(migration.state.users?.length, 1);
+  assert.equal(migration.state.securityAuditLog?.length, 1);
+  assert.ok(Array.isArray(migration.state.salesHistory));
+  assert.ok(Array.isArray(migration.state.saleReturns));
+  assert.ok(Array.isArray(migration.state.shiftCloseRecords));
+  assert.equal(migration.state.isShiftOpen, true);
+  assert.equal(migration.state.currentShiftId, 'TURNO-1');
+  assert.equal(migration.state.creditCustomers[0].creditFavorBalance, 0);
+
   const validation = validateStoredState(migration.state);
   assert.equal(validation.valid, true);
 });

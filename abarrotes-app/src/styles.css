@@ -189,4 +189,24 @@ a[class*="bg-emerald-600"]:hover {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+
+  .ticket-58mm {
+    width: 200px !important;
+    max-width: 200px !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .ticket-80mm {
+    width: 280px !important;
+    max-width: 280px !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 12px !important;
+    line-height: 1.25 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }

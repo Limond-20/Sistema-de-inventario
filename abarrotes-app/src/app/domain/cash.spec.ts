@@ -5,6 +5,8 @@ import {
   createCashMovement,
   sortCashMovementsByTimestamp,
   reconcileCashMovements,
+  calculateShiftCut,
+  assertShiftOpen,
   type CashMovement,
 } from './cash.ts';
 
@@ -199,4 +201,70 @@ test('Tesorería (F2): Conciliación cronológica por timestamp y aislamiento de
   assert.equal(conciliacion.items[3].movement.reference, 'PXP-LAL-EXT');
   assert.equal(conciliacion.items[3].affectsDrawerCash, false);
   assert.equal(conciliacion.items[3].runningBalance, 1400.0);
+});
+
+
+test('Caja y Turnos (Bloque H): Corte de caja con retiros, gastos y detección de diferencias', () => {
+  // Caso 1: Caja perfectamente cuadrada ($0.00)
+  // Fondo inicial: $500.00
+  // Ventas contado: $2,500.00
+  // Abonos clientes en efectivo: $400.00
+  // Entradas extraordinarias: $150.00
+  // Salidas (Retiro $1,000 + Gasto luz $300 + Pago prov $500): $1,800.00
+  // Teórico: 500 + 2500 + 400 + 150 - 1800 = $1,750.00
+  const cutCuadrada = calculateShiftCut({
+    openingCash: 500.0,
+    cashSales: 2500.0,
+    creditPayments: 400.0,
+    cashIn: 150.0,
+    cashOut: 1800.0,
+    physicalCash: 1750.0,
+  });
+
+  assert.equal(cutCuadrada.theoreticalCash, 1750.0);
+  assert.equal(cutCuadrada.physicalCash, 1750.0);
+  assert.equal(cutCuadrada.difference, 0.0);
+  assert.equal(cutCuadrada.status, 'CUADRADA');
+
+  // Caso 2: Sobrante de dinero físico ($20.00 más)
+  const cutSobrante = calculateShiftCut({
+    openingCash: 500.0,
+    cashSales: 1000.0,
+    creditPayments: 0.0,
+    cashIn: 0.0,
+    cashOut: 200.0,
+    physicalCash: 1320.0, // Teórico: 500 + 1000 - 200 = 1300
+  });
+
+  assert.equal(cutSobrante.theoreticalCash, 1300.0);
+  assert.equal(cutSobrante.difference, 20.0);
+  assert.equal(cutSobrante.status, 'SOBRANTE');
+  assert.match(cutSobrante.statusLabel, /Sobrante de \$20\.00/);
+
+  // Caso 3: Faltante de dinero físico ($50.00 menos)
+  const cutFaltante = calculateShiftCut({
+    openingCash: 500.0,
+    cashSales: 1000.0,
+    creditPayments: 0.0,
+    cashIn: 0.0,
+    cashOut: 200.0,
+    physicalCash: 1250.0, // Teórico: 1300
+  });
+
+  assert.equal(cutFaltante.theoreticalCash, 1300.0);
+  assert.equal(cutFaltante.difference, -50.0);
+  assert.equal(cutFaltante.status, 'FALTANTE');
+  assert.match(cutFaltante.statusLabel, /Faltante de \$50\.00/);
+});
+
+test('Caja y Turnos (Bloque H): Bloqueo estricto de edición en turno cerrado', () => {
+  // Con turno abierto: permitido
+  const openCheck = assertShiftOpen(true);
+  assert.equal(openCheck.allowed, true);
+  assert.equal(openCheck.error, undefined);
+
+  // Con turno cerrado: bloqueado con mensaje explícito
+  const closedCheck = assertShiftOpen(false);
+  assert.equal(closedCheck.allowed, false);
+  assert.match(closedCheck.error || '', /cerrado con corte final/i);
 });

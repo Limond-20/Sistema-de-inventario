@@ -256,3 +256,95 @@ export function reconcileCashMovements(
     items,
   };
 }
+
+
+export type ShiftStatus = 'ABIERTO' | 'CERRADO';
+
+export interface ShiftCutParams {
+  openingCash: number;
+  cashSales: number;
+  creditPayments: number;
+  cashIn: number;
+  cashOut: number;
+  physicalCash: number;
+}
+
+export interface ShiftCutResult {
+  theoreticalCash: number;
+  physicalCash: number;
+  difference: number;
+  differenceCents: number;
+  status: 'CUADRADA' | 'SOBRANTE' | 'FALTANTE';
+  statusLabel: string;
+}
+
+export interface ShiftCloseRecord {
+  id: string; // e.g. "CORTE-20261112-113000"
+  shiftId: string;
+  openedAt: string;
+  closedAt: string;
+  openedBy: string;
+  closedBy: string;
+  authorizedBy: string; // Autorizado con PIN de Encargado/Admin
+  openingCash: number;
+  cashSales: number;
+  creditPayments: number;
+  cashIn: number;
+  cashOut: number;
+  theoreticalCash: number;
+  physicalCash: number;
+  difference: number;
+  status: 'CUADRADA' | 'SOBRANTE' | 'FALTANTE';
+  notes?: string;
+}
+
+/**
+ * Calcula el arqueo y corte de caja:
+ * Suma: ventas de contado + abonos + entradas - salidas (más fondo inicial)
+ * Compara contra el conteo físico y reporta diferencia exacta (cuadrada, sobrante o faltante).
+ */
+export function calculateShiftCut(params: ShiftCutParams): ShiftCutResult {
+  const theoretical = calculateTheoreticalDrawerCash({
+    openingFloat: params.openingCash,
+    cashSales: params.cashSales,
+    cashCreditPayments: params.creditPayments,
+    cashIn: params.cashIn,
+    cashPayouts: params.cashOut,
+  });
+  const theoreticalCents = Math.round(theoretical * 100);
+  const physicalCents = Math.round((Number(params.physicalCash) || 0) * 100);
+  const diffCents = physicalCents - theoreticalCents;
+  const difference = Math.round(diffCents) / 100;
+
+  let status: 'CUADRADA' | 'SOBRANTE' | 'FALTANTE' = 'CUADRADA';
+  let statusLabel = 'Caja Cuadrada ($0.00)';
+  if (diffCents > 0) {
+    status = 'SOBRANTE';
+    statusLabel = `Sobrante de $${difference.toFixed(2)}`;
+  } else if (diffCents < 0) {
+    status = 'FALTANTE';
+    statusLabel = `Faltante de $${Math.abs(difference).toFixed(2)}`;
+  }
+
+  return {
+    theoreticalCash: theoretical,
+    physicalCash: Math.round(physicalCents) / 100,
+    difference,
+    differenceCents: diffCents,
+    status,
+    statusLabel,
+  };
+}
+
+/**
+ * Valida el bloqueo de edición si el turno actual está cerrado.
+ */
+export function assertShiftOpen(isShiftOpen: boolean): { allowed: boolean; error?: string } {
+  if (!isShiftOpen) {
+    return {
+      allowed: false,
+      error: 'El turno de caja actual está cerrado con corte final. Abre un nuevo turno para realizar operaciones.',
+    };
+  }
+  return { allowed: true };
+}
