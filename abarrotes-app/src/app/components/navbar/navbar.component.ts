@@ -110,6 +110,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
     { key: 'fiados', label: 'Libreta de fiados', icon: 'book', link: '/pos', query: { tab: 'fiados' } },
     { key: 'catalogo', label: 'Catálogo y precios', icon: 'box', link: '/catalogo', query: null },
     { key: 'mermas', label: 'Mermas y consumos', icon: 'trash', link: '/mermas', query: null },
+    { key: 'ajustes', label: 'Ajustes y usuarios', icon: 'settings', link: '/ajustes', query: null },
   ];
 
   protected isActive(key: string): boolean {

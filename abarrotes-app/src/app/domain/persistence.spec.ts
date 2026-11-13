@@ -530,10 +530,10 @@ test('Persistencia (F2 Seguimiento): Migración v2 -> v3 de proveedores, cuentas
   const migrationRes = migrateState(v2State);
   assert.equal(migrationRes.migrated, true);
   assert.equal(migrationRes.fromVersion, 2);
-  assert.equal(migrationRes.toVersion, 3);
+  assert.equal(migrationRes.toVersion, CURRENT_SCHEMA_VERSION);
 
   const migratedState = migrationRes.state;
-  assert.equal(migratedState.schemaVersion, 3);
+  assert.equal(migratedState.schemaVersion, CURRENT_SCHEMA_VERSION);
 
   // Verificar proveedores con valores por defecto
   assert.equal(migratedState.suppliers?.length, 1);
@@ -576,7 +576,7 @@ test('Persistencia (F2 Seguimiento): Migración v2 -> v3 de proveedores, cuentas
 
   const bakMigration = migrateState(parsedFromBak);
   assert.equal(bakMigration.migrated, true);
-  assert.equal(bakMigration.state.schemaVersion, 3);
+  assert.equal(bakMigration.state.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(bakMigration.state.suppliers?.length, 1);
   assert.equal(bakMigration.state.accountsPayable?.length, 1);
   assert.equal(verifyKardexChain(bakMigration.state.kardex, 'newest-first').valid, true);
@@ -605,4 +605,42 @@ test('Persistencia (F2 Seguimiento): Migración v2 -> v3 de proveedores, cuentas
   }
   assert.equal(await adapter.load(LEGACY_V2_KEY), null, 'Una vez validado v3, la clave legacy v2 se limpia correctamente');
   assert.ok(await adapter.load(V3_KEY), 'El estado v3 permanece disponible');
+});
+
+test('Persistencia (Bloque G): Migración v3 -> v4 incorpora settings, users y securityAuditLog', async () => {
+  const v3State = {
+    schemaVersion: 3,
+    timestamp: '2026-11-08T12:00:00.000Z',
+    activeUser: 'Don Lupe (Encargado)',
+    products: [],
+    creditCustomers: [],
+    cashShift: { openingCash: 1000 },
+    cashRegister: { currentBalance: 1000 },
+    kardex: [],
+    shrinkRecords: [],
+    auditLines: [],
+    suppliers: [],
+    accountsPayable: [],
+    priceHistory: [],
+    cashMovements: [],
+    maxDiscountPctWithoutPin: 12.0,
+  };
+
+  const migration = migrateState(v3State);
+  assert.equal(migration.migrated, true);
+  assert.equal(migration.state.schemaVersion, 4);
+
+  // Verifica que settings fue creado con los valores por defecto
+  assert.ok(migration.state.settings);
+  assert.equal(migration.state.settings.storeName, 'Mi Tiendita');
+  assert.equal(migration.state.settings.maxDiscountPctWithoutPin, 12.0); // preservó el valor de v3
+  assert.equal(migration.state.settings.inactivityTimeoutMinutes, 5);
+
+  // Verifica que users y securityAuditLog se inicializaron como arreglos
+  assert.ok(Array.isArray(migration.state.users));
+  assert.ok(Array.isArray(migration.state.securityAuditLog));
+
+  // Valida que el estado cumple con validateStoredState
+  const validation = validateStoredState(migration.state);
+  assert.equal(validation.valid, true);
 });

@@ -16,17 +16,151 @@
  * =====================================================================================
  */
 
+import type { BusinessSettings } from './settings';
+import type { AppUser } from './auth';
+import type { SecurityAuditEntry } from './audit-log';
+
+export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
+  storeName: 'Mi Tiendita',
+  initialCashFloat: 1000.0,
+  initialCashFloatCents: 100000,
+  marginThresholdPct: 20.0,
+  defaultIvaPct: 16.0,
+  defaultIepsPct: 0.0,
+  inactivityTimeoutMinutes: 5,
+  maxDiscountPctWithoutPin: 10.0,
+};
+
+export function validateBusinessSettings(input: Partial<BusinessSettings>): {
+  valid: boolean;
+  ok: boolean;
+  sanitized: BusinessSettings;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  const storeName = (input.storeName ?? DEFAULT_BUSINESS_SETTINGS.storeName).trim();
+  if (storeName.length < 2) {
+    errors.push('El nombre del negocio debe tener al menos 2 caracteres.');
+  }
+
+  const initialCashFloat = Math.max(
+    0,
+    Number(input.initialCashFloat ?? DEFAULT_BUSINESS_SETTINGS.initialCashFloat) || 0
+  );
+  const initialCashFloatCents = Math.round(initialCashFloat * 100);
+
+  const marginThresholdPct = Math.min(
+    100,
+    Math.max(0, Number(input.marginThresholdPct ?? DEFAULT_BUSINESS_SETTINGS.marginThresholdPct) || 0)
+  );
+  const defaultIvaPct = Math.min(
+    100,
+    Math.max(0, Number(input.defaultIvaPct ?? DEFAULT_BUSINESS_SETTINGS.defaultIvaPct) || 0)
+  );
+  const defaultIepsPct = Math.min(
+    100,
+    Math.max(0, Number(input.defaultIepsPct ?? DEFAULT_BUSINESS_SETTINGS.defaultIepsPct) || 0)
+  );
+
+  const rawTimeout =
+    input.inactivityTimeoutMinutes !== undefined
+      ? Number(input.inactivityTimeoutMinutes)
+      : DEFAULT_BUSINESS_SETTINGS.inactivityTimeoutMinutes;
+  const inactivityTimeoutMinutes = Math.min(
+    240,
+    Math.max(1, Math.round(Number.isFinite(rawTimeout) ? rawTimeout : 5))
+  );
+  const maxDiscountPctWithoutPin = Math.min(
+    100,
+    Math.max(0, Number(input.maxDiscountPctWithoutPin ?? DEFAULT_BUSINESS_SETTINGS.maxDiscountPctWithoutPin) || 0)
+  );
+
+  return {
+    valid: errors.length === 0,
+    ok: errors.length === 0,
+    sanitized: {
+      storeName: storeName.length >= 2 ? storeName : DEFAULT_BUSINESS_SETTINGS.storeName,
+      initialCashFloat,
+      initialCashFloatCents,
+      marginThresholdPct,
+      defaultIvaPct,
+      defaultIepsPct,
+      inactivityTimeoutMinutes,
+      maxDiscountPctWithoutPin,
+    },
+    errors,
+  };
+}
+
+export function buildDefaultDemoUsers(): AppUser[] {
+  return [
+    {
+      id: 'USR-ADMIN-01',
+      name: 'Administrador',
+      role: 'ADMINISTRADOR',
+      salt: 'c4ca4238a0b923820dcc509a6f75849b',
+      pinHash: 'b5d84871032321ef80a525f20f1fb2a1d2e1329bf33783a0026e64c125dfef11',
+      iterations: 600000,
+      isActive: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      createdAt: '2026-11-01T00:00:00.000Z',
+    },
+    {
+      id: 'USR-LUPE-01',
+      name: 'Don Lupe (Encargado)',
+      role: 'ENCARGADO',
+      salt: 'c81e728d9d4c2f636f067f89cc14862c',
+      pinHash: 'f454f738f6d89efd95e0c52bb1b415a99577747e44e99f5b2b2b2b2b2b2b2b2b',
+      iterations: 600000,
+      isActive: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      createdAt: '2026-11-01T00:00:00.000Z',
+    },
+    {
+      id: 'USR-MARIA-01',
+      name: 'María (Cajera)',
+      role: 'CAJERO',
+      salt: 'eccbc87e4b5ce2fe28308fd9f2a7baf3',
+      pinHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
+      iterations: 600000,
+      isActive: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      createdAt: '2026-11-01T00:00:00.000Z',
+    },
+    {
+      id: 'USR-PEDRO-01',
+      name: 'Pedro (Cajero)',
+      role: 'CAJERO',
+      salt: 'a87ff679a2f3e71d9181a67b7542122c',
+      pinHash: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      iterations: 600000,
+      isActive: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      createdAt: '2026-11-01T00:00:00.000Z',
+    },
+  ];
+}
+
 export type KardexChainVerifier = (entries: any[]) => { valid: boolean; error?: string };
 export type ProductContinuityVerifier = (
   products: any[],
   entries: any[]
 ) => { valid: boolean; error?: string; affectedSkus: string[] };
 
-export const CURRENT_SCHEMA_VERSION = 3;
-export const STATE_STORAGE_KEY = 'binnitech_pos_state_v3';
+export const CURRENT_SCHEMA_VERSION = 4;
+export const STATE_STORAGE_KEY = 'binnitech_pos_state_v4';
+export const LEGACY_STATE_STORAGE_KEY_V3 = 'binnitech_pos_state_v3';
 export const LEGACY_STATE_STORAGE_KEY_V2 = 'binnitech_pos_state_v2';
 export const LEGACY_STATE_STORAGE_KEY_V1 = 'binnitech_pos_state_v1';
-export const LEGACY_STATE_STORAGE_KEY = 'binnitech_pos_state_v2';
+export const LEGACY_STATE_STORAGE_KEY = 'binnitech_pos_state_v3';
 export const CORRUPT_STATE_KEY_PREFIX = 'binnitech_pos_state_corrupt_';
 export const MAX_CORRUPT_BACKUPS = 3;
 export const WRITER_LOCK_NAME = 'binnitech_pos_writer';
@@ -50,6 +184,9 @@ export interface PersistedAppState {
   accountsPayable?: any[];
   priceHistory?: any[];
   cashMovements?: any[];
+  settings?: BusinessSettings;
+  users?: AppUser[];
+  securityAuditLog?: SecurityAuditEntry[];
 }
 
 export interface ValidationResult {
@@ -103,6 +240,12 @@ export function validateStoredState(
   }
   if (data.cashMovements !== undefined && !Array.isArray(data.cashMovements)) {
     return { valid: false, reason: 'La colección de movimientos de caja está dañada o no es un arreglo.' };
+  }
+  if (data.users !== undefined && !Array.isArray(data.users)) {
+    return { valid: false, reason: 'La colección de usuarios está dañada o no es un arreglo.' };
+  }
+  if (data.securityAuditLog !== undefined && !Array.isArray(data.securityAuditLog)) {
+    return { valid: false, reason: 'La bitácora de auditoría de seguridad está dañada o no es un arreglo.' };
   }
 
   // 3. Validar consistencia básica de productos
@@ -377,6 +520,23 @@ export function migrateState(data: any): MigrationResult {
         ? working.priceHistory.map(migratePriceHistoryDefaults)
         : [],
       cashMovements: Array.isArray(working.cashMovements) ? working.cashMovements : [],
+      settings: working.settings
+        ? validateBusinessSettings({
+            ...working.settings,
+            maxDiscountPctWithoutPin:
+              typeof working.maxDiscountPctWithoutPin === 'number'
+                ? working.maxDiscountPctWithoutPin
+                : working.settings.maxDiscountPctWithoutPin,
+          }).sanitized
+        : {
+            ...DEFAULT_BUSINESS_SETTINGS,
+            maxDiscountPctWithoutPin:
+              typeof working.maxDiscountPctWithoutPin === 'number'
+                ? working.maxDiscountPctWithoutPin
+                : 10,
+          },
+      users: Array.isArray(working.users) && working.users.length > 0 ? working.users : buildDefaultDemoUsers(),
+      securityAuditLog: Array.isArray(working.securityAuditLog) ? working.securityAuditLog : [],
     };
   }
 

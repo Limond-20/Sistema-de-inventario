@@ -1,6 +1,10 @@
 import { calculateDueDate } from '../domain/suppliers';
+import { hasPermission, ROLE_PERMISSIONS } from '../domain/auth';
+import { verifySecurityAuditChain } from '../domain/audit-log';
+import { DEFAULT_BUSINESS_SETTINGS } from '../domain/settings';
+import { authGuard } from '../guards/auth.guard';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { MockInventoryService, ShrinkRecord, ReceptionLine, PosSaleItem } from './mock-inventory.service';
 import { PosViewComponent } from '../views/pos/pos-view.component';
 import { createKardexEntry, verifyProductContinuity } from '../domain/kardex';
@@ -1938,7 +1942,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
           {
             sku: pendingProd.sku,
             name: pendingProd.name,
-            emoji: '📦',
+            emoji: '',
             qtyPurchase: 5,
             purchaseUnit: 'Caja',
             unitsPerPurchase: 10,
@@ -1962,7 +1966,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
           sku: pendingProd.sku,
           barcode: pendingProd.barcode,
           name: pendingProd.name,
-          emoji: '📦',
+          emoji: '',
           saleUnit: 'Pieza',
           isBulk: false,
           qty: 1,
@@ -1981,7 +1985,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
           sku: pendingProd.sku,
           barcode: pendingProd.barcode,
           name: pendingProd.name,
-          emoji: '📦',
+          emoji: '',
           saleUnit: 'Pieza',
           isBulk: false,
           qty: 1,
@@ -3238,12 +3242,12 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(foundSup).toBeDefined();
     expect(foundSup?.paymentTerms).toBe('CONTADO'); // Migrado con valor por defecto
 
-    // Verificar que el estado guardado ahora está en v3
-    const v3Saved = await adapter.load('binnitech_pos_state_v3');
-    expect(v3Saved).toBeDefined();
-    expect(v3Saved.schemaVersion).toBe(3);
+    // Verificar que el estado guardado ahora está en la versión actual (v4)
+    const v4Saved = await adapter.load(STATE_STORAGE_KEY);
+    expect(v4Saved).toBeDefined();
+    expect(v4Saved.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 
-    // Verificar que la clave legacy v2 fue eliminada tras la validación exitosa de v3
+    // Verificar que la clave legacy v2 fue eliminada tras la validación exitosa de la versión actual
     const legacyCheck = await adapter.load('binnitech_pos_state_v2');
     expect(legacyCheck).toBeNull();
   });
@@ -3401,5 +3405,465 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     });
     expect(altaPedroSanchez.ok).toBeTrue();
     expect(altaPedroSanchez.customer?.name).toBe('Pedro Sánchez');
+  });
+
+  it('58. Bloque G: Permisos estrictos por rol (Cajero, Encargado, Administrador)', async () => {
+    // 1. Cajero
+    expect(hasPermission('CAJERO', 'vender')).toBeTrue();
+    expect(hasPermission('CAJERO', 'cobrar')).toBeTrue();
+    expect(hasPermission('CAJERO', 'abonar')).toBeTrue();
+    expect(hasPermission('CAJERO', 'recepcion')).toBeFalse();
+    expect(hasPermission('CAJERO', 'mermas')).toBeFalse();
+    expect(hasPermission('CAJERO', 'auditoria')).toBeFalse();
+    expect(hasPermission('CAJERO', 'ajustes')).toBeFalse();
+    expect(hasPermission('CAJERO', 'usuarios')).toBeFalse();
+    expect(hasPermission('CAJERO', 'precios')).toBeFalse();
+
+    // 2. Encargado
+    expect(hasPermission('ENCARGADO', 'vender')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'recepcion')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'mermas')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'auditoria')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'cortes')).toBeTrue();
+    expect(hasPermission('ENCARGADO', 'ajustes')).toBeFalse();
+    expect(hasPermission('ENCARGADO', 'usuarios')).toBeFalse();
+    expect(hasPermission('ENCARGADO', 'precios')).toBeFalse();
+
+    // 3. Administrador
+    expect(hasPermission('ADMINISTRADOR', 'ajustes')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'usuarios')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'precios')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'respaldos')).toBeTrue();
+    expect(hasPermission('ADMINISTRADOR', 'restablecer')).toBeTrue();
+
+    // 4. Bloqueo en tiempo de ejecución: Si el usuario activo es Cajero, no puede dar de alta usuarios
+    const maria = service.users().find((u) => u.name.includes('María'))!;
+    await service.loginWithPin(maria.id, '719283');
+    expect(service.currentUser()?.role).toBe('CAJERO');
+
+    const createRes = await service.createUser({
+      name: 'Intruso',
+      role: 'CAJERO',
+      pin: '998877',
+    });
+    expect(createRes.ok).toBeFalse();
+    expect(createRes.message).toContain('Permiso denegado');
+  });
+
+  it('59. Bloque G: Bloqueo tras 3 intentos fallidos individual por usuario', async () => {
+    const maria = service.users().find((u) => u.name.includes('María'))!;
+    expect(maria).toBeDefined();
+
+    // Intento 1 incorrecto
+    const r1 = await service.loginWithPin(maria.id, '000000');
+    expect(r1.success).toBeFalse();
+    expect(r1.remainingAttempts).toBe(2);
+    expect(r1.isLocked).toBeFalse();
+
+    // Intento 2 incorrecto
+    const r2 = await service.loginWithPin(maria.id, '111111');
+    expect(r2.success).toBeFalse();
+    expect(r2.remainingAttempts).toBe(1);
+    expect(r2.isLocked).toBeFalse();
+
+    // Intento 3 incorrecto -> Se bloquea
+    const r3 = await service.loginWithPin(maria.id, '222222');
+    expect(r3.success).toBeFalse();
+    expect(r3.remainingAttempts).toBe(0);
+    expect(r3.isLocked).toBeTrue();
+    expect(r3.lockedRemainingSeconds).toBeGreaterThan(0);
+
+    // Intento 4 con el PIN CORRECTO mientras está bloqueada -> Rechazado por bloqueo temporal
+    const r4 = await service.loginWithPin(maria.id, '719283');
+    expect(r4.success).toBeFalse();
+    expect(r4.isLocked).toBeTrue();
+    expect(r4.message).toContain('bloqueado');
+
+    // Comprobar que otro usuario (Pedro) NO está bloqueado y puede ingresar con su PIN correcto
+    const pedro = service.users().find((u) => u.name.includes('Pedro'))!;
+    const rPedro = await service.loginWithPin(pedro.id, '628491');
+    expect(rPedro.success).toBeTrue();
+    expect(service.currentUser()?.id).toBe(pedro.id);
+  });
+
+  it('60. Bloque G: Bitácora de auditoría inmutable y encadenada (SHA-256)', async () => {
+    // Iniciar como Administrador
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    await service.loginWithPin(admin.id, '984312');
+
+    // 1. Modificar ajustes del negocio
+    const settingsRes = await service.updateBusinessSettings({
+      storeName: 'Abarrotes El Triunfo de León',
+      initialCashFloat: 1800,
+      marginThresholdPct: 22,
+    });
+    expect(settingsRes.ok).toBeTrue();
+
+    // 2. Crear nuevo usuario
+    const userRes = await service.createUser({
+      name: 'Sonia Test',
+      role: 'CAJERO',
+      pin: '556677',
+    });
+    expect(userRes.ok).toBeTrue();
+    expect(userRes.user).toBeDefined();
+
+    // 3. Modificar rol del nuevo usuario
+    const roleRes = await service.updateUserRole(userRes.user!.id, 'ENCARGADO');
+    expect(roleRes.ok).toBeTrue();
+
+    // 4. Verificar integridad de la cadena criptográfica
+    const auditLog = service.securityAuditLog();
+    expect(auditLog.length).toBeGreaterThanOrEqual(3);
+
+    const verification = verifySecurityAuditChain(auditLog, 'newest-first');
+    expect(verification.valid).toBeTrue();
+    expect(verification.error).toBeUndefined();
+
+    // 5. Simular alteración maliciosa en un evento histórico -> debe detectarse
+    const tamperedLog = JSON.parse(JSON.stringify(auditLog));
+    tamperedLog[1].details = 'ALTERACION MALICIOSA DE DATOS';
+    const tamperedCheck = verifySecurityAuditChain(tamperedLog, 'newest-first');
+    expect(tamperedCheck.valid).toBeFalse();
+    expect(tamperedCheck.error).toContain('Hash alterado');
+  });
+
+  it('61. Bloque G: Kardex atribuye al usuario autenticado actual y registra CAMBIO_USUARIO al iniciar sesión', async () => {
+    // Iniciar sesión como Pedro
+    const pedro = service.users().find((u) => u.name.includes('Pedro'))!;
+    const loginRes = await service.loginWithPin(pedro.id, '628491');
+    expect(loginRes.success).toBeTrue();
+    expect(service.activeUser()).toBe(pedro.name);
+    expect(service.currentUser()?.name).toBe(pedro.name);
+
+    // Realizar una venta en efectivo
+    const prod = service.products()[0];
+    const saleRes = service.processCashSale(
+      [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji || '',
+          saleUnit: prod.saleUnit,
+          isBulk: false,
+          qty: 1,
+          unitPrice: prod.salePrice,
+          subtotal: prod.salePrice,
+        },
+      ],
+      prod.salePrice,
+    );
+    expect(saleRes.ok).toBeTrue();
+
+    // Verificar que el movimiento en Kardex se atribuyó estrictamente a Pedro
+    const lastSaleEntry = service.kardex().find((k) => k.type === 'VENTA_EFECTIVO');
+    expect(lastSaleEntry).toBeDefined();
+    expect(lastSaleEntry!.usuario).toBe(pedro.name);
+  });
+
+  it('62. Bloque G: Bloqueo de terminal y desbloqueo mediante PIN', async () => {
+    expect(service.isSessionLocked()).toBeFalse();
+
+    // Bloquear sesión
+    service.lockSession();
+    expect(service.isSessionLocked()).toBeTrue();
+
+    // Desbloquear con PIN incorrecto
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    const failRes = await service.loginWithPin(admin.id, '999999');
+    expect(failRes.success).toBeFalse();
+    expect(service.isSessionLocked()).toBeTrue();
+
+    // Desbloquear con PIN correcto
+    const okRes = await service.loginWithPin(admin.id, '984312');
+    expect(okRes.success).toBeTrue();
+    expect(service.isSessionLocked()).toBeFalse();
+  });
+
+  it('63. Bloque G: Persistencia y migración de estado v3 a v4 preservando v3 hasta validar v4', async () => {
+    const adapter = (service as any).storageAdapter;
+    const v3Data = {
+      schemaVersion: 3,
+      timestamp: '2026-11-08T12:00:00.000Z',
+      activeUser: 'Administrador',
+      products: service.products(),
+      creditCustomers: service.creditCustomers(),
+      cashShift: service.cashShift(),
+      cashRegister: service.cashRegister(),
+      kardex: service.kardex(),
+      shrinkRecords: service.shrinkRecords(),
+      auditLines: service.auditLines(),
+      suppliers: service.suppliers(),
+      accountsPayable: service.accountsPayable(),
+      priceHistory: service.productPriceHistory(),
+    };
+
+    // Guardar bajo clave legacy v3
+    await adapter.save('binnitech_pos_state_v3', v3Data);
+
+    // Ejecutar restorePersistedState
+    const restoreRes = await service.restorePersistedState();
+    expect(restoreRes.success).toBeTrue();
+
+    // Verificar que se hidrataron settings y usuarios por defecto
+    expect(service.businessSettings()).toBeDefined();
+    expect(service.businessSettings().storeName).toBe('Mi Tiendita');
+    expect(service.users().length).toBeGreaterThanOrEqual(4);
+
+    // Verificar que el estado guardado ahora está en v4
+    const v4Saved = await adapter.load(STATE_STORAGE_KEY);
+    expect(v4Saved).toBeDefined();
+    expect(v4Saved.schemaVersion).toBe(4);
+    expect(v4Saved.settings).toBeDefined();
+    expect(v4Saved.users).toBeDefined();
+
+    // Verificar que la clave legacy v3 fue eliminada tras la validación exitosa de v4
+    const legacyCheck = await adapter.load('binnitech_pos_state_v3');
+    expect(legacyCheck).toBeNull();
+  });
+
+  it('64. Bloque G Seguimiento: Protección contra suicidio administrativo en MockInventoryService', async () => {
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    expect(admin).toBeDefined();
+    service.currentUser.set(admin);
+
+    // Asegurar que solo hay 1 admin activo
+    service.users.set([
+      admin,
+      ...service.users().filter((u) => u.role !== 'ADMINISTRADOR'),
+    ]);
+
+    // 1. Intento de degradar rol del único admin activo a ENCARGADO -> RECHAZADO
+    const degradeRes = await service.updateUserRole(admin.id, 'ENCARGADO');
+    expect(degradeRes.ok).toBeFalse();
+    expect(degradeRes.message).toMatch(/No es posible degradar el rol del único Administrador activo/i);
+
+    // 2. Intento de degradar rol a CAJERO -> RECHAZADO
+    const degradeCajero = await service.updateUserRole(admin.id, 'CAJERO');
+    expect(degradeCajero.ok).toBeFalse();
+    expect(degradeCajero.message).toMatch(/No es posible degradar el rol del único Administrador activo/i);
+
+    // 3. Intento de desactivar al único admin activo -> RECHAZADO
+    const deactRes = await service.deactivateUser(admin.id);
+    expect(deactRes.ok).toBeFalse();
+    expect(deactRes.message).toMatch(/No es posible desactivar al único Administrador activo/i);
+
+    // 4. Intento de eliminar al único admin activo -> RECHAZADO
+    const delRes = await service.deleteUser(admin.id);
+    expect(delRes.ok).toBeFalse();
+    expect(delRes.message).toMatch(/No es posible eliminar al único Administrador activo/i);
+
+    // 5. Con un segundo admin activo, sí se permite degradar o desactivar
+    const admin2Res = await service.createUser({
+      name: 'Admin Segundo',
+      role: 'ADMINISTRADOR',
+      pin: '984312',
+    });
+    expect(admin2Res.ok).toBeTrue();
+    const admin2 = service.users().find((u) => u.name === 'Admin Segundo')!;
+    service.currentUser.set(admin2);
+
+    const allowDegrade = await service.updateUserRole(admin.id, 'ENCARGADO');
+    expect(allowDegrade.ok).toBeTrue();
+  });
+
+  it('65. Bloque G Seguimiento: Desbloqueo de Lock Screen con cambio de usuario en ruta restringida y guard CanActivate', async () => {
+    // 1. Verificar route guard authGuard para cajero en ruta restringida
+    const cajero = service.users().find((u) => u.role === 'CAJERO')!;
+    service.currentUser.set(cajero);
+
+    const mockRouteSnapshot: any = {};
+    const mockStateSnapshot: any = { url: '/ajustes' };
+
+    const guardResult = TestBed.runInInjectionContext(() =>
+      authGuard(mockRouteSnapshot, mockStateSnapshot)
+    );
+    // Un Cajero intentando acceder a /ajustes debe ser redirigido a /pos (UrlTree)
+    expect(guardResult).not.toBeTrue();
+    expect((guardResult as any).toString()).toContain('/pos');
+
+    // 2. Encargado en /recepcion sí tiene acceso
+    const encargado = service.users().find((u) => u.role === 'ENCARGADO')!;
+    service.currentUser.set(encargado);
+    const mockReceptionState: any = { url: '/recepcion' };
+    const encResult = TestBed.runInInjectionContext(() =>
+      authGuard(mockRouteSnapshot, mockReceptionState)
+    );
+    expect(encResult).toBeTrue();
+  });
+
+  it('66. Bloque G Seguimiento: Elevación puntual de privilegios (Override con PIN de supervisor en sesión de Cajero)', async () => {
+    const maria = service.users().find((u) => u.role === 'CAJERO')!;
+    expect(maria).toBeDefined();
+
+    // Simular que María (Cajera) tiene la sesión activa en el POS
+    await service.loginWithPin(maria.id, '719283');
+    expect(service.currentUser()?.name).toBe(maria.name);
+    expect(service.activeUser()).toBe(maria.name);
+
+    const testProduct = service.products()[0];
+    const items: PosSaleItem[] = [
+      {
+        sku: testProduct.sku,
+        name: testProduct.name,
+        qty: 1,
+        unitPrice: 100.0,
+        subtotal: 100.0,
+        saleUnit: 'Pieza',
+        barcode: testProduct.barcode,
+        emoji: '',
+        isBulk: false,
+        discountPct: 0,
+      },
+    ];
+
+    // Intentar venta con 20% de descuento (supera el 10% por defecto sin PIN) sin PIN -> requiresPin
+    const saleWithoutPin = await service.processSaleWithDiscounts({
+      items,
+      ticketDiscountPct: 20,
+      paymentType: 'EFECTIVO',
+      cashReceived: 80.0,
+    });
+    expect(saleWithoutPin.ok).toBeFalse();
+    expect(saleWithoutPin.requiresPin).toBeTrue();
+
+    // Intentar autorizar con el PIN del propio cajero (719283) -> RECHAZADO
+    const selfAuth = await service.processSaleWithDiscounts({
+      items,
+      ticketDiscountPct: 20,
+      paymentType: 'EFECTIVO',
+      cashReceived: 80.0,
+      pin: '719283',
+    });
+    expect(selfAuth.ok).toBeFalse();
+    expect(selfAuth.requiresPin).toBeTrue();
+
+    // Autorizar con el PIN del Encargado (Don Lupe: 839201) -> APROBADO
+    const authorizedSale = await service.processSaleWithDiscounts({
+      items,
+      ticketDiscountPct: 20,
+      paymentType: 'EFECTIVO',
+      cashReceived: 80.0,
+      pin: '839201',
+    });
+    expect(authorizedSale.ok).toBeTrue();
+
+    // Verificar que la sesión activa SIGUE PERTENECIENDO A MARÍA (no se cerró la sesión del cajero)
+    expect(service.currentUser()?.name).toBe(maria.name);
+    expect(service.activeUser()).toBe(maria.name);
+
+    // Verificar que en Kardex se documentó tanto al cajero operador como al supervisor que autorizó
+    const latestKardex = service.kardex()[0];
+    expect(latestKardex.referencia).toContain(maria.name);
+    expect(latestKardex.referencia).toContain('Don Lupe (Encargado)');
+
+    // Verificar bitácora de auditoría de seguridad
+    const overrideLog = service.securityAuditLog().find((e) => e.action === 'OVERRIDE_AUTHORIZED');
+    expect(overrideLog).toBeDefined();
+    expect(overrideLog?.details).toContain('Don Lupe (Encargado)');
+  });
+
+  it('67. Bloque G Seguimiento: Aislamiento del Fondo Inicial frente a turnos con movimientos activos', async () => {
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    service.currentUser.set(admin);
+
+    // 1. Estado inicial del turno: openingCash = 500.0
+    expect(service.cashShift().openingCash).toBe(500.0);
+    expect(service.hasCurrentShiftMovements()).toBeFalse();
+
+    // 2. Modificar initialCashFloat cuando NO hay movimientos -> Se actualiza en vivo
+    const updateNoMovements = await service.updateBusinessSettings({
+      initialCashFloat: 750.0,
+    });
+    expect(updateNoMovements.ok).toBeTrue();
+    expect(service.businessSettings().initialCashFloat).toBe(750.0);
+    expect(service.cashShift().openingCash).toBe(750.0);
+    expect(service.cashRegister().openingFloat).toBe(750.0);
+
+    // 3. Registrar una venta en efectivo para generar movimiento en el turno
+    const sampleProduct = service.products()[0];
+    const saleRes = service.processCashSale(
+      [
+        {
+          sku: sampleProduct.sku,
+          name: sampleProduct.name,
+          qty: 1,
+          unitPrice: 20.0,
+          subtotal: 20.0,
+          saleUnit: sampleProduct.saleUnit,
+          barcode: sampleProduct.barcode,
+          emoji: '',
+          isBulk: false,
+          discountPct: 0,
+        },
+      ],
+      50.0
+    );
+    expect(saleRes.ok).toBeTrue();
+    expect(service.hasCurrentShiftMovements()).toBeTrue();
+
+    // 4. Modificar initialCashFloat a $1000.0 cuando el turno YA TIENE movimientos activos
+    const updateWithMovements = await service.updateBusinessSettings({
+      initialCashFloat: 1000.0,
+    });
+    expect(updateWithMovements.ok).toBeTrue();
+    expect(service.businessSettings().initialCashFloat).toBe(1000.0);
+
+    // El openingCash del turno en curso DEBE PERMANECER EN 750.0 (NO ALTERAR RETROACTIVAMENTE)
+    expect(service.cashShift().openingCash).toBe(750.0);
+    expect(service.cashRegister().openingFloat).toBe(750.0);
+  });
+
+  it('68. Bloque G Seguimiento: Continuidad LAN durante bloqueo por inactividad', async () => {
+    // 1. Usuario activo antes del bloqueo
+    const encargado = service.users().find((u) => u.role === 'ENCARGADO')!;
+    service.currentUser.set(encargado);
+    service.activeUser.set(encargado.name);
+
+    // 2. Bloquear la terminal por inactividad
+    service.lockSession();
+    expect(service.isSessionLocked()).toBeTrue();
+
+    // 3. Recibir solicitud LAN PRODUCT_CREATE_REQUEST desde el pasillo
+    const mobileBarcode = '7509876543210';
+    service.handleIncomingLanMessage({
+      type: 'PRODUCT_CREATE_REQUEST',
+      requestId: 'LAN-REQ-9901',
+      barcode: mobileBarcode,
+      name: 'Galletas Chispas Pasillo',
+      category: 'Abarrotes',
+      saleUnit: 'Pieza',
+      cost: 15.0,
+      salePrice: 22.0,
+    });
+
+    // 4. Verificar que el producto fue creado y quedó PENDIENTE_APROBACION
+    const created = service.findProductByBarcode(mobileBarcode, true, true);
+    expect(created).toBeDefined();
+    expect(created?.name).toBe('Galletas Chispas Pasillo');
+    expect(created?.approvalStatus).toBe('PENDIENTE_APROBACION');
+
+    // 5. Verificar que el Kardex se generó y atribuyó al usuario activo
+    const kardexEntry = service.kardex().find((k) => k.referencia.includes(mobileBarcode));
+    expect(kardexEntry).toBeDefined();
+    expect(kardexEntry?.usuario).toBe(encargado.name);
+
+    // 6. Verificar que la pantalla de la terminal local sigue bloqueada
+    expect(service.isSessionLocked()).toBeTrue();
+  });
+
+  it('69. Bloque G Seguimiento: Limpieza de nombre fijo y sincronización dinámica', async () => {
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    service.currentUser.set(admin);
+
+    // Verificar que storeName no es "Abarrotes Doña Lupe"
+    expect(service.businessSettings().storeName).not.toBe('Abarrotes Doña Lupe');
+    expect(service.storeName).toBe('Mi Tiendita');
+
+    // Al actualizar el storeName, el getter reactivo se actualiza de inmediato
+    const res = await service.updateBusinessSettings({ storeName: 'Súper Abarrotes San Miguel' });
+    expect(res.ok).toBeTrue();
+    expect(service.storeName).toBe('Súper Abarrotes San Miguel');
   });
 });

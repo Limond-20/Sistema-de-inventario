@@ -81,6 +81,7 @@ import {
 import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY_V3,
   LEGACY_STATE_STORAGE_KEY_V2,
   LEGACY_STATE_STORAGE_KEY_V1,
   LEGACY_STATE_STORAGE_KEY,
@@ -95,6 +96,34 @@ import {
   getDefaultStorageAdapter,
   type PersistedAppState,
 } from '../domain/persistence';
+import {
+  type AppUser,
+  type UserRole,
+  type Permission,
+  ROLE_PERMISSIONS,
+  hasPermission,
+  canAccessRoute,
+  checkUserDuplicate,
+  createAppUser,
+  verifyUserPinAttempt,
+  verifySupervisorPinAttempt,
+  validateAdminSuicideProtection,
+  updateUserPin,
+  buildDefaultDemoUsers,
+  type UserPinVerifyResult,
+  type SupervisorPinVerifyResult,
+} from '../domain/auth';
+import {
+  type BusinessSettings,
+  DEFAULT_BUSINESS_SETTINGS,
+  validateBusinessSettings,
+} from '../domain/settings';
+import {
+  type SecurityAuditEntry,
+  type SecurityAuditAction,
+  createSecurityAuditEntry,
+  verifySecurityAuditChain,
+} from '../domain/audit-log';
 import {
   MIN_BACKUP_PASSPHRASE_LENGTH,
   HOURLY_BACKUP_INTERVAL_MS,
@@ -645,7 +674,7 @@ export function parseTicketOCR(rawText: string, catalog: Product[]): ReceptionLi
 }
 
 // =====================================================================
-//  DATOS SIMULADOS (Abarrotes Doña Lupe · León, Gto.)
+//  DATOS SIMULADOS INICIALES DE DEMOSTRACIÓN
 //  Incluye los 5 productos base con sus códigos EAN-13 exactos y estrategias ABC / ROP / FEFO
 // =====================================================================
 
@@ -1288,9 +1317,9 @@ const AUDIT_LINES: AuditLine[] = RAW_AUDIT_LINES.map((l) => enrichAuditLineWithT
 const SHRINK_RECORDS: ShrinkRecord[] = [
   { id: 'M-0412', date: '22/10/2026', time: '9:15 a.m.', sku: 'LAC-LAL-1L', name: 'Leche Lala Entera 1L', emoji: '🥛', qty: 2, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 21.0, registeredBy: 'Celular · Toño', hasPhoto: true, reviewed: false },
   { id: 'M-0411', date: '21/10/2026', time: '11:40 a.m.', sku: 'HUE-BAC-18', name: 'Huevo Blanco Granel (1 kg)', emoji: '🥚', qty: 1, saleUnit: 'Kg', reason: 'Envase Roto en Piso', unitCost: 36.0, registeredBy: 'Celular · Toño', hasPhoto: true, reviewed: false },
-  { id: 'M-0410', date: '20/10/2026', time: '8:05 p.m.', sku: 'YOG-YOP-1K', name: 'Yoghurt Yoplait Fresa 1kg', emoji: '🍓', qty: 3, saleUnit: 'Pieza', reason: 'Caducado sin devolución', unitCost: 41.3, registeredBy: 'Celular · Doña Lupe', hasPhoto: true, reviewed: false },
+  { id: 'M-0410', date: '20/10/2026', time: '8:05 p.m.', sku: 'YOG-YOP-1K', name: 'Yoghurt Yoplait Fresa 1kg', emoji: '🍓', qty: 3, saleUnit: 'Pieza', reason: 'Caducado sin devolución', unitCost: 41.3, registeredBy: 'Celular · Encargado', hasPhoto: true, reviewed: false },
   { id: 'M-0409', date: '19/10/2026', time: '9:30 a.m.', sku: 'PAN-BIM-680', name: 'Pan Blanco Bimbo Grande 680g', emoji: '🍞', qty: 2, saleUnit: 'Pieza', reason: 'Caducado sin devolución', unitCost: 41, registeredBy: 'Celular · Toño', hasPhoto: true, reviewed: true },
-  { id: 'M-0408', date: '18/10/2026', time: '5:50 p.m.', sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml', emoji: '🫒', qty: 1, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 34.0, registeredBy: 'Celular · Doña Lupe', hasPhoto: true, reviewed: true },
+  { id: 'M-0408', date: '18/10/2026', time: '5:50 p.m.', sku: 'ACE-NUT-850', name: 'Aceite Nutrioli 850ml', emoji: '🫒', qty: 1, saleUnit: 'Pieza', reason: 'Envase Roto en Piso', unitCost: 34.0, registeredBy: 'Celular · Encargado', hasPhoto: true, reviewed: true },
 ];
 
 export const SUPPLIER_ROUTES: SupplierRoute[] = [
@@ -1431,19 +1460,30 @@ function buildInitialKardex(): KardexEntry[] {
 
 @Injectable({ providedIn: 'root' })
 export class MockInventoryService implements OnDestroy {
-  readonly storeName = 'Abarrotes Doña Lupe';
+  // ---------- Bloque G: Ajustes del Negocio, Usuarios y Permisos ----------
+  readonly businessSettings = signal<BusinessSettings>(DEFAULT_BUSINESS_SETTINGS);
+
+  get storeName(): string {
+    return this.businessSettings().storeName;
+  }
+
+  readonly users = signal<AppUser[]>(buildDefaultDemoUsers());
+  readonly currentUser = signal<AppUser | null>(null);
+  readonly isSessionLocked = signal<boolean>(false);
+  readonly securityAuditLog = signal<SecurityAuditEntry[]>([]);
+  private inactivityTimer: any = null;
+  private boundInactivityReset: (() => void) | null = null;
+
   readonly today = 'Jueves 22 de octubre de 2026';
   readonly instanceId = generateKardexId();
 
   private static activeWriterInstanceId: string | null = null;
 
-  /** Selector de cajero/usuario actual en la app (no valor fijo) */
-  readonly availableUsers = signal<string[]>([
-    'Don Lupe (Encargado)',
-    'María (Cajera Mañana)',
-    'Pedro (Cajero Tarde)',
-    'Administrador',
-  ]);
+  /** Selector de cajero/usuario actual en la app (filtrado por usuarios activos) */
+  readonly availableUsers = computed<string[]>(() => {
+    const list = this.users().filter((u) => u.isActive).map((u) => u.name);
+    return list.length > 0 ? list : ['Don Lupe (Encargado)', 'María (Cajera Mañana)', 'Pedro (Cajero Tarde)', 'Administrador'];
+  });
   readonly activeUser = signal<string>('Don Lupe (Encargado)');
   readonly kardexQueue = new KardexAsyncQueue();
 
@@ -1456,8 +1496,7 @@ export class MockInventoryService implements OnDestroy {
   }
 
   /**
-   * Cambia el usuario activo.
-   * Cambiar a 'Administrador' exige validación de PIN de al menos 6 dígitos.
+   * Cambia el usuario activo previa autenticación con PIN.
    * Cada cambio de usuario genera una entrada auditable de tipo 'CAMBIO_USUARIO' en el Kardex.
    */
   async setActiveUser(name: string, pin?: string): Promise<{ success: boolean; message: string }> {
@@ -1468,6 +1507,18 @@ export class MockInventoryService implements OnDestroy {
     if (!target) return { success: false, message: 'Nombre de usuario inválido.' };
     const prevUser = this.activeUser();
     if (target === prevUser) return { success: true, message: 'Usuario actual sin cambios.' };
+
+    const targetUser = this.users().find((u) => u.name === target);
+    if (targetUser) {
+      if (!pin) {
+        return { success: false, message: `Se requiere PIN de acceso para iniciar sesión como "${target}".` };
+      }
+      const loginRes = await this.loginWithPin(targetUser.id, pin);
+      if (!loginRes.success) {
+        return { success: false, message: loginRes.message };
+      }
+      return { success: true, message: `Sesión iniciada como ${target}.` };
+    }
 
     if (target === 'Administrador') {
       const pinCheck = await this.verifyAdminPin(pin || '');
@@ -1498,6 +1549,431 @@ export class MockInventoryService implements OnDestroy {
       await this.flushSave();
       return { success: true, message: `Usuario activo cambiado a ${target}.` };
     });
+  }
+
+  // ---------- Métodos de Autenticación, Inactividad y Gestión de Usuarios (Bloque G) ----------
+
+  initInactivityListener(): void {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    this.boundInactivityReset = () => this.handleUserActivity();
+    const events = ['mousemove', 'keydown', 'pointerdown', 'touchstart', 'wheel'];
+    for (const evt of events) {
+      window.addEventListener(evt, this.boundInactivityReset, { passive: true });
+    }
+    this.resetInactivityTimer();
+  }
+
+  teardownInactivityListener(): void {
+    if (this.inactivityTimer) {
+      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer = null;
+    }
+    if (this.boundInactivityReset && typeof window !== 'undefined') {
+      const events = ['mousemove', 'keydown', 'pointerdown', 'touchstart', 'wheel'];
+      for (const evt of events) {
+        window.removeEventListener(evt, this.boundInactivityReset);
+      }
+      this.boundInactivityReset = null;
+    }
+  }
+
+  handleUserActivity(): void {
+    if (this.isSessionLocked()) return;
+    this.resetInactivityTimer();
+  }
+
+  resetInactivityTimer(): void {
+    if (this.inactivityTimer) {
+      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer = null;
+    }
+    const timeoutMin = this.businessSettings().inactivityTimeoutMinutes;
+    if (timeoutMin <= 0) return;
+    const timeoutMs = timeoutMin * 60 * 1000;
+    this.inactivityTimer = setTimeout(() => {
+      this.lockSession();
+    }, timeoutMs);
+  }
+
+  lockSession(): void {
+    this.isSessionLocked.set(true);
+  }
+
+  async loginWithPin(userId: string, pin: string): Promise<UserPinVerifyResult> {
+    const user = this.users().find((u) => u.id === userId);
+    if (!user) {
+      const dummyUser: AppUser = {
+        id: userId,
+        name: 'Desconocido',
+        role: 'CAJERO',
+        salt: '',
+        pinHash: '',
+        iterations: 600000,
+        isActive: false,
+        failedAttempts: 0,
+        lockedUntil: null,
+        lockoutCount: 0,
+        createdAt: '',
+      };
+      return {
+        success: false,
+        message: 'Usuario no encontrado.',
+        remainingAttempts: 0,
+        isLocked: false,
+        lockedRemainingSeconds: 0,
+        updatedUser: dummyUser,
+      };
+    }
+
+    if (!user.isActive) {
+      return {
+        success: false,
+        message: 'Este usuario se encuentra inactivo.',
+        remainingAttempts: 0,
+        isLocked: false,
+        lockedRemainingSeconds: 0,
+        updatedUser: user,
+      };
+    }
+
+    const result = await verifyUserPinAttempt(user, pin);
+
+    // Actualizar estado del usuario (intentos, bloqueo)
+    this.users.update((list) => list.map((u) => (u.id === user.id ? result.updatedUser : u)));
+
+    if (result.success) {
+      this.currentUser.set(result.updatedUser);
+      this.activeUser.set(result.updatedUser.name);
+      this.isSessionLocked.set(false);
+      this.resetInactivityTimer();
+
+      await this.enqueueKardexOperation(async () => {
+        const lastEntry = this.kardex()[0];
+        const prevHash = lastEntry ? lastEntry.entryHash : 'GENESIS';
+        const entry = createKardexEntry(
+          {
+            type: 'CAMBIO_USUARIO',
+            producto: { sku: 'SISTEMA', name: 'Inicio de Sesión', saleUnit: 'Sesión' },
+            cantidad: 0,
+            saldoAnterior: 0,
+            saldoResultante: 0,
+            usuario: result.updatedUser.name,
+            referencia: `Inicio de sesión: ${result.updatedUser.name} (${result.updatedUser.role})`,
+            description: `INICIO DE SESIÓN CON PIN: ${result.updatedUser.name} asumió el control con rol ${result.updatedUser.role}.`,
+            amount: 0,
+          },
+          prevHash
+        );
+        this.kardex.update((prev) => appendKardexEntry(prev, entry));
+      });
+      await this.flushSave();
+    } else {
+      await this.flushSave();
+    }
+
+    return result;
+  }
+
+  async unlockSession(pin: string): Promise<UserPinVerifyResult> {
+    const current = this.currentUser();
+    if (!current) {
+      const admin = this.users().find((u) => u.role === 'ADMINISTRADOR') || this.users()[0];
+      if (admin) {
+        return this.loginWithPin(admin.id, pin);
+      }
+      throw new Error('No hay usuarios configurados en el sistema.');
+    }
+    return this.loginWithPin(current.id, pin);
+  }
+
+  async createUser(params: {
+    name: string;
+    role: UserRole;
+    pin: string;
+  }): Promise<{ ok: boolean; message: string; user?: AppUser }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const currentRole = this.currentUser()?.role || 'ADMINISTRADOR';
+    if (!hasPermission(currentRole, 'usuarios')) {
+      return { ok: false, message: 'Permiso denegado: solo el Administrador puede dar de alta usuarios.' };
+    }
+
+    if (checkUserDuplicate(this.users(), params.name)) {
+      return { ok: false, message: `Ya existe un usuario con el nombre "${params.name.trim()}".` };
+    }
+
+    const created = await createAppUser(params);
+    if (!created.ok || !created.user) {
+      return { ok: false, message: created.message };
+    }
+
+    this.users.update((list) => [...list, created.user!]);
+
+    this.appendSecurityAuditEntry(
+      'USER_CREATED',
+      `Alta de nuevo usuario "${created.user.name}" con rol ${created.user.role}`,
+      { userId: created.user.id, role: created.user.role },
+      created.user.name
+    );
+
+    await this.flushSave();
+    return { ok: true, message: 'Usuario creado exitosamente.', user: created.user };
+  }
+
+  async updateUserRole(
+    userId: string,
+    newRole: UserRole
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const currentRole = this.currentUser()?.role || 'ADMINISTRADOR';
+    if (!hasPermission(currentRole, 'usuarios')) {
+      return { ok: false, message: 'Permiso denegado: solo el Administrador puede modificar roles.' };
+    }
+
+    const user = this.users().find((u) => u.id === userId);
+    if (!user) return { ok: false, message: 'Usuario no encontrado.' };
+
+    const suicideCheck = validateAdminSuicideProtection(this.users(), userId, 'CHANGE_ROLE', newRole);
+    if (!suicideCheck.allowed) {
+      return { ok: false, message: suicideCheck.error || 'No es posible degradar el rol del único Administrador activo del sistema.' };
+    }
+
+    const oldRole = user.role;
+    const updatedUser: AppUser = {
+      ...user,
+      role: newRole,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.users.update((list) => list.map((u) => (u.id === userId ? updatedUser : u)));
+    if (this.currentUser()?.id === userId) {
+      this.currentUser.set(updatedUser);
+    }
+
+    this.appendSecurityAuditEntry(
+      'USER_UPDATED',
+      `Cambio de rol para "${user.name}": de ${oldRole} a ${newRole}`,
+      { userId, oldRole, newRole },
+      user.name
+    );
+
+    await this.flushSave();
+    return { ok: true, message: `Rol actualizado a ${newRole}.` };
+  }
+
+  async deactivateUser(userId: string): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const currentRole = this.currentUser()?.role || 'ADMINISTRADOR';
+    if (!hasPermission(currentRole, 'usuarios')) {
+      return { ok: false, message: 'Permiso denegado: solo el Administrador puede desactivar usuarios.' };
+    }
+
+    const user = this.users().find((u) => u.id === userId);
+    if (!user) return { ok: false, message: 'Usuario no encontrado.' };
+
+    const suicideCheck = validateAdminSuicideProtection(this.users(), userId, 'DEACTIVATE');
+    if (!suicideCheck.allowed) {
+      return { ok: false, message: suicideCheck.error || 'No es posible desactivar al único Administrador activo del sistema.' };
+    }
+
+    const updatedUser: AppUser = {
+      ...user,
+      isActive: false,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.users.update((list) => list.map((u) => (u.id === userId ? updatedUser : u)));
+
+    this.appendSecurityAuditEntry(
+      'USER_DEACTIVATED',
+      `Baja lógica de usuario "${user.name}" (${user.role})`,
+      { userId, role: user.role },
+      user.name
+    );
+
+    await this.flushSave();
+    return { ok: true, message: `Usuario "${user.name}" desactivado.` };
+  }
+
+  async deleteUser(userId: string): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const currentRole = this.currentUser()?.role || 'ADMINISTRADOR';
+    if (!hasPermission(currentRole, 'usuarios')) {
+      return { ok: false, message: 'Permiso denegado: solo el Administrador puede eliminar usuarios.' };
+    }
+
+    const user = this.users().find((u) => u.id === userId);
+    if (!user) return { ok: false, message: 'Usuario no encontrado.' };
+
+    const suicideCheck = validateAdminSuicideProtection(this.users(), userId, 'DELETE');
+    if (!suicideCheck.allowed) {
+      return { ok: false, message: suicideCheck.error || 'No es posible eliminar al único Administrador activo del sistema.' };
+    }
+
+    this.users.update((list) => list.filter((u) => u.id !== userId));
+
+    this.appendSecurityAuditEntry(
+      'USER_DEACTIVATED',
+      `Eliminación definitiva de usuario "${user.name}" (${user.role})`,
+      { userId, role: user.role, action: 'DELETE' },
+      user.name
+    );
+
+    await this.flushSave();
+    return { ok: true, message: `Usuario "${user.name}" eliminado.` };
+  }
+
+  async changeUserPin(
+    userId: string,
+    currentPin: string,
+    newPin: string
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const user = this.users().find((u) => u.id === userId);
+    if (!user) return { ok: false, message: 'Usuario no encontrado.' };
+
+    const result = await updateUserPin(user, currentPin, newPin);
+    if (!result.success || !result.updatedUser) {
+      return { ok: false, message: result.message };
+    }
+
+    this.users.update((list) => list.map((u) => (u.id === userId ? result.updatedUser! : u)));
+    if (this.currentUser()?.id === userId) {
+      this.currentUser.set(result.updatedUser);
+    }
+
+    if (user.role === 'ADMINISTRADOR') {
+      try {
+        await setupInitialPin(newPin);
+      } catch {
+        // ignore if already configured
+      }
+    }
+
+    this.appendSecurityAuditEntry(
+      'PIN_CHANGED',
+      `Actualización de PIN de acceso para usuario "${user.name}" (${user.role})`,
+      { userId },
+      user.name
+    );
+
+    await this.flushSave();
+    return { ok: true, message: 'PIN actualizado correctamente.' };
+  }
+
+  /**
+   * Determina si el turno de caja actual tiene movimientos registrados
+   * (ventas en efectivo, ventas a crédito, abonos de clientes, pagos a proveedores, consumos o mermas).
+   */
+  hasCurrentShiftMovements(): boolean {
+    const s = this.cashShift();
+    return (
+      (s.cashSalesTotal || 0) > 0 ||
+      (s.creditSalesTotal || 0) > 0 ||
+      (s.creditPaymentsReceived || 0) > 0 ||
+      (s.cashPayoutsTotal || 0) > 0 ||
+      (s.internalConsumptionTotalCost || 0) > 0 ||
+      (s.shrinkTotalCost || 0) > 0 ||
+      this.cashMovements().length > 0
+    );
+  }
+
+  async updateBusinessSettings(
+    newSettings: Partial<BusinessSettings>
+  ): Promise<{ ok: boolean; message: string; errors?: string[] }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const currentRole = this.currentUser()?.role || 'ADMINISTRADOR';
+    if (!hasPermission(currentRole, 'ajustes')) {
+      return { ok: false, message: 'Permiso denegado: solo el Administrador puede modificar los ajustes.' };
+    }
+
+    const prev = this.businessSettings();
+    const validation = validateBusinessSettings({
+      ...prev,
+      ...newSettings,
+      updatedBy: this.activeUser(),
+    });
+
+    if (!validation.valid) {
+      return { ok: false, message: validation.errors.join(' '), errors: validation.errors };
+    }
+
+    this.businessSettings.set(validation.sanitized);
+    this.maxDiscountPctWithoutPin.set(validation.sanitized.maxDiscountPctWithoutPin);
+    this.resetInactivityTimer();
+
+    const diffs: string[] = [];
+    if (newSettings.storeName && newSettings.storeName !== prev.storeName) {
+      diffs.push(`Nombre del negocio: "${prev.storeName}" -> "${validation.sanitized.storeName}"`);
+    }
+    if (
+      (newSettings.initialCashFloat !== undefined && newSettings.initialCashFloat !== prev.initialCashFloat) ||
+      (newSettings.initialCashFloatCents !== undefined && newSettings.initialCashFloatCents !== prev.initialCashFloatCents)
+    ) {
+      diffs.push(`Fondo inicial: $${prev.initialCashFloat} -> $${validation.sanitized.initialCashFloat}`);
+      // Aislamiento del Fondo Inicial frente a turnos con movimientos activos (Bloque G seguimiento):
+      // Si el turno actual ya tiene movimientos, NO altera retroactivamente openingCash para no descuadrar el arqueo.
+      // Solo actualiza en vivo si el turno no tiene movimientos, o se aplicará al siguiente inicio de turno.
+      if (!this.hasCurrentShiftMovements()) {
+        const newFloat = validation.sanitized.initialCashFloat;
+        this.cashShift.update((s) => ({ ...s, openingCash: newFloat }));
+        this.cashRegister.update((r) => ({ ...r, openingFloat: newFloat }));
+      }
+    }
+    if (newSettings.marginThresholdPct !== undefined && newSettings.marginThresholdPct !== prev.marginThresholdPct) {
+      diffs.push(`Umbral de margen: ${prev.marginThresholdPct}% -> ${validation.sanitized.marginThresholdPct}%`);
+    }
+    if (newSettings.defaultIvaPct !== undefined && newSettings.defaultIvaPct !== prev.defaultIvaPct) {
+      diffs.push(`IVA por defecto: ${prev.defaultIvaPct}% -> ${validation.sanitized.defaultIvaPct}%`);
+    }
+    if (newSettings.defaultIepsPct !== undefined && newSettings.defaultIepsPct !== prev.defaultIepsPct) {
+      diffs.push(`IEPS por defecto: ${prev.defaultIepsPct}% -> ${validation.sanitized.defaultIepsPct}%`);
+    }
+    if (newSettings.inactivityTimeoutMinutes !== undefined && newSettings.inactivityTimeoutMinutes !== prev.inactivityTimeoutMinutes) {
+      diffs.push(`Tiempo de inactividad: ${prev.inactivityTimeoutMinutes} min -> ${validation.sanitized.inactivityTimeoutMinutes} min`);
+    }
+    if (newSettings.maxDiscountPctWithoutPin !== undefined && newSettings.maxDiscountPctWithoutPin !== prev.maxDiscountPctWithoutPin) {
+      diffs.push(`Tope desc. sin PIN: ${prev.maxDiscountPctWithoutPin}% -> ${validation.sanitized.maxDiscountPctWithoutPin}%`);
+    }
+
+    const details = diffs.length > 0 ? `Ajustes actualizados: ${diffs.join('; ')}` : 'Ajustes actualizados sin cambios mayores.';
+    this.appendSecurityAuditEntry('SETTINGS_UPDATED', details, { diffs });
+
+    await this.flushSave();
+    return { ok: true, message: 'Ajustes actualizados correctamente.' };
+  }
+
+  appendSecurityAuditEntry(
+    action: SecurityAuditAction,
+    details: string,
+    metadata?: Record<string, any>,
+    targetUser?: string
+  ): SecurityAuditEntry {
+    const list = this.securityAuditLog();
+    const lastEntry = list.length > 0 ? list[0] : null;
+    const entry = createSecurityAuditEntry(
+      {
+        action,
+        actorUser: this.activeUser(),
+        targetUser,
+        details,
+        metadata,
+      },
+      lastEntry
+    );
+    this.securityAuditLog.update((prev) => [entry, ...prev]);
+    return entry;
   }
 
   // ---------- Persistencia de Estado en IndexedDB, Bloqueo de Escritura e Hidratación (Bloque D) ----------
@@ -1588,13 +2064,20 @@ export class MockInventoryService implements OnDestroy {
   };
 
   constructor() {
+    const defaultUser = this.users().find((u) => u.name.includes('Don Lupe')) || this.users()[0];
+    if (defaultUser) {
+      this.currentUser.set(defaultUser);
+      this.activeUser.set(defaultUser.name);
+    }
     this.initWriterLock();
     this.initLanSyncListener();
     this.initPersistence();
     this.initBackupAutomation();
+    this.initInactivityListener();
   }
 
   ngOnDestroy(): void {
+    this.teardownInactivityListener();
     this.storageSaver.cancel();
     if (this.hourlyBackupTimer) {
       clearInterval(this.hourlyBackupTimer);
@@ -1874,6 +2357,9 @@ export class MockInventoryService implements OnDestroy {
       accountsPayable: this.accountsPayable(),
       priceHistory: this.productPriceHistory(),
       cashMovements: this.cashMovements(),
+      settings: this.businessSettings(),
+      users: this.users(),
+      securityAuditLog: this.securityAuditLog(),
     };
   }
 
@@ -2079,6 +2565,24 @@ export class MockInventoryService implements OnDestroy {
     if (stateToValidate.activeUser) this.activeUser.set(stateToValidate.activeUser);
     if (typeof stateToValidate.maxDiscountPctWithoutPin === 'number') {
       this.maxDiscountPctWithoutPin.set(stateToValidate.maxDiscountPctWithoutPin);
+    }
+    if (stateToValidate.suppliers) this.suppliers.set(structuredClone(stateToValidate.suppliers));
+    if (stateToValidate.accountsPayable) this.accountsPayable.set(structuredClone(stateToValidate.accountsPayable));
+    if (stateToValidate.priceHistory) this.productPriceHistory.set(structuredClone(stateToValidate.priceHistory));
+    if (stateToValidate.cashMovements) this.cashMovements.set(structuredClone(stateToValidate.cashMovements));
+    if (stateToValidate.settings) {
+      this.businessSettings.set(structuredClone(stateToValidate.settings));
+    }
+    if (stateToValidate.users && stateToValidate.users.length > 0) {
+      this.users.set(structuredClone(stateToValidate.users));
+      const matched = this.users().find((u) => u.name === stateToValidate.activeUser) || this.users()[0];
+      if (matched) {
+        this.currentUser.set(matched);
+        this.activeUser.set(matched.name);
+      }
+    }
+    if (stateToValidate.securityAuditLog) {
+      this.securityAuditLog.set(structuredClone(stateToValidate.securityAuditLog));
     }
   }
 
@@ -2333,6 +2837,13 @@ export class MockInventoryService implements OnDestroy {
       let loadedFromLegacy = false;
       let legacyKeyLoaded: string | null = null;
       if (!raw) {
+        raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V3);
+        if (raw) {
+          loadedFromLegacy = true;
+          legacyKeyLoaded = LEGACY_STATE_STORAGE_KEY_V3;
+        }
+      }
+      if (!raw) {
         raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V2);
         if (raw) {
           loadedFromLegacy = true;
@@ -2432,6 +2943,20 @@ export class MockInventoryService implements OnDestroy {
       if (stateToValidate.accountsPayable) this.accountsPayable.set(stateToValidate.accountsPayable);
       if (stateToValidate.priceHistory) this.productPriceHistory.set(stateToValidate.priceHistory);
       if (stateToValidate.cashMovements) this.cashMovements.set(stateToValidate.cashMovements);
+      if (stateToValidate.settings) {
+        this.businessSettings.set(stateToValidate.settings);
+      }
+      if (stateToValidate.users && stateToValidate.users.length > 0) {
+        this.users.set(stateToValidate.users);
+        const matched = this.users().find((u) => u.name === stateToValidate.activeUser) || this.users()[0];
+        if (matched) {
+          this.currentUser.set(matched);
+          this.activeUser.set(matched.name);
+        }
+      }
+      if (stateToValidate.securityAuditLog) {
+        this.securityAuditLog.set(stateToValidate.securityAuditLog);
+      }
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
@@ -2439,21 +2964,21 @@ export class MockInventoryService implements OnDestroy {
       if (migration.migrated || loadedFromLegacy) {
         try {
           await this.flushSave();
-          // REGLA MIGRACIÓN: no borres la clave de versión anterior (v2 o v1) hasta verificar
-          // que el estado v3 recién escrito se puede leer y pasa validateStoredState
-          const writtenV3 = await this.storageAdapter.load(STATE_STORAGE_KEY);
-          const v3Validation = validateStoredState(
-            writtenV3,
+          // REGLA MIGRACIÓN: no borres la clave de versión anterior (v3, v2 o v1) hasta verificar
+          // que el estado v4 recién escrito se puede leer y pasa validateStoredState
+          const writtenV4 = await this.storageAdapter.load(STATE_STORAGE_KEY);
+          const v4Validation = validateStoredState(
+            writtenV4,
             (k) => verifyKardexChain(k, 'newest-first'),
             (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
           );
-          if (v3Validation.valid && this.storageAdapter.delete) {
+          if (v4Validation.valid && this.storageAdapter.delete) {
             if (legacyKeyLoaded) {
               await this.storageAdapter.delete(legacyKeyLoaded);
             }
           }
         } catch (saveErr) {
-          console.warn('[MockInventoryService] Falló el guardado/verificación de v3 durante migración; datos anteriores permanecen intactos:', saveErr);
+          console.warn('[MockInventoryService] Falló el guardado/verificación de v4 durante migración; datos anteriores permanecen intactos:', saveErr);
         }
       }
 
@@ -2635,6 +3160,10 @@ export class MockInventoryService implements OnDestroy {
     if (!this.assertWritable()) return;
     this.phoneLinked.set(true);
 
+    // Continuidad LAN durante bloqueo por inactividad (Bloque G seguimiento):
+    // Las tramas LAN procesadas en pasillo mantienen el servicio activo y refrescan el temporizador
+    this.resetInactivityTimer();
+
     if (data.type === 'MERMA_SUBMIT' && data.record) {
       this.addShrinkRecord(data.record);
     } else if (data.type === 'BARCODE_SCANNED' && data.barcode) {
@@ -2718,10 +3247,39 @@ export class MockInventoryService implements OnDestroy {
   }
 
   /**
+   * Valida un PIN de elevación de privilegios / override contra cualquier usuario activo
+   * con rol ENCARGADO o ADMINISTRADOR sin cerrar ni modificar la sesión del cajero en curso.
+   */
+  async verifySupervisorPin(
+    pin: string,
+    allowedRoles: readonly UserRole[] = ['ENCARGADO', 'ADMINISTRADOR']
+  ): Promise<SupervisorPinVerifyResult> {
+    const res = await verifySupervisorPinAttempt(this.users(), pin, allowedRoles);
+    if (res.updatedUsers) {
+      this.users.set(res.updatedUsers);
+    }
+    return res;
+  }
+
+  /**
    * Verifica un intento de PIN con persistencia ante recarga de página (máx. 3 intentos y bloqueo 30s).
    * Registra quién autorizó la operación en el Kardex.
    */
   async verifyAdminPin(pin: string, authorizer?: string): Promise<PinVerificationResult> {
+    if (this.users().length > 0) {
+      const supCheck = await this.verifySupervisorPin(pin);
+      if (supCheck.success && supCheck.supervisor) {
+        return {
+          success: true,
+          message: supCheck.message,
+          remainingAttempts: 3,
+          isLocked: false,
+          lockedRemainingSeconds: 0,
+          authorizedBy: (authorizer && authorizer !== 'Administrador') ? authorizer : supCheck.supervisor.name,
+          nextState: { failedAttempts: 0, lockedUntil: null, lockoutCount: 0 },
+        };
+      }
+    }
     const authUser = authorizer || this.activeUser();
     const result = await verifyPinAttempt(pin, undefined, Date.now(), authUser);
     this.pinState.set(loadPinState());
@@ -5770,6 +6328,8 @@ export class MockInventoryService implements OnDestroy {
     }
 
     const evaluation = this.evaluatePosCartDiscounts(params.items, params.ticketDiscountPct ?? 0);
+    let authorizerSupervisor: string | undefined;
+
     if (evaluation.requiresPin) {
       if (!params.pin || !params.pin.trim()) {
         return {
@@ -5784,7 +6344,7 @@ export class MockInventoryService implements OnDestroy {
           change: 0,
         };
       }
-      const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName || 'Administrador');
+      const pinCheck = await this.verifyAdminPin(params.pin, params.authorizerName);
       if (!pinCheck.success) {
         return {
           ok: false,
@@ -5796,6 +6356,7 @@ export class MockInventoryService implements OnDestroy {
           change: 0,
         };
       }
+      authorizerSupervisor = pinCheck.authorizedBy || params.authorizerName || 'Supervisor';
     }
 
     // Construir líneas con su importe neto exacto en centavos para que caja y Kardex cuadren al centavo
@@ -5808,11 +6369,16 @@ export class MockInventoryService implements OnDestroy {
       };
     });
 
+    const cashierName = this.currentUser()?.name || this.activeUser();
+    const overrideInfo = authorizerSupervisor
+      ? { cashier: cashierName, authorizedBy: authorizerSupervisor }
+      : undefined;
+
     const mode = params.paymentType || params.paymentMethod || 'EFECTIVO';
     if (mode === 'FIADO') {
       const res = this.processCreditSale(netItems, params.customerId || '');
-      if (res.ok && evaluation.totalDiscountCents > 0) {
-        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount);
+      if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
+        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
       }
       await this.flushSave();
       return {
@@ -5826,8 +6392,8 @@ export class MockInventoryService implements OnDestroy {
     } else {
       const cash = params.cashReceived ?? params.receivedAmount ?? evaluation.finalTotal;
       const res = this.processCashSale(netItems, cash);
-      if (res.ok && evaluation.totalDiscountCents > 0) {
-        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount);
+      if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
+        this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
       }
       await this.flushSave();
       return {
@@ -5841,10 +6407,16 @@ export class MockInventoryService implements OnDestroy {
     }
   }
 
-  private annotateLatestSaleWithDiscount(discountAmount: number): void {
+  private annotateLatestSaleWithDiscount(
+    discountAmount: number,
+    overrideInfo?: { cashier: string; authorizedBy: string }
+  ): void {
     const entries = [...this.kardex()];
     if (entries.length === 0) return;
     const tag = `DESC-$${discountAmount.toFixed(2)}`;
+    const authTag = overrideInfo
+      ? ` | Cajero: ${overrideInfo.cashier}, Autorizó: ${overrideInfo.authorizedBy}`
+      : '';
     const head = entries[0];
     const prevHash = entries[1]?.entryHash || 'GENESIS';
     const rehashedHead = createKardexEntry(
@@ -5856,14 +6428,25 @@ export class MockInventoryService implements OnDestroy {
         saldoAnterior: head.saldoAnterior,
         saldoResultante: head.saldoResultante,
         usuario: head.usuario,
-        referencia: `${head.referencia} (${tag})`,
+        referencia: `${head.referencia} (${tag}${authTag})`,
         amount: head.amount,
-        description: head.description,
+        description: overrideInfo
+          ? `${head.description} [Autorizado por ${overrideInfo.authorizedBy} para el cajero ${overrideInfo.cashier}]`
+          : head.description,
       },
       prevHash,
     );
     entries[0] = rehashedHead;
     this.kardex.set(entries);
+
+    if (overrideInfo) {
+      this.appendSecurityAuditEntry(
+        'OVERRIDE_AUTHORIZED',
+        `Descuento de $${discountAmount.toFixed(2)} en POS autorizado por ${overrideInfo.authorizedBy} para el cajero ${overrideInfo.cashier}`,
+        { cashier: overrideInfo.cashier, authorizedBy: overrideInfo.authorizedBy, discountAmount },
+        overrideInfo.cashier
+      );
+    }
   }
 
   /**

@@ -57,7 +57,7 @@ test('Respaldo Cifrado: validación de frase (mínimo 8 caracteres) y patrón es
 
 test('Respaldo Cifrado: PBKDF2-HMAC-SHA256 600,000 iteraciones con versión y parámetros en encabezado cubiertos por AAD', async () => {
   assert.equal(BACKUP_PBKDF2_ITERATIONS, 600_000);
-  const plaintext = new TextEncoder().encode(JSON.stringify({ tienda: 'Doña Lupe', caja: 1250.5 }));
+  const plaintext = new TextEncoder().encode(JSON.stringify({ tienda: 'Mi Tiendita', caja: 1250.5 }));
   const phrase = 'frase-respaldo-segura';
   const encrypted = await encryptBackupBytes(plaintext, phrase);
 
@@ -71,7 +71,7 @@ test('Respaldo Cifrado: PBKDF2-HMAC-SHA256 600,000 iteraciones con versión y pa
   // Descifrar con frase correcta (lee iteraciones del encabezado)
   const decrypted = await decryptBackupBytes(encrypted, phrase);
   assert.deepEqual(JSON.parse(new TextDecoder().decode(decrypted)), {
-    tienda: 'Doña Lupe',
+    tienda: 'Mi Tiendita',
     caja: 1250.5,
   });
 
