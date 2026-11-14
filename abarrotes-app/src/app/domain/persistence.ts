@@ -19,6 +19,7 @@
 import type { BusinessSettings } from './settings';
 import type { AppUser } from './auth';
 import type { SecurityAuditEntry } from './audit-log';
+import type { UsageActivityEntry, SatisfactionSurveyRecord } from './reports';
 
 export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
   storeName: 'Mi Tiendita',
@@ -155,8 +156,9 @@ export type ProductContinuityVerifier = (
   entries: any[]
 ) => { valid: boolean; error?: string; affectedSkus: string[] };
 
-export const CURRENT_SCHEMA_VERSION = 5;
-export const STATE_STORAGE_KEY = 'binnitech_pos_state_v5';
+export const CURRENT_SCHEMA_VERSION = 6;
+export const STATE_STORAGE_KEY = 'binnitech_pos_state_v6';
+export const LEGACY_STATE_STORAGE_KEY_V5 = 'binnitech_pos_state_v5';
 export const LEGACY_STATE_STORAGE_KEY_V4 = 'binnitech_pos_state_v4';
 export const LEGACY_STATE_STORAGE_KEY_V3 = 'binnitech_pos_state_v3';
 export const LEGACY_STATE_STORAGE_KEY_V2 = 'binnitech_pos_state_v2';
@@ -193,6 +195,8 @@ export interface PersistedAppState {
   shiftCloseRecords?: any[];
   isShiftOpen?: boolean;
   currentShiftId?: string;
+  usageActivityLog?: UsageActivityEntry[];
+  satisfactionSurveys?: SatisfactionSurveyRecord[];
 }
 
 export interface ValidationResult {
@@ -557,6 +561,8 @@ export function migrateState(data: any): MigrationResult {
         typeof working.currentShiftId === 'string' && working.currentShiftId.trim()
           ? working.currentShiftId
           : 'TURNO-1',
+      usageActivityLog: Array.isArray(working.usageActivityLog) ? working.usageActivityLog : [],
+      satisfactionSurveys: Array.isArray(working.satisfactionSurveys) ? working.satisfactionSurveys : [],
     };
   }
 

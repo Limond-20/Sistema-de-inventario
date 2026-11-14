@@ -32,6 +32,8 @@ export interface SaleLineItem {
   name: string;
   qty: number;
   unitPrice: number;
+  unitCost?: number; // Costo unitario al momento de la venta (en pesos)
+  unitCostCents?: number; // Costo unitario al momento de la venta (en centavos enteros)
   subtotal: number; // Importe NETO efectivamente cobrado (en pesos)
   subtotalCents: number; // Importe NETO efectivamente cobrado (en centavos enteros)
   grossSubtotal?: number; // Importe bruto antes de descuentos manuales/ticket
@@ -104,6 +106,9 @@ export interface SaleRecord {
   status: SaleStatus;
   reprintCount: number; // Veces que se ha reimpreso el ticket desde el historial
   returns: SaleReturnRecord[]; // Historial de contra-asientos
+  startedAt?: string; // ISO 8601 de inicio de captura en POS
+  finishedAt?: string; // ISO 8601 de cierre/cobro de la venta
+  durationMs?: number; // Duración efectiva de atención en ms (>= 0)
 }
 
 function formatLocalYyyyMmDd(date: Date): string {
@@ -147,6 +152,8 @@ export interface CreateSaleLineInput {
   name: string;
   qty: number;
   unitPrice: number;
+  unitCost?: number;
+  unitCostCents?: number;
   subtotal: number;
   grossSubtotal?: number;
   grossSubtotalCents?: number;
@@ -156,6 +163,53 @@ export interface CreateSaleLineInput {
   discountPct?: number;
   saleUnit?: string;
   tier?: string;
+}
+
+function resolveLineUnitCost(i: CreateSaleLineInput): { unitCost?: number; unitCostCents?: number } {
+  if (i.unitCostCents !== undefined && Number.isFinite(i.unitCostCents)) {
+    const cents = Math.max(0, Math.round(i.unitCostCents));
+    return { unitCostCents: cents, unitCost: cents / 100 };
+  }
+  if (i.unitCost !== undefined && Number.isFinite(i.unitCost)) {
+    const cents = Math.max(0, Math.round(i.unitCost * 100));
+    return { unitCostCents: cents, unitCost: cents / 100 };
+  }
+  return {};
+}
+
+function resolveSaleTiming(
+  params: { startedAt?: string; finishedAt?: string; durationMs?: number },
+  fallbackIsoTimestamp: string
+): { startedAt?: string; finishedAt?: string; durationMs?: number } {
+  if (!params.startedAt && !params.finishedAt && params.durationMs === undefined) {
+    return {};
+  }
+  const finishedAt = params.finishedAt || fallbackIsoTimestamp;
+  const finishedMs = Date.parse(finishedAt);
+  let durationMs: number | undefined;
+  let startedAt = params.startedAt;
+
+  if (params.durationMs !== undefined && Number.isFinite(params.durationMs)) {
+    durationMs = Math.max(0, Math.round(params.durationMs));
+    if (!startedAt && Number.isFinite(finishedMs)) {
+      startedAt = new Date(finishedMs - durationMs).toISOString();
+    }
+  } else if (startedAt) {
+    const startedMs = Date.parse(startedAt);
+    durationMs =
+      Number.isFinite(startedMs) && Number.isFinite(finishedMs)
+        ? Math.max(0, Math.round(finishedMs - startedMs))
+        : 0;
+  } else {
+    startedAt = finishedAt;
+    durationMs = 0;
+  }
+
+  return {
+    startedAt,
+    finishedAt,
+    durationMs,
+  };
 }
 
 /**
@@ -179,10 +233,14 @@ export function createSaleRecord(params: {
   customerNewBalance?: number;
   timestamp?: string;
   date?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
 }): SaleRecord {
   const now = new Date();
   const localDate = params.date || formatLocalYyyyMmDd(now);
   const isoTimestamp = params.timestamp || now.toISOString();
+  const timingFields = resolveSaleTiming(params, isoTimestamp);
 
   const folio = params.folio || generateSaleFolio(params.existingSalesCount ?? 0);
   if (params.folio) {
@@ -224,6 +282,7 @@ export function createSaleRecord(params: {
         name: i.name,
         qty,
         unitPrice: Math.round(i.unitPrice * 100) / 100,
+        ...resolveLineUnitCost(i),
         subtotal: netCents / 100,
         subtotalCents: netCents,
         grossSubtotal: grossCents / 100,
@@ -263,6 +322,7 @@ export function createSaleRecord(params: {
       status: 'COMPLETADA',
       reprintCount: 0,
       returns: [],
+      ...timingFields,
     };
   }
 
@@ -334,6 +394,7 @@ export function createSaleRecord(params: {
       name: l.raw.name,
       qty: l.qty,
       unitPrice: Math.round(l.raw.unitPrice * 100) / 100,
+      ...resolveLineUnitCost(l.raw),
       subtotal: finalLineCents / 100,
       subtotalCents: finalLineCents,
       grossSubtotal: l.grossCents / 100,
@@ -375,6 +436,7 @@ export function createSaleRecord(params: {
     status: 'COMPLETADA',
     reprintCount: 0,
     returns: [],
+    ...timingFields,
   };
 }
 

@@ -711,7 +711,7 @@ test('Persistencia (Bloque H seguimiento): Migración v4 -> v5 integra salesHist
   assert.equal(migration.migrated, true);
   assert.equal(migration.fromVersion, 4);
   assert.equal(migration.toVersion, CURRENT_SCHEMA_VERSION);
-  assert.equal(migration.state.schemaVersion, 5);
+  assert.equal(migration.state.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.equal(migration.state.settings?.storeName, 'Abarrotes La Estrella');
   assert.equal(migration.state.users?.length, 1);
   assert.equal(migration.state.securityAuditLog?.length, 1);
@@ -724,4 +724,31 @@ test('Persistencia (Bloque H seguimiento): Migración v4 -> v5 integra salesHist
 
   const validation = validateStoredState(migration.state);
   assert.equal(validation.valid, true);
+});
+
+
+test('Migración v5 a v6 (Bloque I): inicializa bitácora de uso y encuestas de satisfacción conservando datos previos', () => {
+  const legacyV5 = {
+    schemaVersion: 5,
+    savedAt: '2026-11-12T10:00:00Z',
+    products: [],
+    creditCustomers: [],
+    cashShift: { openingCash: 1000, cashSalesTotal: 250 },
+    cashRegister: { openingFloat: 1000, cashSalesTotal: 250 },
+    salesHistory: [{ id: 'SALE-1', folio: 'V-1001', total: 250, totalCents: 25000 }],
+    saleReturns: [],
+    shiftCloseRecords: [],
+    isShiftOpen: true,
+    currentShiftId: 'TURNO-1',
+  };
+
+  const migration = migrateState(legacyV5);
+  assert.equal(migration.migrated, true);
+  assert.equal(migration.fromVersion, 5);
+  assert.equal(migration.toVersion, 6);
+  assert.equal(migration.state.schemaVersion, 6);
+  assert.equal(migration.state.salesHistory?.length, 1);
+  assert.ok(Array.isArray(migration.state.usageActivityLog));
+  assert.ok(Array.isArray(migration.state.satisfactionSurveys));
+  assert.equal(validateStoredState(migration.state).valid, true);
 });

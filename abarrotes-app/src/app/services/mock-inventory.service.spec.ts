@@ -1,5 +1,5 @@
 import { calculateDueDate } from '../domain/suppliers';
-import { hasPermission, ROLE_PERMISSIONS } from '../domain/auth';
+import { hasPermission, ROLE_PERMISSIONS, canAccessRoute } from '../domain/auth';
 import { verifySecurityAuditChain } from '../domain/audit-log';
 import { DEFAULT_BUSINESS_SETTINGS } from '../domain/settings';
 import { authGuard } from '../guards/auth.guard';
@@ -7,11 +7,14 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { MockInventoryService, ShrinkRecord, ReceptionLine, PosSaleItem } from './mock-inventory.service';
 import { PosViewComponent } from '../views/pos/pos-view.component';
+import { ReportsViewComponent } from '../views/reports/reports-view.component';
+import { UTF8_BOM, formatLocalYyyyMmDd } from '../domain/reports';
 import { createKardexEntry, verifyProductContinuity } from '../domain/kardex';
 import {
   CORRUPT_STATE_KEY_PREFIX,
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY_V5,
   LEGACY_STATE_STORAGE_KEY_V4,
   LEGACY_STATE_STORAGE_KEY,
   IndexedDbStateStorageAdapter,
@@ -4337,10 +4340,306 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
 
     const v5Saved = await adapter.load(STATE_STORAGE_KEY);
     expect(v5Saved).toBeDefined();
-    expect(v5Saved.schemaVersion).toBe(5);
+    expect(v5Saved.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(v5Saved.settings.storeName).toBe('Abarrotes v4 Migrado');
 
     const v4AfterSuccess = await adapter.load(LEGACY_STATE_STORAGE_KEY_V4);
     expect(v4AfterSuccess).toBeNull();
+  });
+
+  it('79. Bloque I: POS registra startedAt/finishedAt/durationMs, costea unitCostCents desde catálogo y limpia timer al vaciar carrito', async () => {
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    await service.loginWithPin(admin.id, '984312');
+
+    const comp = TestBed.runInInjectionContext(() => new PosViewComponent());
+    comp.ngOnInit();
+
+    (comp as any).clearCart();
+    const prod1 = service.products().find((p) => p.sku === 'REF-COC-600')!;
+    const prod2 = service.products().find((p) => p.sku === 'ACE-1L') || service.products()[1];
+    expect(prod1).toBeDefined();
+    expect(prod2).toBeDefined();
+
+    // 1. Agregar producto inicia cronómetro; retirarlo dejando carrito vacío lo limpia
+    comp.addUnitToCart(prod1, 1);
+    expect((comp as any).currentSaleStartedAt()).toBeTruthy();
+
+    comp.removeFromCart(prod1.sku);
+    expect((comp as any).currentSaleStartedAt()).toBeNull();
+
+    // 2. Nueva venta en efectivo registra tiempos, unitCostCents y actividad de uso
+    comp.addUnitToCart(prod1, 1);
+    comp.addUnitToCart(prod2, 1);
+    const startedAt = (comp as any).currentSaleStartedAt();
+    expect(startedAt).toBeTruthy();
+
+    (comp as any).cashReceived.set(prod1.salePrice + prod2.salePrice + 50);
+    await (comp as any).confirmCashSale();
+
+    expect((comp as any).currentSaleStartedAt()).toBeNull();
+    const recorded = service.salesHistory()[0];
+    expect(recorded).toBeDefined();
+    expect(recorded.startedAt).toBe(startedAt);
+    expect(recorded.finishedAt).toBeTruthy();
+    expect(typeof recorded.durationMs).toBe('number');
+    expect(recorded.durationMs!).toBeGreaterThanOrEqual(0);
+    expect(recorded.items[0].unitCostCents).toBeGreaterThan(0);
+
+    const today = formatLocalYyyyMmDd(new Date());
+    expect(service.usageActivityLog().some((u) => u.date === today && u.salesCount >= 1)).toBeTrue();
+  });
+
+  it('80. Bloque I: getReportsBundle integra los 7 reportes y 8 indicadores desde datos reales del servicio en centavos exactos', async () => {
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    await service.loginWithPin(admin.id, '984312');
+
+    service.salesHistory.set([]);
+    service.saleReturns.set([]);
+    service.shrinkRecords.set([]);
+    service.auditLines.set([]);
+    service.usageActivityLog.set([]);
+    service.satisfactionSurveys.set([]);
+
+    const prod = service.products().find((p) => p.sku === 'REF-COC-600')!;
+    const stockBefore = prod.stock;
+    const today = formatLocalYyyyMmDd(new Date());
+    const t0 = `${today}T10:00:00`;
+    const t1 = `${today}T10:00:15`;
+
+    const qtySold = 2;
+    const lineSubtotal = +(prod.salePrice * qtySold).toFixed(2);
+    const saleRes = service.processCashSale(
+      [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          isBulk: prod.isBulk,
+          qty: qtySold,
+          unitPrice: prod.salePrice,
+          subtotal: lineSubtotal,
+          saleUnit: prod.saleUnit,
+        },
+      ],
+      lineSubtotal,
+      { startedAt: t0, finishedAt: t1 }
+    );
+    expect(saleRes.ok).toBeTrue();
+    expect(saleRes.sale?.durationMs).toBe(15000);
+
+    // Devolución parcial de 1 pieza en condición MERMA: rebaja ventas netas y genera ShrinkRecord revisado
+    const retRes = await service.processSaleReturn({
+      saleIdOrFolio: saleRes.sale!.folio,
+      itemsToReturn: [{ sku: prod.sku, qty: 1 }],
+      reason: 'Botella estrellada en mostrador',
+      pin: '984312',
+      condition: 'MERMA',
+    });
+    expect(retRes.ok).toBeTrue();
+
+    // Conteo ciego con diferencia de -1 pieza respecto al stock teórico actual (stockBefore - 2)
+    service.submitBlindAuditResults([{ sku: prod.sku, countedQty: stockBefore - 3 }]);
+
+    const bundle = service.getReportsBundle({ preset: 'HOY' });
+    const unitPriceCents = Math.round(prod.salePrice * 100);
+    expect(bundle.sales.ticketCount).toBe(1);
+    expect(bundle.sales.grossSalesCents).toBe(unitPriceCents * 2);
+    expect(bundle.sales.returnsCents).toBe(unitPriceCents);
+    expect(bundle.sales.netSalesCents).toBe(unitPriceCents);
+
+    expect(bundle.margins.totalMarginCents).toBe(
+      bundle.margins.totalNetRevenueCents - bundle.margins.totalNetCostCents
+    );
+    expect(bundle.shrink.recordCount).toBe(1);
+    expect(bundle.auditDifferences.totalAuditedSkus).toBe(1);
+    expect(bundle.auditDifferences.shortageSkuCount).toBe(1);
+    expect(bundle.saleTiming.measuredSaleCount).toBe(1);
+    expect(bundle.saleTiming.averageDurationMs).toBe(15000);
+    expect(bundle.inventoryValuation.totalRetailCents).toBeGreaterThan(
+      bundle.inventoryValuation.totalCostCents
+    );
+    expect(bundle.usage30Days.activeDays).toBe(1);
+    expect(bundle.indicators.length).toBe(8);
+    expect(bundle.indicators.map((i) => i.id)).toEqual([
+      'VENTAS',
+      'MARGENES',
+      'MERMAS',
+      'CREDITOS_VENCIDOS',
+      'DIFERENCIA_CONTEO',
+      'TIEMPO_POR_VENTA',
+      'USO_30_DIAS',
+      'SATISFACCION',
+    ]);
+  });
+
+  it('81. Bloque I: Exportación CSV UTF-8 BOM anti-fórmulas y ReportsViewComponent con nombre de tienda dinámico', async () => {
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    await service.loginWithPin(admin.id, '984312');
+
+    const settingsRes = await service.updateBusinessSettings({
+      storeName: 'Super Norte Express',
+    });
+    expect(settingsRes.ok).toBeTrue();
+
+    const prod = service.products()[0];
+    service.processCashSale(
+      [
+        {
+          sku: prod.sku,
+          barcode: prod.barcode,
+          name: prod.name,
+          emoji: prod.emoji,
+          isBulk: prod.isBulk,
+          qty: 1,
+          unitPrice: prod.salePrice,
+          subtotal: prod.salePrice,
+          saleUnit: prod.saleUnit,
+        },
+      ],
+      prod.salePrice
+    );
+    service.addShrinkRecord({
+      id: 'M-CSV-FORMULA',
+      date: formatLocalYyyyMmDd(new Date()),
+      time: '11:30',
+      sku: 'CSV-1',
+      name: '=SUM(A1:A5)',
+      emoji: '',
+      qty: 1,
+      saleUnit: 'Pieza',
+      reason: 'Caducado',
+      unitCost: 12.5,
+      registeredBy: 'Administrador',
+      hasPhoto: false,
+      reviewed: true,
+    });
+
+    const salesCsv = service.exportReportCsv('VENTAS', { preset: 'HOY' });
+    expect(salesCsv.filename.startsWith('super-norte-express_reporte_ventas_')).toBeTrue();
+    expect(salesCsv.content.startsWith(UTF8_BOM)).toBeTrue();
+    expect(salesCsv.content).toContain('Super Norte Express');
+    expect(salesCsv.content).not.toContain('Abarrotes Doña Lupe');
+
+    const shrinkCsv = service.exportReportCsv('MERMAS', { preset: 'HOY' });
+    expect(shrinkCsv.content.startsWith(UTF8_BOM)).toBeTrue();
+    expect(shrinkCsv.content).toContain("'=SUM(A1:A5)");
+
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub();
+    const reportsComp = TestBed.runInInjectionContext(() => new ReportsViewComponent());
+    (reportsComp as any).setPreset('HOY');
+    (reportsComp as any).onIndicatorClick({ targetReportTab: 'MARGENES' });
+    expect((reportsComp as any).activeTab()).toBe('MARGENES');
+
+    (reportsComp as any).downloadCurrentCsv();
+    expect((reportsComp as any).exportFeedback()?.ok).toBeTrue();
+    (reportsComp as any).downloadIndicatorsCsv();
+    expect((reportsComp as any).exportFeedback()?.text).toContain('8 indicadores');
+  });
+
+  it('82. Bloque I: Encuesta semanal de satisfacción (1..5) integrada al cierre de turno con bloqueo por 7 días', async () => {
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    await service.loginWithPin(admin.id, '984312');
+    service.satisfactionSurveys.set([]);
+
+    expect(service.satisfactionDueStatus().due).toBeTrue();
+
+    const close1 = await service.closeShift({
+      physicalCash: service.getRealDrawerCash(),
+      pin: '984312',
+      satisfactionRating: 5,
+      satisfactionComment: 'Todo cuadró perfecto',
+    });
+    expect(close1.ok).toBeTrue();
+    expect(close1.satisfactionSaved).toBeTrue();
+    expect(service.satisfactionSurveys().length).toBe(1);
+    expect(service.satisfactionMetric().averageRating).toBe(5);
+    expect(service.satisfactionDueStatus().due).toBeFalse();
+
+    const retryDirect = service.submitSatisfactionSurvey({ rating: 2 });
+    expect(retryDirect.ok).toBeFalse();
+
+    const reopenRes = await service.openNewShift({ openingCash: 500, pin: '984312' });
+    expect(reopenRes.ok).toBeTrue();
+
+    const close2 = await service.closeShift({
+      physicalCash: service.getRealDrawerCash(),
+      pin: '984312',
+      satisfactionRating: 1,
+    });
+    expect(close2.ok).toBeTrue();
+    expect(close2.satisfactionSaved).toBeFalse();
+    expect(service.satisfactionSurveys().length).toBe(1);
+  });
+
+  it('83. Bloque I: Permisos y authGuard restringen /reportes a ENCARGADO y ADMINISTRADOR (CAJERO redirige a /pos)', () => {
+    expect(canAccessRoute('CAJERO', 'reportes')).toBeFalse();
+    expect(canAccessRoute('ENCARGADO', 'reportes')).toBeTrue();
+    expect(canAccessRoute('ADMINISTRADOR', 'reportes')).toBeTrue();
+
+    const routeMock: any = {};
+    const stateMock: any = { url: '/reportes' };
+
+    const cajero = service.users().find((u) => u.role === 'CAJERO')!;
+    service.currentUser.set(cajero);
+    const cajeroGuard = TestBed.runInInjectionContext(() => authGuard(routeMock, stateMock));
+    expect(cajeroGuard).not.toBeTrue();
+    expect((cajeroGuard as any).toString()).toContain('/pos');
+
+    const encargado = service.users().find((u) => u.role === 'ENCARGADO')!;
+    service.currentUser.set(encargado);
+    expect(TestBed.runInInjectionContext(() => authGuard(routeMock, stateMock))).toBeTrue();
+
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    service.currentUser.set(admin);
+    expect(TestBed.runInInjectionContext(() => authGuard(routeMock, stateMock))).toBeTrue();
+  });
+
+  it('84. Bloque I: Migración de esquema v5 -> v6 hidrata usageActivityLog y satisfactionSurveys preservando Bloque H y elimina v5', async () => {
+    const adapter = (service as any).storageAdapter;
+    await adapter.delete(STATE_STORAGE_KEY);
+
+    const v5Data = {
+      schemaVersion: 5,
+      timestamp: '2026-11-13T18:00:00.000Z',
+      activeUser: 'Administrador',
+      products: service.products(),
+      creditCustomers: service.creditCustomers(),
+      cashShift: service.cashShift(),
+      cashRegister: service.cashRegister(),
+      kardex: service.kardex(),
+      shrinkRecords: service.shrinkRecords(),
+      auditLines: service.auditLines(),
+      suppliers: service.suppliers(),
+      accountsPayable: service.accountsPayable(),
+      priceHistory: service.productPriceHistory(),
+      cashMovements: service.cashMovements(),
+      settings: {
+        ...DEFAULT_BUSINESS_SETTINGS,
+        storeName: 'Tienda v5 Migrada',
+      },
+      users: service.users(),
+      securityAuditLog: service.securityAuditLog(),
+      salesHistory: service.salesHistory(),
+      saleReturns: service.saleReturns(),
+      shiftCloseRecords: service.shiftCloseRecords(),
+      isShiftOpen: true,
+    };
+
+    await adapter.save(LEGACY_STATE_STORAGE_KEY_V5, v5Data);
+    const restoreRes = await service.restorePersistedState();
+    expect(restoreRes.success).toBeTrue();
+
+    expect(service.businessSettings().storeName).toBe('Tienda v5 Migrada');
+    expect(Array.isArray(service.usageActivityLog())).toBeTrue();
+    expect(Array.isArray(service.satisfactionSurveys())).toBeTrue();
+
+    const v6Saved = await adapter.load(STATE_STORAGE_KEY);
+    expect(v6Saved).toBeDefined();
+    expect(v6Saved.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(v6Saved.settings.storeName).toBe('Tienda v5 Migrada');
+
+    const v5AfterSuccess = await adapter.load(LEGACY_STATE_STORAGE_KEY_V5);
+    expect(v5AfterSuccess).toBeNull();
   });
 });

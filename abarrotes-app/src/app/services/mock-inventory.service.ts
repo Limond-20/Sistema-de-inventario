@@ -111,6 +111,7 @@ import {
 import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
+  LEGACY_STATE_STORAGE_KEY_V5,
   LEGACY_STATE_STORAGE_KEY_V4,
   LEGACY_STATE_STORAGE_KEY_V3,
   LEGACY_STATE_STORAGE_KEY_V2,
@@ -155,6 +156,32 @@ import {
   createSecurityAuditEntry,
   verifySecurityAuditChain,
 } from '../domain/audit-log';
+import {
+  type ReportDateFilterInput,
+  type ReportPeriodPreset,
+  type ReportTabKey,
+  type ReportsBundle,
+  type UsageActivityEntry,
+  type SatisfactionSurveyRecord,
+  type SatisfactionDueStatus,
+  type IndicatorCardMetric,
+  type ResolvedDateRange,
+  formatLocalYyyyMmDd,
+  recordUsageActivity,
+  computeUsage30DaysMetric,
+  isSatisfactionSurveyDue,
+  recordSatisfactionSurvey,
+  computeSatisfactionMetric,
+  buildReportsBundle,
+  exportSalesReportCsv,
+  exportMarginsReportCsv,
+  exportShrinkReportCsv,
+  exportOverdueCreditsReportCsv,
+  exportAuditDifferencesReportCsv,
+  exportSaleTimingReportCsv,
+  exportInventoryValuationReportCsv,
+  exportIndicatorsPanelCsv,
+} from '../domain/reports';
 import {
   MIN_BACKUP_PASSPHRASE_LENGTH,
   HOURLY_BACKUP_INTERVAL_MS,
@@ -469,6 +496,8 @@ export interface SupplierNote {
 export type AuditStatus = 'pendiente' | 'autorizado' | 'reconteo';
 
 export interface AuditLine {
+  date?: string;
+  timestamp?: string;
   sku: string;
   name: string;
   emoji: string;
@@ -1682,6 +1711,7 @@ export class MockInventoryService implements OnDestroy {
     if (result.success) {
       this.currentUser.set(result.updatedUser);
       this.activeUser.set(result.updatedUser.name);
+      this.trackUsageActivity({ user: result.updatedUser.name });
       this.isSessionLocked.set(false);
       this.resetInactivityTimer();
 
@@ -2400,6 +2430,8 @@ export class MockInventoryService implements OnDestroy {
       users: this.users(),
       securityAuditLog: this.securityAuditLog(),
       salesHistory: this.salesHistory(),
+      usageActivityLog: this.usageActivityLog(),
+      satisfactionSurveys: this.satisfactionSurveys(),
       saleReturns: this.saleReturns(),
       shiftCloseRecords: this.shiftCloseRecords(),
       isShiftOpen: this.isShiftOpen(),
@@ -2640,6 +2672,16 @@ export class MockInventoryService implements OnDestroy {
     if (stateToValidate.shiftCloseRecords) this.shiftCloseRecords.set(structuredClone(stateToValidate.shiftCloseRecords));
     if (typeof stateToValidate.isShiftOpen === 'boolean') this.isShiftOpen.set(stateToValidate.isShiftOpen);
     if (stateToValidate.currentShiftId) this.currentShiftId.set(stateToValidate.currentShiftId);
+    this.usageActivityLog.set(
+      Array.isArray(stateToValidate.usageActivityLog)
+        ? structuredClone(stateToValidate.usageActivityLog)
+        : []
+    );
+    this.satisfactionSurveys.set(
+      Array.isArray(stateToValidate.satisfactionSurveys)
+        ? structuredClone(stateToValidate.satisfactionSurveys)
+        : []
+    );
   }
 
   private async savePreRestoreSnapshot(): Promise<string> {
@@ -2893,6 +2935,12 @@ export class MockInventoryService implements OnDestroy {
       let loadedFromLegacy = false;
       let legacyKeyLoaded: string | null = null;
       if (!raw) {
+        raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V5);
+        if (raw) {
+          legacyKeyLoaded = LEGACY_STATE_STORAGE_KEY_V5;
+        }
+      }
+      if (!raw) {
         raw = await this.storageAdapter.load(LEGACY_STATE_STORAGE_KEY_V4);
         if (raw) {
           loadedFromLegacy = true;
@@ -3032,6 +3080,16 @@ export class MockInventoryService implements OnDestroy {
       if (stateToValidate.shiftCloseRecords) this.shiftCloseRecords.set(stateToValidate.shiftCloseRecords);
       if (typeof stateToValidate.isShiftOpen === 'boolean') this.isShiftOpen.set(stateToValidate.isShiftOpen);
       if (stateToValidate.currentShiftId) this.currentShiftId.set(stateToValidate.currentShiftId);
+    this.usageActivityLog.set(
+      Array.isArray(stateToValidate.usageActivityLog)
+        ? structuredClone(stateToValidate.usageActivityLog)
+        : []
+    );
+    this.satisfactionSurveys.set(
+      Array.isArray(stateToValidate.satisfactionSurveys)
+        ? structuredClone(stateToValidate.satisfactionSurveys)
+        : []
+    );
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
@@ -3168,6 +3226,8 @@ export class MockInventoryService implements OnDestroy {
     this.productPriceHistory.set([]);
     this.cashMovements.set([]);
     this.salesHistory.set([]);
+    this.usageActivityLog.set([]);
+    this.satisfactionSurveys.set([]);
     this.saleReturns.set([]);
     this.shiftCloseRecords.set([]);
     this.isShiftOpen.set(true);
@@ -3302,6 +3362,15 @@ export class MockInventoryService implements OnDestroy {
   readonly currentShiftId = signal<string>('TURNO-1');
   readonly shiftOpenedBy = signal<string>('Don Lupe (Encargado)');
   readonly lastCompletedSale = signal<SaleRecord | null>(null);
+  readonly usageActivityLog = signal<UsageActivityEntry[]>([]);
+  readonly satisfactionSurveys = signal<SatisfactionSurveyRecord[]>([]);
+  readonly usage30DaysMetric = computed(() => computeUsage30DaysMetric(this.usageActivityLog()));
+  readonly satisfactionDueStatus = computed(() =>
+    isSatisfactionSurveyDue(this.satisfactionSurveys())
+  );
+  readonly satisfactionMetric = computed(() =>
+    computeSatisfactionMetric(this.satisfactionSurveys())
+  );
   readonly perishableBatches = signal<PerishableBatch[]>(structuredClone(PERISHABLE_BATCHES));
   readonly blindAuditMission = signal<BlindAuditItem[]>([]);
 
@@ -3662,10 +3731,30 @@ export class MockInventoryService implements OnDestroy {
    * - Suma a cashSalesTotal en el arqueo del cajón.
    * - Registra en Kardex como 'VENTA_EFECTIVO' (y 'FALTANTE_SISTEMA' con hash encadenado).
    */
+  private resolveProductCostForSale(sku: string): { unitCost: number; unitCostCents: number } {
+    const p = this.products().find((prod) => prod.sku === sku);
+    const rawCost = p
+      ? p.weightedAvgCost ?? p.lastPurchaseCost ?? p.purchaseCost ?? p.historicCost ?? 0
+      : 0;
+    const unitCost = Number.isFinite(rawCost) && rawCost > 0 ? rawCost : 0;
+    return {
+      unitCost,
+      unitCostCents: Math.max(0, Math.round(unitCost * 100)),
+    };
+  }
+
   processCashSale(
     items: CartItem[],
     cashReceived: number,
-    options?: { discountAmount?: number; itemsAlreadyNet?: boolean; folio?: string; cashier?: string }
+    options?: {
+      discountAmount?: number;
+      itemsAlreadyNet?: boolean;
+      folio?: string;
+      cashier?: string;
+      startedAt?: string;
+      finishedAt?: string;
+      durationMs?: number;
+    }
   ): SaleResult {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0, change: 0 };
@@ -3793,6 +3882,7 @@ export class MockInventoryService implements OnDestroy {
         subtotal: i.subtotal,
         grossSubtotal: i.grossSubtotal,
         grossSubtotalCents: i.grossSubtotalCents,
+        ...this.resolveProductCostForSale(i.sku),
         netSubtotalCents: i.netSubtotalCents,
         discountPct: i.discountPct,
         saleUnit: i.saleUnit,
@@ -3800,11 +3890,20 @@ export class MockInventoryService implements OnDestroy {
       })),
       discountAmount: options?.discountAmount || 0,
       itemsAlreadyNet: options?.itemsAlreadyNet,
+      startedAt: options?.startedAt,
+      finishedAt: options?.finishedAt,
+      durationMs: options?.durationMs,
       cashReceived,
       change,
     });
     this.salesHistory.update((list) => [saleRecord, ...list]);
     this.lastCompletedSale.set(saleRecord);
+    this.trackUsageActivity({
+      isSale: true,
+      date: saleRecord.date,
+      timestamp: saleRecord.timestamp,
+      user: saleRecord.cashier,
+    });
 
     void this.flushSave();
 
@@ -3828,7 +3927,15 @@ export class MockInventoryService implements OnDestroy {
   processCreditSale(
     items: CartItem[],
     customerId: string,
-    options?: { discountAmount?: number; itemsAlreadyNet?: boolean; folio?: string; cashier?: string }
+    options?: {
+      discountAmount?: number;
+      itemsAlreadyNet?: boolean;
+      folio?: string;
+      cashier?: string;
+      startedAt?: string;
+      finishedAt?: string;
+      durationMs?: number;
+    }
   ): CreditResult {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana', total: 0 };
@@ -3973,6 +4080,7 @@ export class MockInventoryService implements OnDestroy {
         subtotal: i.subtotal,
         grossSubtotal: i.grossSubtotal,
         grossSubtotalCents: i.grossSubtotalCents,
+        ...this.resolveProductCostForSale(i.sku),
         netSubtotalCents: i.netSubtotalCents,
         discountPct: i.discountPct,
         saleUnit: i.saleUnit,
@@ -3980,9 +4088,18 @@ export class MockInventoryService implements OnDestroy {
       })),
       discountAmount: options?.discountAmount || 0,
       itemsAlreadyNet: options?.itemsAlreadyNet,
+      startedAt: options?.startedAt,
+      finishedAt: options?.finishedAt,
+      durationMs: options?.durationMs,
     });
     this.salesHistory.update((list) => [saleRecord, ...list]);
     this.lastCompletedSale.set(saleRecord);
+    this.trackUsageActivity({
+      isSale: true,
+      date: saleRecord.date,
+      timestamp: saleRecord.timestamp,
+      user: saleRecord.cashier,
+    });
 
     void this.flushSave();
 
@@ -5629,6 +5746,8 @@ export class MockInventoryService implements OnDestroy {
         name,
         emoji: '',
         location: p?.location || 'Pasillo 3 · Auditoría Ciega Móvil',
+        date: formatLocalYyyyMmDd(new Date()),
+        timestamp: new Date().toISOString(),
         saleUnit,
         systemQty,
         countedQty: c.countedQty,
@@ -5639,6 +5758,7 @@ export class MockInventoryService implements OnDestroy {
     });
 
     this.auditLines.set(newAuditLines);
+    this.trackUsageActivity({ user: this.activeUser() });
     this.morningAlerts.update((alerts) => [
       ...alerts.filter((a) => a.kind !== 'auditoria'),
       {
@@ -6470,6 +6590,9 @@ export class MockInventoryService implements OnDestroy {
     paymentMethod?: 'EFECTIVO' | 'FIADO';
     cashReceived?: number;
     receivedAmount?: number;
+    startedAt?: string;
+    finishedAt?: string;
+    durationMs?: number;
     customerId?: string;
     pin?: string;
     authorizerName?: string;
@@ -6551,6 +6674,9 @@ export class MockInventoryService implements OnDestroy {
       const res = this.processCreditSale(netItems, params.customerId || '', {
         discountAmount: evaluation.totalDiscountAmount,
         itemsAlreadyNet: true,
+        startedAt: params.startedAt,
+        finishedAt: params.finishedAt,
+        durationMs: params.durationMs,
       });
       if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
         this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
@@ -6570,6 +6696,9 @@ export class MockInventoryService implements OnDestroy {
       const res = this.processCashSale(netItems, cash, {
         discountAmount: evaluation.totalDiscountAmount,
         itemsAlreadyNet: true,
+        startedAt: params.startedAt,
+        finishedAt: params.finishedAt,
+        durationMs: params.durationMs,
       });
       if (res.ok && (evaluation.totalDiscountCents > 0 || overrideInfo)) {
         this.annotateLatestSaleWithDiscount(evaluation.totalDiscountAmount, overrideInfo);
@@ -7002,6 +7131,7 @@ export class MockInventoryService implements OnDestroy {
       let currentHash = this.kardex()[0]?.entryHash || 'GENESIS';
       const newKardexEntries: KardexEntry[] = [];
       let totalMermaCost = 0;
+      const returnedMermaRecords: ShrinkRecord[] = [];
 
       this.products.update((list) =>
         list.map((prod) => {
@@ -7012,6 +7142,22 @@ export class MockInventoryService implements OnDestroy {
           const unitCost = prod.weightedAvgCost ?? prod.unitCost ?? 0;
           const costAmount = Math.round(unitCost * retLine.qty * 100) / 100;
           if (itemCondition === 'MERMA') {
+            const retNow = new Date();
+            returnedMermaRecords.push({
+              id: `M-RET-${enrichedReturnRecord.id}-${prod.sku}`,
+              date: formatLocalYyyyMmDd(retNow),
+              time: retNow.toTimeString().slice(0, 5),
+              sku: prod.sku,
+              name: prod.name,
+              emoji: prod.emoji || '',
+              qty: retLine.qty,
+              saleUnit: prod.saleUnit || 'Pieza',
+              reason: `Devolución dañada: ${params.reason.trim()}`,
+              unitCost: unitCost || this.resolveProductCostForSale(prod.sku).unitCost,
+              registeredBy: authorizer,
+              hasPhoto: false,
+              reviewed: true,
+            });
             totalMermaCost = sumMoney([totalMermaCost, costAmount]);
           }
 
@@ -7064,6 +7210,7 @@ export class MockInventoryService implements OnDestroy {
         });
         this.cashMovements.update((list) => sortCashMovementsByTimestamp([mov, ...list], 'desc'));
 
+
         this.cashShift.update((s) => ({
           ...s,
           cashPayoutsTotal: sumMoney([s.cashPayoutsTotal || 0, cashRefundNeeded]),
@@ -7079,6 +7226,10 @@ export class MockInventoryService implements OnDestroy {
         list.map((s) => (s.id === sale.id ? enrichedUpdatedSale : s))
       );
       this.saleReturns.update((list) => [enrichedReturnRecord, ...list]);
+      for (const sr of returnedMermaRecords) {
+        this.addShrinkRecord(sr);
+      }
+      this.trackUsageActivity({ user: authorizer });
 
       await this.flushSave();
 
@@ -7164,6 +7315,9 @@ export class MockInventoryService implements OnDestroy {
 
     this.cashMovements.update((list) => sortCashMovementsByTimestamp([mov, ...list], 'desc'));
 
+
+    this.trackUsageActivity({ user: authorizer, date: mov.date, timestamp: mov.timestamp });
+
     if (isCashDrawer && (!params.paymentMethod || params.paymentMethod === 'EFECTIVO')) {
       if (params.type === 'ENTRADA') {
         this.cashShift.update((s) => ({
@@ -7214,6 +7368,8 @@ export class MockInventoryService implements OnDestroy {
    * Cierra el turno de caja con PIN de encargado y bloqueo de edición (Bloque H).
    */
   async closeShift(params: {
+    satisfactionRating?: number;
+    satisfactionComment?: string;
     physicalCash: number;
     pin: string;
     authorizerName?: string;
@@ -7222,6 +7378,7 @@ export class MockInventoryService implements OnDestroy {
     ok: boolean;
     message: string;
     record?: ShiftCloseRecord;
+    satisfactionSaved?: boolean;
     remainingAttempts?: number;
     isLocked?: boolean;
   }> {
@@ -7267,6 +7424,24 @@ export class MockInventoryService implements OnDestroy {
     };
 
     this.shiftCloseRecords.update((list) => [record, ...list]);
+    let satisfactionSaved = false;
+    if (
+      params.satisfactionRating !== undefined &&
+      isSatisfactionSurveyDue(this.satisfactionSurveys()).due
+    ) {
+      const satRes = recordSatisfactionSurvey(this.satisfactionSurveys(), {
+        rating: params.satisfactionRating,
+        respondent: authorizer,
+        shiftId: record.shiftId,
+        comment: params.satisfactionComment,
+      });
+      if (satRes.ok) {
+        this.satisfactionSurveys.set(satRes.surveys);
+        satisfactionSaved = true;
+      }
+    }
+
+    this.trackUsageActivity({ user: authorizer });
     this.isShiftOpen.set(false);
 
     await this.flushSave();
@@ -7274,6 +7449,7 @@ export class MockInventoryService implements OnDestroy {
     return {
       ok: true,
       message: `Turno cerrado exitosamente con corte de caja. ${cut.statusLabel}.`,
+      satisfactionSaved,
       record,
     };
   }
@@ -7376,6 +7552,178 @@ export class MockInventoryService implements OnDestroy {
     const html = formatTicketHtml(currentSale, formatOpts);
 
     return { text, html, sale: currentSale };
+  }
+
+  // ===================================================================
+  //  BLOQUE I: REPORTES, INDICADORES, USO 30 DÍAS Y SATISFACCIÓN
+  // ===================================================================
+
+  private trackUsageActivity(options?: {
+    isSale?: boolean;
+    date?: string;
+    timestamp?: string;
+    user?: string;
+  }): void {
+    const user = options?.user || this.activeUser() || 'Mostrador';
+    this.usageActivityLog.update((log) =>
+      recordUsageActivity(log, {
+        date: options?.date,
+        timestamp: options?.timestamp,
+        user,
+        isSale: options?.isSale,
+      })
+    );
+  }
+
+  submitSatisfactionSurvey(params: {
+    rating: number;
+    comment?: string;
+    respondent?: string;
+    shiftId?: string;
+    date?: string;
+    force?: boolean;
+  }): { ok: boolean; message: string; record?: SatisfactionSurveyRecord } {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+      };
+    }
+
+    const res = recordSatisfactionSurvey(this.satisfactionSurveys(), {
+      rating: params.rating,
+      respondent: params.respondent || this.activeUser() || 'Tendero',
+      shiftId: params.shiftId || this.currentShiftId(),
+      comment: params.comment,
+      date: params.date,
+      force: params.force,
+    });
+
+    if (!res.ok) {
+      return { ok: false, message: res.message };
+    }
+
+    this.satisfactionSurveys.set(res.surveys);
+    this.trackUsageActivity({
+      date: res.record?.date,
+      user: res.record?.respondent,
+    });
+    void this.flushSave();
+
+    return {
+      ok: true,
+      message: res.message,
+      record: res.record,
+    };
+  }
+
+  getReportsBundle(
+    filter: ReportDateFilterInput = { preset: 'MES' },
+    includeUndatedAudit = true
+  ): ReportsBundle {
+    const mappedProducts = this.products().map((p) => ({
+      sku: p.sku,
+      name: p.name,
+      category: p.category,
+      stock: p.stock,
+      price: p.salePrice,
+      weightedAvgCost: p.weightedAvgCost,
+      lastPurchaseCost: p.lastPurchaseCost,
+      purchaseCost: p.purchaseCost,
+      historicCost: p.historicCost,
+    }));
+
+    return buildReportsBundle({
+      filter,
+      sales: this.salesHistory(),
+      returns: this.saleReturns(),
+      shrinkRecords: this.shrinkRecords(),
+      customers: this.creditCustomers(),
+      auditLines: this.auditLines(),
+      products: mappedProducts,
+      kardexEntries: this.kardex(),
+      usageActivityLog: this.usageActivityLog(),
+      satisfactionSurveys: this.satisfactionSurveys(),
+      includeUndatedAudit,
+    });
+  }
+
+  exportReportCsv(
+    tab: ReportTabKey | 'INDICADORES',
+    filter: ReportDateFilterInput = { preset: 'MES' },
+    includeUndatedAudit = true
+  ): { filename: string; content: string; bundle: ReportsBundle } {
+    const bundle = this.getReportsBundle(filter, includeUndatedAudit);
+    const storeSlug = (this.storeName || 'tienda')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'tienda';
+    const rangeSuffix =
+      tab === 'CREDITOS_VENCIDOS' || tab === 'VALUACION_INVENTARIO'
+        ? bundle.overdueCredits.asOfDate
+        : `${bundle.range.startDate}_${bundle.range.endDate}`;
+
+    let content = '';
+    switch (tab) {
+      case 'VENTAS':
+        content = exportSalesReportCsv(bundle.sales, this.storeName);
+        break;
+      case 'MARGENES':
+        content = exportMarginsReportCsv(bundle.margins);
+        break;
+      case 'MERMAS':
+        content = exportShrinkReportCsv(bundle.shrink);
+        break;
+      case 'CREDITOS_VENCIDOS':
+        content = exportOverdueCreditsReportCsv(bundle.overdueCredits);
+        break;
+      case 'DIFERENCIAS_CONTEO':
+        content = exportAuditDifferencesReportCsv(bundle.auditDifferences);
+        break;
+      case 'TIEMPO_VENTAS':
+        content = exportSaleTimingReportCsv(bundle.saleTiming);
+        break;
+      case 'VALUACION_INVENTARIO':
+        content = exportInventoryValuationReportCsv(bundle.inventoryValuation);
+        break;
+      case 'INDICADORES':
+        content = exportIndicatorsPanelCsv(bundle.indicators, bundle.range);
+        break;
+    }
+
+    return {
+      filename: `${storeSlug}_reporte_${tab.toLowerCase()}_${rangeSuffix}.csv`,
+      content,
+      bundle,
+    };
+  }
+
+  downloadReportCsv(
+    tab: ReportTabKey | 'INDICADORES',
+    filter: ReportDateFilterInput = { preset: 'MES' },
+    includeUndatedAudit = true
+  ): { filename: string; content: string } {
+    const exported = this.exportReportCsv(tab, filter, includeUndatedAudit);
+    if (
+      typeof document !== 'undefined' &&
+      typeof Blob !== 'undefined' &&
+      typeof URL !== 'undefined'
+    ) {
+      try {
+        const blob = new Blob([exported.content], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = exported.filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignorar en entornos de prueba sin soporte de descarga DOM
+      }
+    }
+    return { filename: exported.filename, content: exported.content };
   }
 
 }

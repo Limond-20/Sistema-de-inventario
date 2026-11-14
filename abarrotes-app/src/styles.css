@@ -154,6 +154,13 @@ a[class*="bg-emerald-600"]:hover {
 }
 
 @media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-shell,
+  .print-shell * {
+    overflow: visible !important;
+  }
   html,
   body,
   app-root,

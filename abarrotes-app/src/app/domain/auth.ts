@@ -239,6 +239,8 @@ export function canAccessRoute(role: UserRole, routePath: string): boolean {
       return hasPermission(role, 'mermas');
     case 'auditoria':
       return hasPermission(role, 'auditoria');
+    case 'reportes':
+      return hasPermission(role, 'cortes');
     case 'catalogo':
       return true; // Todos pueden ver catálogo; la edición de precios requiere 'precios'
     case 'ajustes':
