@@ -97,4 +97,20 @@ Pendiente en la interfaz (no lo toqué para no pisar cambios del equipo):
   protocolo, la red y el puente, no el comportamiento de cada navegador móvil.
 * Si el enlace cae, los mensajes **no se encolan** (a propósito: un escaneo atrasado no debe aplicarse
   minutos después). El puente se reconecta solo.
-* Un solo servidor por tienda. Los datos siguen viviendo en la memoria de la app (sin persistencia).
+* Un solo servidor por tienda. La PC usa SQLite como fuente de verdad en `data/inventory.sqlite3`; la persistencia principal solo está disponible desde loopback (`https://localhost:8443`).
+
+## Estado persistente SQLite (Bloque N)
+
+La PC debe abrir la app desde `https://localhost:8443` para usar `ServerStateStorageAdapter`. La app de Angular ejecutada con `ng serve` (puerto 4200) y las vistas abiertas desde la IP LAN no acceden a la API de estado; conservan IndexedDB en su propio navegador.
+
+- `GET/PUT/DELETE /api/estado` administra el último snapshot por clave; `GET /api/estado/keys` lista claves y `POST /api/estado/migrar` importa desde IndexedDB solo si SQLite aún no tiene esa clave. Todos estos endpoints exigen loopback.
+- `data/inventory.sqlite3` contiene `state_snapshots` (historial versionado) y `kardex_entries` (libro append-only). Las escrituras usan `BEGIN IMMEDIATE`; el servidor recalcula la cadena SHA-256 y rechaza movimientos alterados, reordenados o eliminados.
+- IndexedDB funciona como espejo y contingencia ante caída temporal del servidor. Las escrituras hechas durante la caída quedan en cola local para reintento.
+- Los respaldos `.bak` ahora incluyen, dentro del cifrado autenticado, el estado y una copia SQLite consistente. La restauración verifica la base y la reemplaza atómicamente.
+
+Pruebas del Bloque N:
+
+```bash
+cd local-server
+python -m pytest -q tests/test_state_store.py
+```

@@ -15,6 +15,8 @@ La frase de respaldo NUNCA se guarda en disco. Si se pierde la frase, el respald
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import re
@@ -216,10 +218,24 @@ class BackupStore:
             except OSError:
                 pass
 
-    def create(self, state_obj: object, passphrase: str, now: datetime | None = None) -> dict:
+    def create(
+        self,
+        state_obj: object,
+        passphrase: str,
+        now: datetime | None = None,
+        *,
+        database_bytes: bytes | None = None,
+    ) -> dict:
         validate_passphrase(passphrase)
         try:
-            plaintext = json.dumps(state_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            payload = state_obj
+            if database_bytes is not None:
+                payload = {
+                    "__binnitech_backup_bundle__": 1,
+                    "state": state_obj,
+                    "sqliteDatabase": base64.b64encode(database_bytes).decode("ascii"),
+                }
+            plaintext = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise BackupError("El estado proporcionado no es JSON serializable.") from exc
 
@@ -266,14 +282,29 @@ class BackupStore:
             raise BackupNotFoundError("Respaldo no encontrado.")
         return target
 
-    def restore(self, passphrase: str, filename: str | None = None) -> object:
+    def restore_bundle(self, passphrase: str, filename: str | None = None) -> dict:
+        """Descifra estado y, en respaldos Bloque N, la copia consistente de SQLite."""
         target = self._resolve_backup_path(filename)
         blob = target.read_bytes()
         plaintext = decrypt_backup_bytes(blob, passphrase)
         try:
-            return json.loads(plaintext.decode("utf-8"))
+            payload = json.loads(plaintext.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as exc:
             raise BackupDecryptionError("No autorizado") from exc
+
+        if isinstance(payload, dict) and payload.get("__binnitech_backup_bundle__") == 1:
+            try:
+                database_bytes = base64.b64decode(payload["sqliteDatabase"], validate=True)
+                if not database_bytes:
+                    raise ValueError("Base SQLite vacía")
+            except (KeyError, ValueError, binascii.Error, TypeError) as exc:
+                raise BackupDecryptionError("No autorizado") from exc
+            return {"state": payload.get("state"), "database": database_bytes}
+        return {"state": payload, "database": None}
+
+    def restore(self, passphrase: str, filename: str | None = None) -> object:
+        """Compatibilidad: devuelve el estado, aunque el archivo también incluya SQLite."""
+        return self.restore_bundle(passphrase, filename)["state"]
 
     def read_raw(self, filename: str) -> bytes:
         validate_backup_filename(filename)

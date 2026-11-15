@@ -1,14 +1,12 @@
 /**
- * Lógica pura de dominio para la persistencia del estado en IndexedDB (Bloque D).
+ * Adaptadores de persistencia del estado (Bloques D y N).
  *
  * =====================================================================================
  * NOTA PARA EL EQUIPO (ARQUITECTURA Y FUENTE DE VERDAD):
- * Esta persistencia en IndexedDB del navegador es una solución de prototipo para garantizar
- * que los datos operativos no se pierdan ante recargas accidentales de página durante las
- * pruebas piloto en mostrador.
- *
- * La base de datos definitiva será SQLite en local-server (Python), con la computadora de la
- * tienda (PC) fungiendo como la única fuente de verdad contable y de inventario.
+ * En la PC, SQLite de local-server es la fuente persistente principal. IndexedDB conserva
+ * un espejo de contingencia y permite migrar los datos existentes de instalaciones previas.
+ * En otros orígenes (por ejemplo, ng serve o un dispositivo conectado por LAN), IndexedDB
+ * sigue siendo el almacenamiento local del navegador.
  *
  * REGLA DE SEGURIDAD CRÍTICA:
  * El PIN de administrador NUNCA se almacena en texto plano en el estado ni en IndexedDB.
@@ -819,6 +817,207 @@ export class IndexedDbStateStorageAdapter implements StateStorageAdapter {
 }
 
 /**
+ * Adaptador primario SQLite: la PC consulta y escribe en local-server.
+ * IndexedDB conserva una copia espejo y permite continuar si el servidor local no responde.
+ * Los endpoints del servidor están protegidos para aceptar únicamente conexiones loopback.
+ */
+export class ServerStateStorageAdapter implements StateStorageAdapter {
+  private readonly fallback: StateStorageAdapter;
+  private readonly baseUrl: string;
+  private readonly pendingPrefix = '__binnitech_server_pending__';
+
+  constructor(
+    fallback: StateStorageAdapter = new IndexedDbStateStorageAdapter(),
+    baseUrl = ''
+  ) {
+    this.fallback = fallback;
+    this.baseUrl = baseUrl;
+  }
+
+  private get enabled(): boolean {
+    if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
+    const hostname = window.location?.hostname?.toLowerCase().replace(/^\[|\]$/g, '') || '';
+    const localHost = hostname === 'localhost' || hostname === '::1' || hostname.startsWith('127.');
+    // En `ng serve` (4200, etc.) el mismo origen es Angular, no local-server: usar IndexedDB.
+    return localHost && (this.baseUrl.length > 0 || window.location.port === '8443');
+  }
+
+  private endpoint(path: string): string {
+    return `${this.baseUrl}${path}`;
+  }
+
+  /** null significa que el servidor no respondió; los errores HTTP funcionales se propagan. */
+  private async request(path: string, init?: RequestInit): Promise<Response | null> {
+    if (!this.enabled) return null;
+    try {
+      const response = await fetch(this.endpoint(path), {
+        cache: 'no-store',
+        ...init,
+      });
+      if (response.status >= 500) return null;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.detail || `Error del servidor SQLite (${response.status}).`);
+      }
+      return response;
+    } catch (error: any) {
+      // No ocultar errores HTTP que indican rechazo de integridad/permisos/validación.
+      if (error instanceof Error && /servidor SQLite|Kardex|cadena|hash|integridad/i.test(error.message)) {
+        throw error;
+      }
+      if (error instanceof TypeError || error?.name === 'TypeError') return null;
+      throw error;
+    }
+  }
+
+  private pendingKey(key: string): string {
+    return `${this.pendingPrefix}${encodeURIComponent(key)}`;
+  }
+
+  private async clearPending(key: string): Promise<void> {
+    if (this.fallback.delete) await this.fallback.delete(this.pendingKey(key));
+  }
+
+  private async queuePending(key: string, operation: 'save' | 'delete', value?: any): Promise<void> {
+    await this.fallback.save(this.pendingKey(key), { key, operation, value });
+  }
+
+  /** Reintenta las escrituras que se hicieron en IndexedDB mientras SQLite estuvo desconectado. */
+  private async replayPending(): Promise<void> {
+    if (!this.enabled || !this.fallback.listKeys || !this.fallback.delete) return;
+    const pendingKeys = await this.fallback.listKeys(this.pendingPrefix);
+    for (const pendingKey of pendingKeys) {
+      const pending = await this.fallback.load(pendingKey);
+      if (!pending || typeof pending.key !== 'string') {
+        await this.fallback.delete(pendingKey);
+        continue;
+      }
+      const response = pending.operation === 'delete'
+        ? await this.request(`/api/estado?key=${encodeURIComponent(pending.key)}`, { method: 'DELETE' })
+        : await this.request('/api/estado', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: pending.key, value: pending.value }),
+          });
+      if (!response) return;
+      await this.fallback.delete(pendingKey);
+    }
+  }
+
+  async save(key: string, value: any): Promise<void> {
+    if (!this.enabled) {
+      await this.fallback.save(key, value);
+      return;
+    }
+    await this.replayPending();
+    const response = await this.request('/api/estado', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value }),
+    });
+    if (!response) {
+      await this.fallback.save(key, value);
+      await this.queuePending(key, 'save', value);
+      return;
+    }
+    // SQLite ya confirmó la transacción; el espejo IndexedDB es best-effort.
+    try {
+      await this.fallback.save(key, value);
+      await this.clearPending(key);
+    } catch (error) {
+      console.warn('[ServerStateStorageAdapter] SQLite guardó el estado, pero falló el espejo IndexedDB:', error);
+    }
+  }
+
+  async load(key: string): Promise<any> {
+    if (!this.enabled) return this.fallback.load(key);
+    await this.replayPending();
+    const response = await this.request(`/api/estado?key=${encodeURIComponent(key)}`);
+    if (!response) return this.fallback.load(key);
+
+    const result = await response.json();
+    if (result?.found) {
+      try {
+        await this.fallback.save(key, result.value);
+      } catch (error) {
+        console.warn('[ServerStateStorageAdapter] No se pudo actualizar el espejo IndexedDB:', error);
+      }
+      return result.value ?? null;
+    }
+
+    // Primera ejecución: importa el dato antiguo de IndexedDB únicamente si SQLite está vacío.
+    const legacyValue = await this.fallback.load(key);
+    if (legacyValue === null || legacyValue === undefined) return null;
+    let migrationResponse: Response | null;
+    try {
+      migrationResponse = await this.request('/api/estado/migrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value: legacyValue }),
+      });
+    } catch {
+      // Deja que restorePersistedState valide el dato local y active su flujo de recuperación.
+      return legacyValue;
+    }
+    if (!migrationResponse) return legacyValue;
+    const migration = await migrationResponse.json();
+    const authoritativeValue = migration?.value ?? legacyValue;
+    try {
+      await this.fallback.save(key, authoritativeValue);
+    } catch {
+      // La migración SQLite ya quedó confirmada.
+    }
+    return authoritativeValue;
+  }
+
+  async delete(key: string): Promise<void> {
+    if (!this.enabled) {
+      if (this.fallback.delete) await this.fallback.delete(key);
+      return;
+    }
+    await this.replayPending();
+    const response = await this.request(`/api/estado?key=${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+    });
+    if (!response) {
+      if (this.fallback.delete) await this.fallback.delete(key);
+      await this.queuePending(key, 'delete');
+      return;
+    }
+    if (this.fallback.delete) await this.fallback.delete(key);
+    await this.clearPending(key);
+  }
+
+  async listKeys(prefix?: string): Promise<string[]> {
+    if (!this.enabled) {
+      const keys = this.fallback.listKeys ? await this.fallback.listKeys(prefix) : [];
+      return keys.filter((key) => !key.startsWith(this.pendingPrefix));
+    }
+    const response = await this.request(
+      `/api/estado/keys${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''}`
+    );
+    const localKeys = this.fallback.listKeys ? await this.fallback.listKeys(prefix) : [];
+    const serverKeys = response ? (await response.json()).keys || [] : [];
+    return Array.from(new Set([...serverKeys, ...localKeys])).filter(
+      (key) => !key.startsWith(this.pendingPrefix)
+    ).sort();
+  }
+
+  async clear(): Promise<void> {
+    if (!this.enabled) {
+      await this.fallback.clear();
+      return;
+    }
+    const response = await this.request('/api/estado/todo', { method: 'DELETE' });
+    if (!response) {
+      await this.fallback.clear();
+      return;
+    }
+    await this.fallback.clear();
+  }
+}
+
+/**
  * Copia el dato crudo dañado a la clave 'binnitech_pos_state_corrupt_<ISO>' sin sobrescribir
  * la clave original y conserva únicamente las 3 copias más recientes.
  */
@@ -850,9 +1049,17 @@ export async function backupCorruptedState(
 }
 
 /**
- * Obtiene el adaptador predeterminado: IndexedDB en el navegador, MemoryAdapter en Node/CLI.
+ * Obtiene el adaptador predeterminado: SQLite en la PC local, IndexedDB en otros
+ * navegadores y MemoryAdapter en Node/CLI.
  */
 export function getDefaultStorageAdapter(): StateStorageAdapter {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location?.hostname?.toLowerCase().replace(/^\[|\]$/g, '') || '';
+    const localHost = hostname === 'localhost' || hostname === '::1' || hostname.startsWith('127.');
+    if (localHost && window.location.port === '8443') {
+      return new ServerStateStorageAdapter(new IndexedDbStateStorageAdapter());
+    }
+  }
   if (typeof globalThis.indexedDB !== 'undefined') {
     return new IndexedDbStateStorageAdapter();
   }

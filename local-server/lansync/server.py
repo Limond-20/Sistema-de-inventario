@@ -41,6 +41,7 @@ from .backup import (
 )
 from .netinfo import is_loopback, lan_ips
 from .pairing import PairingStore
+from .state_store import KardexIntegrityError, SQLiteStateStore, StateStoreError
 
 MAX_MESSAGE_BYTES = 8 * 1024 * 1024
 MAX_EVIDENCIA_BYTES = 5 * 1024 * 1024
@@ -181,6 +182,8 @@ def create_app(
     st.respaldos_dir = st.data_dir / "respaldos"
     st.respaldos_dir.mkdir(parents=True, exist_ok=True)
     st.backups = BackupStore(st.respaldos_dir)
+    st.state_database = st.data_dir / "inventory.sqlite3"
+    st.state_store = SQLiteStateStore(st.state_database)
 
     def trusted(host: str | None) -> bool:
         return is_loopback(host) or (host in st.trusted_hosts)
@@ -228,6 +231,68 @@ def create_app(
     # ---------------------------- API ----------------------------
     @app.get("/api/health")
     async def health() -> dict:
+        return {"ok": True}
+
+    # ---------------------------- Estado SQLite (Bloque N) ----------------------------
+    def _validate_state_key(key: str | None) -> str:
+        if not isinstance(key, str) or not key or len(key) > 256 or "\x00" in key:
+            raise HTTPException(status_code=400, detail="Clave de estado inválida.")
+        return key
+
+    async def _read_state_payload(request: Request) -> tuple[str, object]:
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Cuerpo JSON inválido.") from exc
+        if not isinstance(body, dict) or "value" not in body:
+            raise HTTPException(status_code=400, detail="Se requiere el campo 'value'.")
+        return _validate_state_key(body.get("key")), body["value"]
+
+    @app.get("/api/estado", dependencies=[Depends(require_local)])
+    async def load_state(key: str) -> dict:
+        state_key = _validate_state_key(key)
+        value, version = st.state_store.load_with_version(state_key)
+        return {"found": version > 0, "value": value, "version": version}
+
+    @app.put("/api/estado", dependencies=[Depends(require_local)])
+    async def save_state(request: Request) -> dict:
+        state_key, value = await _read_state_payload(request)
+        try:
+            version = st.state_store.save(state_key, value)
+        except KardexIntegrityError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except StateStoreError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "version": version}
+
+    @app.post("/api/estado/migrar", dependencies=[Depends(require_local)])
+    async def migrate_state(request: Request) -> dict:
+        """Migra una clave de IndexedDB sin sobrescribir estado que ya exista en SQLite."""
+        state_key, value = await _read_state_payload(request)
+        try:
+            migrated, current_value, version = st.state_store.migrate(state_key, value)
+        except KardexIntegrityError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except StateStoreError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "migrated": migrated, "value": current_value, "version": version}
+
+    @app.get("/api/estado/keys", dependencies=[Depends(require_local)])
+    async def list_state_keys(prefix: str | None = None) -> dict:
+        if prefix is not None and len(prefix) > 256:
+            raise HTTPException(status_code=400, detail="Prefijo inválido.")
+        return {"keys": st.state_store.list_keys(prefix)}
+
+    @app.delete("/api/estado", dependencies=[Depends(require_local)])
+    async def delete_state(key: str) -> dict:
+        state_key = _validate_state_key(key)
+        st.state_store.delete(state_key)
+        return {"ok": True}
+
+    @app.delete("/api/estado/todo", dependencies=[Depends(require_local)])
+    async def clear_state() -> dict:
+        # El libro Kardex no se elimina: la tabla es append-only incluso al limpiar snapshots.
+        st.state_store.clear()
         return {"ok": True}
 
     @app.get("/api/status", dependencies=[Depends(require_local)])
@@ -402,7 +467,8 @@ def create_app(
             raise HTTPException(status_code=400, detail="El estado a respaldar debe ser un objeto JSON.")
 
         try:
-            return st.backups.create(payload, passphrase)
+            database_copy = st.state_store.backup_bytes()
+            return st.backups.create(payload, passphrase, database_bytes=database_copy)
         except BackupPassphraseError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except BackupError as exc:
@@ -438,7 +504,12 @@ def create_app(
                 pass
 
         try:
-            restored = st.backups.restore(passphrase, target_name)
+            bundle = st.backups.restore_bundle(passphrase, target_name)
+            restored = bundle["state"]
+            if bundle["database"] is not None:
+                st.state_store.restore_bytes(bundle["database"])
+        except (KardexIntegrityError, StateStoreError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except BackupInvalidFilenameError as exc:
             raise HTTPException(status_code=400, detail="Nombre de respaldo inválido") from exc
         except BackupNotFoundError as exc:
