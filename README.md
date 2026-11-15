@@ -37,20 +37,43 @@ Archivo independiente (monolítico en HTML + Tailwind CDN + Vanilla JS) ejecutab
 
 ---
 
-## 💾 Persistencia y Arquitectura de Datos (Bloque D)
+## 💾 Persistencia de navegador y arquitectura de datos (Bloque D)
 
-> **Nota para el equipo:** esto es una solución de prototipo; la base definitiva será SQLite en local-server, con la PC como fuente de verdad.
+IndexedDB se conserva como almacenamiento de contingencia y compatibilidad para los escenarios donde el servidor local no está disponible. La PC que ejecuta el servidor utiliza SQLite como fuente de verdad (Bloque N, descrito abajo).
 
-En esta fase de prototipo:
-- El estado operativo completo (catálogo de productos, libreta de fiado vecinal, arqueos de caja, mermas, auditorías y Kardex criptográfico append-only) se resguarda en **IndexedDB** del navegador de la PC local (`tx.oncomplete` / `tx.onerror` / `tx.onabort`), ejecutando `flushSave()` inmediato tras cada operación con dinero o stock y en los eventos `pagehide` y `visibilitychange` (`hidden`), dejando el `debounce (~500 ms)` solo para cambios menores.
-- Incluye **versión de esquema y migración automática**, así como verificación en el arranque de la cadena criptográfica (`verifyKardexChain`) y continuidad por producto (`verifyProductContinuity(productos, kardex)`).
+La capa de persistencia conserva:
+- En la PC, el estado operativo completo (catálogo de productos, libreta de fiado vecinal, arqueos de caja, mermas, auditorías y Kardex criptográfico append-only) se guarda primero en **SQLite** mediante `ServerStateStorageAdapter`; IndexedDB mantiene un espejo local de contingencia. Las confirmaciones de escritura de SQLite se realizan antes de completar el guardado principal. `flushSave()` se ejecuta inmediatamente tras cada operación con dinero o stock y en los eventos `pagehide` y `visibilitychange` (`hidden`), dejando el `debounce (~500 ms)` solo para cambios menores.
+- Incluye **versión de esquema y migración automática** entre versiones del estado. Al arrancar, la aplicación verifica la cadena criptográfica (`verifyKardexChain`) y la continuidad por producto (`verifyProductContinuity(productos, kardex)`); el servidor vuelve a verificar SHA-256 antes de aceptar un nuevo snapshot.
 - **Migración segura de versiones (v1 -> v2 -> v3) y resguardo de compatibilidad:** Al migrar el esquema a v3 (`binnitech_pos_state_v3`, que incorpora `suppliers`, `accountsPayable`, `priceHistory` y `cashMovements`), la clave previa `binnitech_pos_state_v2` (o `v1`) **NO se elimina** hasta confirmar que el estado v3 recién escrito se puede leer y supera exitosamente `validateStoredState` (validación estructural, integridad criptográfica SHA-256 de Kardex y continuidad de inventario). Si ocurre un fallo durante la escritura o validación, las claves previas permanecen intactas. **Advertencia de versión:** Si por cualquier motivo operativo se vuelve a ejecutar una versión anterior del sistema (v1 o v2), dicha versión anterior **NO podrá ver los datos creados o modificados en v3**, ya que cada versión lee exclusivamente su propia clave de almacenamiento (`v1`, `v2` o `v3`).
 - **Tipo unificado `CashMovement` (Bloques F2 y H):** Los egresos por pagos a proveedores (`SALIDA`), amortizaciones de cuentas por pagar e ingresos por abonos de clientes a crédito (`ENTRADA`) registran entradas con centavos enteros (`amountCents`), fecha local `AAAA-MM-DD`, usuario, referencia y origen de fondos (`CAJA` o `FONDO_EXTERNO`). Esta estructura está diseñada para ser reutilizada directamente por el Bloque H (retiros de efectivo, gastos operativos de la tienda y arqueos de caja).
 - **Resguardo ante datos dañados (sin sobrescritura automática):** Si el dato almacenado presenta daño o discrepancia de continuidad, **NO se sobrescribe**; se copia el dato crudo a `'binnitech_pos_state_corrupt_<ISO>'` (conservando las 3 copias más recientes), se bloquea el autoguardado y se presenta un modal con 3 opciones: *"Descargar datos dañados (JSON)"*, *"Empezar con datos de demostración"* (con confirmación explícita) y *"Reintentar"*.
 - **Hidratación y Cola LAN:** Muestra pantalla de carga hasta completar `isHydrated`, encolando los mensajes de la LAN recibidos antes de hidratar para aplicarlos en estricto orden FIFO al terminar.
 - **Exclusión mutua de escritura y guarda central `assertWritable()`:** Utiliza `navigator.locks.request('binnitech_pos_writer', { ifAvailable: true })` (con respaldo `BroadcastChannel`) para asegurar que una sola pestaña escriba; cualquier pestaña adicional entra en modo solo lectura con el aviso *"Esta app ya está abierta en otra ventana"* y todos los métodos mutadores verifican centralmente `assertWritable()`.
-- **Errores de guardado visibles:** Si `flushSave()` falla ante un error del adaptador, no traga el error silenciosamente: expone `lastSaveError` y muestra el indicador `"No se pudo guardar"`.
+- **Errores de guardado visibles:** Si `flushSave()` falla ante un error del adaptador, no traga el error silenciosamente: expone `lastSaveError` y muestra el indicador `"No se pudo guardar"`. Durante una caída temporal del servidor local, IndexedDB conserva las escrituras pendientes para reintentarlas al reconectar.
 - **Seguridad:** El PIN de administrador **NUNCA** se almacena en texto plano; su autenticación se realiza mediante derivación PBKDF2 (>= 600,000 iteraciones + sal criptográfica).
+
+---
+
+## 🗄️ SQLite como fuente de verdad de la PC (Bloque N)
+
+Cuando la aplicación se abre en la PC desde `https://localhost:8443`, `getDefaultStorageAdapter()` selecciona `ServerStateStorageAdapter`. Este adaptador implementa la interfaz de `IndexedDbStateStorageAdapter` y utiliza la API local de `local-server`; desde otros hosts (por ejemplo, el celular que abre la IP LAN) no intenta acceder al estado privado de la PC.
+
+- **SQLite principal:** `local-server/data/inventory.sqlite3`. La tabla `state_snapshots` conserva snapshots versionados por clave. Cada escritura inserta una nueva versión, dentro de una transacción `BEGIN IMMEDIATE`.
+- **Kardex append-only:** `kardex_entries` conserva cada movimiento en orden cronológico. Antes de escribir un snapshot principal, el servidor recalcula SHA-256 y `previousHash` para toda la cadena, comprueba que los movimientos existentes sigan siendo un prefijo idéntico y agrega solo los movimientos nuevos. Triggers SQLite rechazan `UPDATE` y `DELETE` sobre el libro.
+- **Contingencia IndexedDB:** después de confirmar SQLite, se actualiza una copia espejo en IndexedDB. Si el servidor no responde, se guarda localmente y queda una operación pendiente para reintentar al reconectar. Un rechazo de integridad HTTP no se convierte en un guardado local silencioso.
+- **Migración inicial:** cuando una clave todavía no existe en SQLite, el adaptador busca su valor anterior en IndexedDB y llama `POST /api/estado/migrar`. El servidor solo importa si la clave sigue vacía, evitando sobrescribir una escritura concurrente.
+- **Acceso restringido a la PC:** `GET/PUT/DELETE /api/estado`, `POST /api/estado/migrar` y `GET /api/estado/keys` exigen conexión loopback. Los celulares no pueden leer ni modificar esta base.
+- **Respaldos completos:** los `.bak` generados por `local-server` cifran tanto el estado como una copia consistente del archivo SQLite. Al restaurar un respaldo autenticado, el servidor valida la integridad de la base y sustituye el archivo de manera atómica.
+
+Para que SQLite sea la fuente de verdad, en la PC abre la aplicación servida por Python en `https://localhost:8443`. `ng serve` en `http://localhost:4200` usa IndexedDB porque ese origen pertenece al servidor de desarrollo de Angular, no a `local-server`.
+
+Pruebas del bloque:
+
+```bash
+cd local-server
+pip install -r requirements-dev.txt
+python -m pytest -q tests/test_state_store.py
+```
 
 ---
 
@@ -59,7 +82,7 @@ En esta fase de prototipo:
 El sistema incluye un mecanismo de **respaldo cifrado en el servidor local (`local-server`) y exportación/importación en memoria USB** como **plan de recuperación ante fallos** (cierre accidental, limpieza del navegador, daño del perfil o cambio de equipo):
 
 1. **Cifrado autenticado AES-256-GCM + PBKDF2-HMAC-SHA256 (600,000 iteraciones) con encabezado cubierto por AAD (`data/respaldos/AAAAMMDD-HHMMSS.bak`):**
-   - `POST /api/respaldo` (accesible **únicamente desde la propia PC** por loopback) recibe el estado completo en JSON y lo cifra con **AES-256-GCM** (`cryptography` en Python y Web Crypto API en TypeScript), derivando la clave mediante **PBKDF2-HMAC-SHA256 con 600,000 iteraciones** y sal aleatoria de 16 bytes.
+   - `POST /api/respaldo` (accesible **únicamente desde la propia PC** por loopback) recibe el estado completo en JSON y lo cifra con **AES-256-GCM**, derivando la clave mediante **PBKDF2-HMAC-SHA256 con 600,000 iteraciones** y sal aleatoria de 16 bytes. En la PC, el archivo incluye también una copia consistente de `inventory.sqlite3`.
    - El encabezado binario de 28 bytes (`BTBAK` + `version=1` + `kdf_id=1` + `cipher_id=1` + `uint32 BE iterations` + `16B salt`) viaja autenticado como **AAD (Additional Authenticated Data)** de AES-GCM, permitiendo incrementar los parámetros en el futuro y garantizando compatibilidad cruzada entre `local-server` y `backup.ts`.
    - Conserva automáticamente los **30 respaldos más recientes** en `local-server/data/respaldos/`.
    - `GET /api/respaldo` lista los respaldos disponibles (`nombre`, `fecha`, `tamaño`), `GET /api/respaldo/{nombre}` valida estrictamente el patrón `^[0-9]{8}-[0-9]{6}\.bak$` (bloqueando cualquier intento de *path traversal* como `../` o `%2e%2e%2f`), y `POST /api/respaldo/restaurar` descifra y devuelve el JSON original; ante una frase incorrecta o cualquier byte manipulado en el cuerpo o encabezado AAD responde **`403 No autorizado`** sin detalles.

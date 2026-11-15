@@ -39,10 +39,10 @@
       Modo local (offline)
     </div>
 
-    <!-- Indicador de Guardado Visible (IndexedDB + Respaldo) y Último Respaldo (Bloque E) -->
+    <!-- Indicador de Guardado Visible (SQLite + espejo IndexedDB) y Último Respaldo -->
     <div class="flex flex-col gap-1.5 rounded-xl bg-brand-800 px-3.5 py-2.5 text-xs" data-testid="save-status-panel">
       <div class="flex items-center justify-between">
-        <span class="text-brand-200 font-medium">IndexedDB:</span>
+        <span class="text-brand-200 font-medium">SQLite / respaldo local:</span>
         <span class="inline-flex items-center gap-1.5 font-semibold" data-testid="indexeddb-save-indicator"
           [class]="inv.indexedDbSaveStatus() === 'error' ? 'text-rose-200' : (inv.indexedDbSaveStatus() === 'saving' ? 'text-amber-200' : 'text-emerald-200')">
           <span class="h-2 w-2 rounded-full"

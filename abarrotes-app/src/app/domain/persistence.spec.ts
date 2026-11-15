@@ -9,6 +9,7 @@ import {
   backupCorruptedState,
   DebouncedStorageSaver,
   MemoryStateStorageAdapter,
+  ServerStateStorageAdapter,
   type PersistedAppState,
 } from './persistence.ts';
 import { createKardexEntry, verifyKardexChain, verifyProductContinuity, type KardexEntry } from './kardex.ts';
@@ -724,4 +725,94 @@ test('Persistencia (Bloque H seguimiento): Migración v4 -> v5 integra salesHist
 
   const validation = validateStoredState(migration.state);
   assert.equal(validation.valid, true);
+});
+
+
+test('ServerStateStorageAdapter: migra IndexedDB al servidor cuando SQLite está vacío', async () => {
+  const fallback = new MemoryStateStorageAdapter();
+  const legacyState = { schemaVersion: 5, products: [], creditCustomers: [], kardex: [] };
+  await fallback.save(STATE_STORAGE_KEY, legacyState);
+
+  const serverValues = new Map<string, any>();
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { hostname: 'localhost', port: '8443' } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), 'https://localhost:8443');
+    const key = url.searchParams.get('key') || '';
+    if (url.pathname === '/api/estado' && (!init?.method || init.method === 'GET')) {
+      return new Response(JSON.stringify({
+        found: serverValues.has(key), value: serverValues.get(key) ?? null, version: serverValues.has(key) ? 1 : 0,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.pathname === '/api/estado/migrar' && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body));
+      const migrated = !serverValues.has(body.key);
+      if (migrated) serverValues.set(body.key, body.value);
+      return new Response(JSON.stringify({
+        ok: true, migrated, value: serverValues.get(body.key), version: 1,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    throw new Error(`Ruta no simulada: ${url.pathname}`);
+  }) as typeof fetch;
+
+  try {
+    const adapter = new ServerStateStorageAdapter(fallback);
+    const loaded = await adapter.load(STATE_STORAGE_KEY);
+    assert.deepEqual(loaded, legacyState);
+    assert.deepEqual(serverValues.get(STATE_STORAGE_KEY), legacyState);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+    else delete (globalThis as any).window;
+  }
+});
+
+test('ServerStateStorageAdapter: IndexedDB conserva escrituras sin servidor y las reenvía al reconectar', async () => {
+  const fallback = new MemoryStateStorageAdapter();
+  const serverValues = new Map<string, any>();
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const originalFetch = globalThis.fetch;
+  let online = false;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { hostname: '127.0.0.1', port: '8443' } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (!online) throw new TypeError('Failed to fetch');
+    const url = new URL(String(input), 'https://localhost:8443');
+    const key = url.searchParams.get('key') || '';
+    if (url.pathname === '/api/estado' && init?.method === 'PUT') {
+      const body = JSON.parse(String(init.body));
+      serverValues.set(body.key, body.value);
+      return new Response(JSON.stringify({ ok: true, version: 1 }), { status: 200 });
+    }
+    if (url.pathname === '/api/estado' && (!init?.method || init.method === 'GET')) {
+      return new Response(JSON.stringify({
+        found: serverValues.has(key), value: serverValues.get(key) ?? null, version: serverValues.has(key) ? 1 : 0,
+      }), { status: 200 });
+    }
+    throw new Error(`Ruta no simulada: ${url.pathname}`);
+  }) as typeof fetch;
+
+  try {
+    const adapter = new ServerStateStorageAdapter(fallback);
+    const pendingState = { revision: 8, products: [], kardex: [] };
+    await adapter.save(STATE_STORAGE_KEY, pendingState);
+    assert.deepEqual(await fallback.load(STATE_STORAGE_KEY), pendingState);
+    assert.equal((await fallback.listKeys('__binnitech_server_pending__')).length, 1);
+
+    online = true;
+    const recovered = await adapter.load(STATE_STORAGE_KEY);
+    assert.deepEqual(recovered, pendingState);
+    assert.deepEqual(serverValues.get(STATE_STORAGE_KEY), pendingState);
+    assert.equal((await fallback.listKeys('__binnitech_server_pending__')).length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+    else delete (globalThis as any).window;
+  }
 });
