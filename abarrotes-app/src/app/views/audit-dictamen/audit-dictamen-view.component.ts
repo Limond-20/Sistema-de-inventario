@@ -1,4 +1,4 @@
-import { Component, NgZone, OnDestroy, OnInit, computed, inject } from '@angular/core';
+import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuditLine, MockInventoryService } from '../../services/mock-inventory.service';
@@ -20,6 +20,10 @@ interface AuditView extends AuditLine {
 export class AuditDictamenViewComponent implements OnInit, OnDestroy {
   protected readonly inv = inject(MockInventoryService);
   private readonly zone = inject(NgZone);
+  protected readonly adjustment = signal<{ sku: string; type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO' } | null>(null);
+  protected readonly adjustmentPin = signal('');
+  protected readonly adjustmentError = signal('');
+  protected readonly adjustmentSubmitting = signal(false);
 
   private syncChannel: BroadcastChannel | null = null;
   private readonly storageListener = (ev: StorageEvent) => {
@@ -102,8 +106,37 @@ export class AuditDictamenViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  applySquare(sku: string, type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO'): void {
-    this.inv.applySquareAdjustment(sku, type);
+  requestSquareAdjustment(sku: string, type: 'MERMA_OPERATIVA' | 'FALTANTE_INJUSTIFICADO'): void {
+    this.adjustment.set({ sku, type });
+    this.adjustmentPin.set('');
+    this.adjustmentError.set('');
+  }
+
+  cancelSquareAdjustment(): void {
+    this.adjustment.set(null);
+    this.adjustmentPin.set('');
+    this.adjustmentError.set('');
+  }
+
+  async authorizeSquareAdjustment(): Promise<void> {
+    const request = this.adjustment();
+    if (!request || this.adjustmentSubmitting()) return;
+    this.adjustmentSubmitting.set(true);
+    this.adjustmentError.set('');
+    try {
+      const result = await this.inv.authorizeAndApplySquareAdjustment(
+        request.sku,
+        request.type,
+        this.adjustmentPin(),
+      );
+      if (result.ok) {
+        this.cancelSquareAdjustment();
+      } else {
+        this.adjustmentError.set(result.message);
+      }
+    } finally {
+      this.adjustmentSubmitting.set(false);
+    }
   }
 
   recount(sku: string): void {
