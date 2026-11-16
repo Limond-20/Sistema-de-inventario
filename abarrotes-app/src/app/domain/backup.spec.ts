@@ -15,6 +15,9 @@ import {
   formatRelativeBackupTime,
   isBackupOlderThan24h,
   InMemoryEncryptedBackupAdapter,
+  HttpBackupTransportAdapter,
+  getDefaultBackupAdapter,
+  isTestingEnvironment,
   BackupUnauthorizedError,
 } from './backup.ts';
 import { CURRENT_SCHEMA_VERSION, type PersistedAppState } from './persistence.ts';
@@ -172,4 +175,65 @@ test('Respaldo Cifrado: formatRelativeBackupTime e isBackupOlderThan24h', () => 
   assert.equal(formatRelativeBackupTime('2026-11-06T15:00:00Z', base), 'hace 3 h');
   assert.equal(isBackupOlderThan24h('2026-11-06T15:00:00Z', base), false);
   assert.equal(isBackupOlderThan24h('2026-11-05T17:59:59Z', base), true);
+});
+
+test('Respaldo Cifrado: getDefaultBackupAdapter y HttpBackupTransportAdapter con fallback y con fetch simulado', async () => {
+  // 1. getDefaultBackupAdapter
+  const defaultAdapter = getDefaultBackupAdapter();
+  assert.ok(defaultAdapter instanceof HttpBackupTransportAdapter);
+
+  // 2. Simulación de entorno testing (__karma__)
+  (globalThis as any).__karma__ = {};
+  assert.equal(isTestingEnvironment(), true);
+  const testAdapter = getDefaultBackupAdapter();
+  assert.ok(testAdapter instanceof InMemoryEncryptedBackupAdapter);
+  delete (globalThis as any).__karma__;
+
+  // 3. HttpBackupTransportAdapter con fallback (fetch que falla por red / servidor apagado)
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('ECONNREFUSED: Server not running');
+  };
+  try {
+    const httpAdapter = new HttpBackupTransportAdapter();
+    const created = await httpAdapter.createBackup(buildSampleState(5), 'clave-segura-1234');
+    assert.ok(isValidBackupFilename(created.nombre));
+    const list = await httpAdapter.listBackups();
+    assert.equal(list.length, 1);
+    const restored = await httpAdapter.restoreBackup('clave-segura-1234');
+    assert.equal(restored.products[0].stock, 5);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // 4. HttpBackupTransportAdapter cuando local-server responde 200
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const urlStr = String(url);
+    if (urlStr.includes('/api/respaldo/restaurar')) {
+      return new Response(JSON.stringify(buildSampleState(99)), { status: 200 });
+    }
+    if (urlStr.includes('/api/respaldo')) {
+      return new Response(
+        JSON.stringify([
+          {
+            nombre: '20261115-120000.bak',
+            fecha: '2026-11-15T12:00:00Z',
+            tamano: 1024,
+          },
+        ]),
+        { status: 200 }
+      );
+    }
+    return new Response('Not Found', { status: 404 });
+  }) as any;
+  try {
+    const httpAdapter = new HttpBackupTransportAdapter();
+    const list = await httpAdapter.listBackups();
+    assert.equal(list.length, 1);
+    assert.equal(list[0].nombre, '20261115-120000.bak');
+    const restored = await httpAdapter.restoreBackup('clave-segura-1234', '20261115-120000.bak');
+    assert.equal(restored.products[0].stock, 99);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

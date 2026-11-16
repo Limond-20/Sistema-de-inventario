@@ -45,6 +45,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     });
     service = TestBed.inject(MockInventoryService);
     service.storageAdapter = new MemoryStateStorageAdapter();
+    service.backupAdapter = new InMemoryEncryptedBackupAdapter();
     await service.acquireWriterLock();
     await service.restorePersistedState();
   });
@@ -1281,6 +1282,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
   });
 
   it('22. flushSave ya no traga errores: un adaptador que lanza error deja visible "No se pudo guardar"', async () => {
+    const warnSpy = spyOn(console, 'warn');
     const failingAdapter: StateStorageAdapter = {
       async save(): Promise<void> {
         throw new Error('QuotaExceededError: Disco lleno en IndexedDB');
@@ -1319,6 +1321,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(service.indexedDbSaveStatus()).toBe('error');
     expect(service.indexedDbSaveLabel()).toBe('No se pudo guardar');
     expect(service.lastSaveError()).toContain('QuotaExceededError');
+    expect(warnSpy).toHaveBeenCalled();
   });
 
   // =========================================================================
@@ -1876,6 +1879,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
   });
 
   it('33. Seguimiento F1: Migración: no borra binnitech_pos_state_v1 si falla la escritura de v2, y la elimina al verificar con éxito', async () => {
+    const warnSpy = spyOn(console, 'warn');
     const validV1State = {
       schemaVersion: 1,
       timestamp: new Date().toISOString(),
@@ -1922,6 +1926,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
 
     const v1AfterSuccess = await healthyAdapter.load(LEGACY_STATE_STORAGE_KEY);
     expect(v1AfterSuccess).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
   });
 
   it('34. Seguimiento F1: Los productos PENDIENTE_APROBACION no pueden recibirse, venderse, auditarse, entrar a ABC, reportes ni resolverse al escanear', async () => {

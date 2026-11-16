@@ -321,7 +321,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                @for (p of bundle().sales.byProduct; track p.sku) {
+                @for (p of bundle().sales.byProduct; track p.sku + '_' + $index) {
                   <tr>
                     <td class="py-2 px-3">
                       <p class="font-semibold text-slate-900">{{ p.name }}</p>
@@ -410,7 +410,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                @for (p of bundle().margins.byProduct; track p.sku) {
+                @for (p of bundle().margins.byProduct; track p.sku + '_' + $index) {
                   <tr>
                     <td class="py-2 px-3 font-semibold text-slate-900">{{ p.name }}</td>
                     <td class="py-2 px-3 text-right font-mono">{{ formatCents(p.netRevenueCents) }}</td>
@@ -444,7 +444,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                @for (s of bundle().margins.bySale; track s.saleId) {
+                @for (s of bundle().margins.bySale; track s.saleId + '_' + $index) {
                   <tr>
                     <td class="py-2 px-3 font-mono font-bold text-slate-900">{{ s.folio }}</td>
                     <td class="py-2 px-3 text-slate-600">{{ s.cashier }}</td>
@@ -530,7 +530,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                @for (p of bundle().shrink.byProduct; track p.sku) {
+                @for (p of bundle().shrink.byProduct; track p.sku + '_' + $index) {
                   <tr>
                     <td class="py-2 px-3">
                       <p class="font-semibold text-slate-900">{{ p.name }}</p>
@@ -615,7 +615,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                @for (c of bundle().overdueCredits.byCustomer; track c.customerId) {
+                @for (c of bundle().overdueCredits.byCustomer; track c.customerId + '_' + $index) {
                   <tr>
                     <td class="py-2 px-3">
                       <p class="font-bold text-slate-900">{{ c.name }}</p>
@@ -677,7 +677,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              @for (item of bundle().auditDifferences.items; track item.sku) {
+              @for (item of bundle().auditDifferences.items; track item.sku + '_' + $index) {
                 <tr>
                   <td class="py-2 px-3">
                     <p class="font-semibold text-slate-900">{{ item.name }}</p>
@@ -788,7 +788,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                @for (s of bundle().saleTiming.items; track s.saleId) {
+                @for (s of bundle().saleTiming.items; track s.saleId + '_' + $index) {
                   <tr>
                     <td class="py-2 px-3 font-mono font-bold text-slate-900">{{ s.folio }}</td>
                     <td class="py-2 px-3 text-slate-600">{{ s.cashier }}</td>
@@ -849,7 +849,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              @for (item of bundle().inventoryValuation.items; track item.sku) {
+              @for (item of bundle().inventoryValuation.items; track item.sku + '_' + $index) {
                 <tr>
                   <td class="py-2 px-3">
                     <p class="font-semibold text-slate-900">{{ item.name }}</p>

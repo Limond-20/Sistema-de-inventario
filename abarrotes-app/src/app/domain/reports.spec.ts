@@ -566,4 +566,130 @@ test('CSV UTF-8 con BOM, escape RFC-4180, protección anti-inyección y exportac
   assert.ok(csvs[5].includes('15000'));
   assert.ok(csvs[6].includes('350.00'));
   assert.ok(csvs[7].includes('Tiempo por venta'));
+
+  // Validación reforzada contra bypass de inyección CSV con espacios iniciales
+  const csvSpaced = serializeCsv(
+    ['Nombre', 'FormulaSpaced', 'FormulaMinus', 'SafeMinus'],
+    [
+      ['Item1', '   =SUM(A1:A5)', '   -2+3', '   -15.50'],
+      ['Item2', '   @IMPORT', '   +1234', -99.9],
+    ]
+  );
+  assert.ok(csvSpaced.includes('\'   =SUM(A1:A5)'));
+  assert.ok(csvSpaced.includes('\'   -2+3'));
+  assert.ok(csvSpaced.includes('\'   @IMPORT'));
+  assert.ok(csvSpaced.includes('\'   +1234'));
+  assert.ok(csvSpaced.includes('"   -15.50"'));
+  assert.ok(csvSpaced.includes('-99.9'));
+});
+
+test('Márgenes: Devolución con múltiples partidas rebaja individualmente el costo de cada producto', () => {
+  const products: ReportProductLike[] = [
+    { sku: 'P1', name: 'Prod 1', stock: 10, price: 50.0, weightedAvgCost: 30.0 },
+    { sku: 'P2', name: 'Prod 2', stock: 10, price: 80.0, weightedAvgCost: 50.0 },
+  ];
+  const sale = createSaleRecord({
+    folio: 'V-M1',
+    cashier: 'Ana',
+    paymentType: 'EFECTIVO',
+    date: '2026-11-12',
+    items: [
+      { sku: 'P1', name: 'Prod 1', qty: 2, unitPrice: 50.0, unitCost: 30.0, subtotal: 100.0 },
+      { sku: 'P2', name: 'Prod 2', qty: 2, unitPrice: 80.0, unitCost: 50.0, subtotal: 160.0 },
+    ],
+  });
+  // Devolución de 1 unidad de P1 ($50 rev, $30 cost) y 1 unidad de P2 ($80 rev, $50 cost)
+  const ret: SaleReturnRecord = {
+    id: 'DEV-M1',
+    saleFolio: 'V-M1',
+    saleId: sale.id,
+    timestamp: '2026-11-12T12:00:00Z',
+    date: '2026-11-12',
+    user: 'Ana',
+    authorizedBy: 'Admin',
+    reason: 'Defecto',
+    paymentType: 'EFECTIVO',
+    items: [
+      { sku: 'P1', name: 'Prod 1', qty: 1, unitPrice: 50.0, refundAmount: 50.0, refundAmountCents: 5000 },
+      { sku: 'P2', name: 'Prod 2', qty: 1, unitPrice: 80.0, refundAmount: 80.0, refundAmountCents: 8000 },
+    ],
+    totalRefund: 130.0,
+    totalRefundCents: 13000,
+  };
+  const range = resolveReportDateRange({ preset: 'HOY', referenceDate: '2026-11-12' });
+  const rep = buildMarginsReport([sale], [ret], products, range);
+  const p1 = rep.byProduct.find((p) => p.sku === 'P1')!;
+  const p2 = rep.byProduct.find((p) => p.sku === 'P2')!;
+  assert.equal(p1.netQty, 1);
+  assert.equal(p1.netRevenueCents, 5000);
+  assert.equal(p1.netCostCents, 3000);
+  assert.equal(p1.marginCents, 2000);
+
+  assert.equal(p2.netQty, 1);
+  assert.equal(p2.netRevenueCents, 8000);
+  assert.equal(p2.netCostCents, 5000);
+  assert.equal(p2.marginCents, 3000);
+
+  assert.equal(rep.totalNetRevenueCents, 13000);
+  assert.equal(rep.totalNetCostCents, 8000);
+  assert.equal(rep.totalMarginCents, 5000);
+});
+
+test('Créditos Vencidos: Tope estricto de deuda vencida contra el saldo total del cliente para evitar morosidad > 100%', () => {
+  const customer: CreditCustomerLike = {
+    id: 'CLI-EXCESS',
+    name: 'Don Carlos',
+    currentBalance: 150.0,
+    creditLimit: 500.0,
+    dueDate: '2026-11-01',
+    debtItems: [
+      { id: 'D-1', folio: 'F-1', date: '2026-10-01', dueDate: '2026-10-15', remainingAmount: 100.0 }, // 10000c
+      { id: 'D-2', folio: 'F-2', date: '2026-10-10', dueDate: '2026-10-25', remainingAmount: 100.0 }, // 10000c
+    ],
+  };
+  const rep = buildOverdueCreditsReport([customer], '2026-11-12');
+  assert.equal(rep.totalPortfolioCents, 15000);
+  assert.equal(rep.totalOverdueCents, 15000); // Topado al saldo total del cliente
+  assert.equal(rep.overdueRatePct, 100);
+  assert.equal(rep.byCustomer.length, 1);
+  assert.equal(rep.byCustomer[0].overdueCents, 15000);
+  assert.equal(rep.byCustomer[0].totalBalanceCents, 15000);
+});
+
+test('Auditoría y Tiempos: Robustez ante cantidades indefinidas/nulas en auditoría y cajero vacío en tiempos', () => {
+  const products: ReportProductLike[] = [
+    { sku: 'AUD-SKU', name: 'Leche 1L', stock: 10, price: 28.0, weightedAvgCost: 20.0 },
+  ];
+  const auditLines: AuditLineLike[] = [
+    {
+      sku: 'AUD-SKU',
+      name: 'Leche 1L',
+      saleUnit: 'Pieza',
+      systemQty: undefined as any,
+      countedQty: 7,
+      unitCost: 20.0,
+      date: '2026-11-12',
+    },
+  ];
+  const range = resolveReportDateRange({ preset: 'HOY', referenceDate: '2026-11-12' });
+  const audRep = buildAuditDifferencesReport(auditLines, products, range);
+  assert.equal(audRep.totalAuditedSkus, 1);
+  assert.equal(audRep.items[0].systemQty, 0);
+  assert.equal(audRep.items[0].countedQty, 7);
+  assert.equal(audRep.items[0].diffQty, 7);
+  assert.equal(audRep.items[0].diffValueCents, 14000);
+  assert.equal(audRep.surplusValueCents, 14000);
+
+  const sale = createSaleRecord({
+    folio: 'V-NOCASHIER',
+    cashier: '   ',
+    paymentType: 'EFECTIVO',
+    date: '2026-11-12',
+    durationMs: 25_000,
+    items: [{ sku: 'AUD-SKU', name: 'Leche 1L', qty: 1, unitPrice: 28.0, subtotal: 28.0 }],
+  });
+  const timeRep = buildSaleTimingReport([sale], range);
+  assert.equal(timeRep.measuredSaleCount, 1);
+  assert.equal(timeRep.items[0].cashier, 'Cajero');
+  assert.equal(timeRep.byCashier[0].cashier, 'Cajero');
 });

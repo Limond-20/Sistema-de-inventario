@@ -192,6 +192,7 @@ import {
   decryptBackupBytes,
   copyBackupToUsb,
   HttpBackupTransportAdapter,
+  getDefaultBackupAdapter,
   BackupUnauthorizedError,
   type BackupEntryMeta,
   type BackupOperationResult,
@@ -2072,7 +2073,7 @@ export class MockInventoryService implements OnDestroy {
   });
 
   // ---------- Respaldo Cifrado AES-GCM y Copia a USB (Bloque E) ----------
-  backupAdapter: BackupTransportAdapter = new HttpBackupTransportAdapter();
+  backupAdapter: BackupTransportAdapter = getDefaultBackupAdapter();
   /** Frase de respaldo mantenida ÚNICAMENTE en memoria de la sesión actual (jamás se persiste en disco/storage). */
   private sessionBackupPassphrase: string | null = null;
   readonly sessionPassphraseActive = signal<boolean>(false);

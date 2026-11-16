@@ -952,9 +952,12 @@ export function buildOverdueCreditsReport(
 
         const days = Math.max(1, daysBetweenLocalDates(itemDue, asOfDate));
         const bucket = classifyOverdueBucket(days);
-        customerOverdueCents += remCents;
-        bucketAmounts[bucket] += remCents;
-        bucketCustomers[bucket].add(customerId);
+        const allocCents = Math.min(remCents, Math.max(0, balanceCents - customerOverdueCents));
+        customerOverdueCents += allocCents;
+        bucketAmounts[bucket] += allocCents;
+        if (allocCents > 0) {
+          bucketCustomers[bucket].add(customerId);
+        }
         if (days > maxDaysOverdue) maxDaysOverdue = days;
         if (!oldestDueDate || itemDue < oldestDueDate) oldestDueDate = itemDue;
       }
@@ -1096,7 +1099,13 @@ export function buildAuditDifferencesReport(
       line.unitCost !== undefined && Number.isFinite(line.unitCost)
         ? Math.max(0, Math.round(line.unitCost * 100))
         : resolveProductUnitCostCents(catalog.get(line.sku));
-    const diffQty = roundQty3(line.diffQty ?? (line.countedQty - line.systemQty));
+    const systemQty = Number.isFinite(line.systemQty) ? line.systemQty : 0;
+    const countedQty = Number.isFinite(line.countedQty) ? line.countedQty : 0;
+    const rawDiff =
+      typeof line.diffQty === 'number' && Number.isFinite(line.diffQty)
+        ? line.diffQty
+        : countedQty - systemQty;
+    const diffQty = roundQty3(rawDiff);
     const diffValueCents = Math.round(diffQty * unitCostCents);
     netVarianceCents += diffValueCents;
 
@@ -1122,8 +1131,8 @@ export function buildAuditDifferencesReport(
       sku: line.sku,
       name: line.name,
       saleUnit: line.saleUnit || 'Pieza',
-      systemQty: roundQty3(line.systemQty),
-      countedQty: roundQty3(line.countedQty),
+      systemQty: roundQty3(systemQty),
+      countedQty: roundQty3(countedQty),
       diffQty,
       unitCostCents,
       diffValueCents,
@@ -1240,7 +1249,7 @@ export function buildSaleTimingReport(
       saleId: sale.id,
       folio: sale.folio,
       date: resolveRecordLocalDate(sale) || range.startDate,
-      cashier: sale.cashier,
+      cashier: (sale.cashier || 'Cajero').trim() || 'Cajero',
       paymentType: sale.paymentType,
       startedAt: sale.startedAt || sale.timestamp,
       finishedAt: sale.finishedAt || sale.timestamp,
@@ -2043,11 +2052,13 @@ export function buildReportsBundle(params: {
 
 function neutralizeCsvFormula(text: string): string {
   if (!text) return '';
-  const first = text[0];
+  const trimmed = text.trimStart();
+  if (!trimmed) return text;
+  const first = trimmed[0];
   if (first === '=' || first === '+' || first === '@' || first === '\t' || first === '\r') {
     return `'${text}`;
   }
-  if (first === '-' && !/^-\d+(?:\.\d+)?$/.test(text)) {
+  if (first === '-' && !/^-\d+(?:\.\d+)?$/.test(trimmed)) {
     return `'${text}`;
   }
   return text;
