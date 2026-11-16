@@ -474,6 +474,25 @@ export class InMemoryEncryptedBackupAdapter implements BackupTransportAdapter {
   }
 }
 
+export function isTestingEnvironment(): boolean {
+  return (
+    typeof (globalThis as any).__karma__ !== 'undefined' ||
+    typeof (globalThis as any).jasmine !== 'undefined'
+  );
+}
+
+/**
+ * Obtiene el adaptador de respaldo predeterminado:
+ * En entornos de pruebas (Karma/Jasmine) utiliza el almacén en memoria cifrado para no emitir
+ * peticiones de red 404 a Karma; en ejecución normal utiliza el adaptador HTTP con fallback local.
+ */
+export function getDefaultBackupAdapter(): BackupTransportAdapter {
+  if (isTestingEnvironment()) {
+    return new InMemoryEncryptedBackupAdapter();
+  }
+  return new HttpBackupTransportAdapter();
+}
+
 /**
  * Adaptador híbrido: se comunica con local-server (/api/respaldo, /api/respaldo/restaurar)
  * y, cuando el servidor local no está levantado (p. ej. ng serve o pruebas aisladas sin backend),

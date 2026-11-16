@@ -1,0 +1,873 @@
+<div class="print-shell space-y-5 pb-10">
+  <!-- Encabezado exclusivo al imprimir -->
+  <div class="hidden print:block border-b-2 border-slate-900 pb-3 mb-4">
+    <div class="flex items-baseline justify-between">
+      <div>
+        <h1 class="text-xl font-black text-slate-900">{{ inv.storeName }}</h1>
+        <p class="text-sm font-semibold text-slate-700">
+          Reporte Operativo: {{ activeTabLabel() }}
+        </p>
+      </div>
+      <div class="text-right text-xs text-slate-600 font-mono">
+        <p>Periodo: {{ bundle().range.startDate }} al {{ bundle().range.endDate }}</p>
+        <p>Generó: {{ inv.activeUser() }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ENCABEZADO Y CONTROLES ===================== -->
+  <section class="no-print flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-4">
+    <div>
+      <span class="inline-flex items-center gap-1.5 rounded-full bg-brand-100/80 px-2.5 py-0.5 text-xs font-bold text-brand-800">
+        <app-icon name="chart" [size]="14" />
+        <span>Reportes e Indicadores · Bloque I</span>
+      </span>
+      <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
+        Reportes de {{ inv.storeName }}
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-600 mt-0.5">
+        Periodo activo:
+        <span class="font-mono font-bold text-slate-900" data-testid="reports-active-range">
+          {{ bundle().range.startDate }} al {{ bundle().range.endDate }}
+        </span>
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        (click)="downloadIndicatorsCsv()"
+        data-testid="btn-export-indicators-csv"
+        class="h-10 px-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors">
+        <app-icon name="download" [size]="15" />
+        <span>CSV 8 Indicadores</span>
+      </button>
+      <button
+        type="button"
+        (click)="downloadCurrentCsv()"
+        data-testid="btn-export-report-csv"
+        class="h-10 px-4 rounded-xl border border-emerald-700 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors">
+        <app-icon name="download" [size]="15" />
+        <span>Exportar {{ activeTabLabel() }} (CSV)</span>
+      </button>
+      <button
+        type="button"
+        (click)="printCurrentReport()"
+        data-testid="btn-print-report"
+        class="h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors">
+        <span>Imprimir reporte</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ===================== BARRA DE FILTROS DE FECHA ===================== -->
+  <section class="no-print rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">Periodo:</span>
+      <button
+        type="button"
+        (click)="setPreset('HOY')"
+        data-testid="filter-preset-hoy"
+        class="h-9 px-3.5 rounded-lg text-xs font-bold transition-colors"
+        [class]="preset() === 'HOY' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+        Hoy
+      </button>
+      <button
+        type="button"
+        (click)="setPreset('SEMANA')"
+        data-testid="filter-preset-semana"
+        class="h-9 px-3.5 rounded-lg text-xs font-bold transition-colors"
+        [class]="preset() === 'SEMANA' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+        Semana
+      </button>
+      <button
+        type="button"
+        (click)="setPreset('MES')"
+        data-testid="filter-preset-mes"
+        class="h-9 px-3.5 rounded-lg text-xs font-bold transition-colors"
+        [class]="preset() === 'MES' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+        Mes
+      </button>
+      <button
+        type="button"
+        (click)="setPreset('RANGO')"
+        data-testid="filter-preset-rango"
+        class="h-9 px-3.5 rounded-lg text-xs font-bold transition-colors"
+        [class]="preset() === 'RANGO' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'">
+        Rango
+      </button>
+    </div>
+
+    @if (preset() === 'RANGO') {
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <label class="flex items-center gap-1.5 font-semibold text-slate-700">
+          <span>Desde:</span>
+          <input
+            type="date"
+            data-testid="input-range-start"
+            [ngModel]="customStartDate()"
+            (ngModelChange)="customStartDate.set($event)"
+            class="h-9 rounded-lg border border-slate-300 bg-white px-2.5 font-mono text-xs text-slate-900"
+          />
+        </label>
+        <label class="flex items-center gap-1.5 font-semibold text-slate-700">
+          <span>Hasta:</span>
+          <input
+            type="date"
+            data-testid="input-range-end"
+            [ngModel]="customEndDate()"
+            (ngModelChange)="customEndDate.set($event)"
+            class="h-9 rounded-lg border border-slate-300 bg-white px-2.5 font-mono text-xs text-slate-900"
+          />
+        </label>
+      </div>
+    }
+  </section>
+
+  @if (exportFeedback(); as fb) {
+    <div
+      data-testid="reports-feedback-banner"
+      class="no-print rounded-xl border px-4 py-2.5 text-xs font-semibold"
+      [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-rose-300 bg-rose-50 text-rose-900'">
+      {{ fb.text }}
+    </div>
+  }
+
+  <!-- ===================== PANEL CON LOS 8 INDICADORES (IMAGEN 4) ===================== -->
+  <section data-testid="eight-indicators-panel" class="space-y-2.5">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-black uppercase tracking-wider text-slate-700">
+        Tablero de los 8 Indicadores Operativos
+      </h2>
+      <span class="text-xs text-slate-500">Haz clic en un indicador para abrir su desglose</span>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      @for (card of bundle().indicators; track card.id) {
+        <div
+          (click)="onIndicatorClick(card)"
+          [attr.data-testid]="'indicator-card-' + card.id"
+          class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs transition-all flex flex-col justify-between gap-2"
+          [class]="toneAccentBorder(card.tone) + (card.targetReportTab ? ' cursor-pointer hover:border-slate-400 hover:shadow-sm' : '')">
+          <div>
+            <div class="flex items-start justify-between gap-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                {{ card.order }}. {{ card.title }}
+              </span>
+              <span
+                class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold"
+                [class]="toneBadgeClasses(card.tone)">
+                {{ card.statusBadge }}
+              </span>
+            </div>
+            <p class="text-xl font-black font-mono text-slate-900 mt-1 tabular-nums">
+              {{ card.valueFormatted }}
+            </p>
+            <p class="text-[11px] font-semibold text-slate-600 mt-0.5">{{ card.subtitle }}</p>
+          </div>
+
+          <div class="pt-1 border-t border-slate-100 flex items-center justify-between gap-2">
+            <p class="text-[11px] text-slate-500 leading-snug">{{ card.detail }}</p>
+            @if (card.id === 'SATISFACCION' && bundle().satisfaction.isDueNow) {
+              <button
+                type="button"
+                (click)="$event.stopPropagation(); openInlineSurvey()"
+                data-testid="btn-open-inline-survey"
+                class="no-print shrink-0 rounded-lg bg-brand-700 hover:bg-brand-800 px-2.5 py-1 text-[11px] font-bold text-white transition-colors">
+                Calificar
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Encuesta semanal rápida desde reportes si está pendiente -->
+    @if (inlineSurveyOpen()) {
+      <div class="no-print rounded-xl border border-brand-200 bg-brand-50/60 p-4 space-y-3" data-testid="inline-satisfaction-box">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">Encuesta Semanal de Satisfacción (1 a 5)</h3>
+            <p class="text-xs text-slate-600">¿Qué tan útil y rápido te ha resultado el sistema esta semana?</p>
+          </div>
+          <button type="button" (click)="closeInlineSurvey()" class="text-xs font-semibold text-slate-600 hover:text-slate-900">
+            Cerrar
+          </button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          @for (n of [1, 2, 3, 4, 5]; track n) {
+            <button
+              type="button"
+              (click)="inlineSurveyRating.set(n)"
+              [attr.data-testid]="'btn-inline-rating-' + n"
+              class="h-10 w-12 rounded-xl border font-mono text-sm font-black transition-all"
+              [class]="inlineSurveyRating() === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+              {{ n }}
+            </button>
+          }
+          <input
+            type="text"
+            [ngModel]="inlineSurveyComment()"
+            (ngModelChange)="inlineSurveyComment.set($event)"
+            placeholder="Comentario breve opcional..."
+            class="h-10 flex-1 min-w-[200px] rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+          />
+          <button
+            type="button"
+            (click)="submitInlineSurvey()"
+            data-testid="btn-submit-inline-survey"
+            class="h-10 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
+            Guardar ({{ inlineSurveyRating() }}/5)
+          </button>
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- ===================== PESTAÑAS DE LOS 7 REPORTES DETALLADOS ===================== -->
+  <nav class="no-print flex flex-wrap gap-1.5 border-b border-slate-200 pb-2">
+    @for (tab of reportTabs; track tab.key) {
+      <button
+        type="button"
+        (click)="selectTab(tab.key)"
+        [attr.data-testid]="'report-tab-' + tab.key"
+        class="h-9 px-3.5 rounded-lg text-xs font-bold transition-colors"
+        [class]="activeTab() === tab.key ? 'bg-brand-700 text-white shadow-2xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'">
+        {{ tab.label }}
+      </button>
+    }
+  </nav>
+
+  <!-- ===================== CONTENIDO DEL REPORTE ACTIVO ===================== -->
+  <section class="space-y-4">
+    <!-- 1. VENTAS -->
+    @if (activeTab() === 'VENTAS') {
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Ventas Brutas</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ formatCents(bundle().sales.grossSalesCents) }}</p>
+          <p class="text-xs text-slate-500">{{ bundle().sales.ticketCount }} tickets · Desc. {{ formatCents(bundle().sales.discountsCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Devoluciones</span>
+          <p class="text-xl font-black font-mono text-rose-700 mt-1">-{{ formatCents(bundle().sales.returnsCents) }}</p>
+          <p class="text-xs text-slate-500">{{ bundle().sales.returnEventCount }} contra-asiento(s)</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Ventas Netas</span>
+          <p class="text-xl font-black font-mono text-emerald-700 mt-1" data-testid="sales-net-total">{{ formatCents(bundle().sales.netSalesCents) }}</p>
+          <p class="text-xs text-slate-500">Bruto menos devoluciones</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Ticket Promedio</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ formatCents(bundle().sales.averageTicketCents) }}</p>
+          <p class="text-xs text-slate-500">
+            @if (bundle().sales.peakHour !== null) {
+              Hora pico: {{ bundle().sales.peakHour }}:00 h
+            } @else {
+              Sin hora pico
+            }
+          </p>
+        </div>
+      </div>
+
+      <!-- Por forma de pago -->
+      <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Ventas por Forma de Pago</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-4">Forma de pago</th>
+                <th class="py-2.5 px-4 text-right">Tickets</th>
+                <th class="py-2.5 px-4 text-right">Bruto</th>
+                <th class="py-2.5 px-4 text-right">Devoluciones</th>
+                <th class="py-2.5 px-4 text-right">Neto</th>
+                <th class="py-2.5 px-4 text-right">Participación</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (row of bundle().sales.byPaymentType; track row.paymentType) {
+                <tr>
+                  <td class="py-2.5 px-4 font-bold text-slate-900">{{ row.paymentType }}</td>
+                  <td class="py-2.5 px-4 text-right font-mono">{{ row.ticketCount }}</td>
+                  <td class="py-2.5 px-4 text-right font-mono">{{ formatCents(row.grossSalesCents) }}</td>
+                  <td class="py-2.5 px-4 text-right font-mono text-rose-700">-{{ formatCents(row.returnsCents) }}</td>
+                  <td class="py-2.5 px-4 text-right font-mono font-bold text-slate-900">{{ formatCents(row.netSalesCents) }}</td>
+                  <td class="py-2.5 px-4 text-right font-mono">{{ row.sharePct | number:'1.1-2' }}%</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Por producto y por hora -->
+      <div class="grid lg:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Ventas por Producto</h3>
+          </div>
+          <div class="overflow-x-auto max-h-96">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Producto</th>
+                  <th class="py-2 px-3 text-right">Cant. Neta</th>
+                  <th class="py-2 px-3 text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (p of bundle().sales.byProduct; track p.sku + '_' + $index) {
+                  <tr>
+                    <td class="py-2 px-3">
+                      <p class="font-semibold text-slate-900">{{ p.name }}</p>
+                      <p class="text-[10px] font-mono text-slate-500">{{ p.sku }}</p>
+                    </td>
+                    <td class="py-2 px-3 text-right font-mono">{{ p.netQty | number:'1.0-3' }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">{{ formatCents(p.netSalesCents) }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="3" class="py-6 text-center text-slate-500">Sin ventas de productos en este periodo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Ventas por Hora del Día</h3>
+          </div>
+          <div class="overflow-x-auto max-h-96">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Franja Horaria</th>
+                  <th class="py-2 px-3 text-right">Tickets</th>
+                  <th class="py-2 px-3 text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (h of nonZeroHourRows(); track h.hour) {
+                  <tr>
+                    <td class="py-2 px-3 font-mono font-semibold text-slate-800">{{ h.label }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ h.ticketCount }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">{{ formatCents(h.netSalesCents) }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="3" class="py-6 text-center text-slate-500">Sin movimientos registrados por hora en este periodo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- 2. MÁRGENES -->
+    @if (activeTab() === 'MARGENES') {
+      <div class="grid sm:grid-cols-4 gap-3">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Ingreso Neto</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ formatCents(bundle().margins.totalNetRevenueCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Costo Neto (COGS)</span>
+          <p class="text-xl font-black font-mono text-slate-800 mt-1">{{ formatCents(bundle().margins.totalNetCostCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Ganancia Bruta</span>
+          <p class="text-xl font-black font-mono text-emerald-700 mt-1">{{ formatCents(bundle().margins.totalMarginCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Margen Global</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ bundle().margins.overallMarginPct | number:'1.1-2' }}%</p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Margen por Producto</h3>
+          </div>
+          <div class="overflow-x-auto max-h-96">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Producto</th>
+                  <th class="py-2 px-3 text-right">Ingreso</th>
+                  <th class="py-2 px-3 text-right">Costo</th>
+                  <th class="py-2 px-3 text-right">Ganancia</th>
+                  <th class="py-2 px-3 text-right">%</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (p of bundle().margins.byProduct; track p.sku + '_' + $index) {
+                  <tr>
+                    <td class="py-2 px-3 font-semibold text-slate-900">{{ p.name }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ formatCents(p.netRevenueCents) }}</td>
+                    <td class="py-2 px-3 text-right font-mono text-slate-600">{{ formatCents(p.netCostCents) }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-emerald-700">{{ formatCents(p.marginCents) }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold">{{ p.marginPct | number:'1.1-2' }}%</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="5" class="py-6 text-center text-slate-500">Sin ventas para calcular márgenes en este periodo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Margen por Ticket / Venta</h3>
+          </div>
+          <div class="overflow-x-auto max-h-96">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Folio</th>
+                  <th class="py-2 px-3">Cajero</th>
+                  <th class="py-2 px-3 text-right">Ingreso</th>
+                  <th class="py-2 px-3 text-right">Ganancia</th>
+                  <th class="py-2 px-3 text-right">%</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (s of bundle().margins.bySale; track s.saleId + '_' + $index) {
+                  <tr>
+                    <td class="py-2 px-3 font-mono font-bold text-slate-900">{{ s.folio }}</td>
+                    <td class="py-2 px-3 text-slate-600">{{ s.cashier }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ formatCents(s.netRevenueCents) }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-emerald-700">{{ formatCents(s.marginCents) }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold">{{ s.marginPct | number:'1.1-2' }}%</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="5" class="py-6 text-center text-slate-500">Sin tickets en este periodo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- 3. MERMAS -->
+    @if (activeTab() === 'MERMAS') {
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Pérdida Total al Costo</span>
+          <p class="text-xl font-black font-mono text-rose-700 mt-1">{{ formatCents(bundle().shrink.totalLossCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Registros y Unidades</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ bundle().shrink.recordCount }} reg. · {{ bundle().shrink.totalQty | number:'1.0-3' }} u.</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Estado de Revisión</span>
+          <p class="text-sm font-bold text-slate-900 mt-1.5">{{ bundle().shrink.reviewedCount }} auditadas · {{ bundle().shrink.unreviewedCount }} pendientes</p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Mermas por Motivo</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Motivo</th>
+                  <th class="py-2 px-3 text-right">Eventos</th>
+                  <th class="py-2 px-3 text-right">Cantidad</th>
+                  <th class="py-2 px-3 text-right">Pérdida Costo</th>
+                  <th class="py-2 px-3 text-right">%</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (r of bundle().shrink.byReason; track r.reason) {
+                  <tr>
+                    <td class="py-2 px-3 font-bold text-slate-900">{{ r.reason }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ r.recordCount }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ r.totalQty | number:'1.0-3' }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-rose-700">{{ formatCents(r.totalLossCents) }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ r.sharePct | number:'1.1-2' }}%</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="5" class="py-6 text-center text-slate-500">Sin mermas registradas en este periodo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Mermas por Producto</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Producto</th>
+                  <th class="py-2 px-3 text-right">Cantidad</th>
+                  <th class="py-2 px-3 text-right">Pérdida Costo</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (p of bundle().shrink.byProduct; track p.sku + '_' + $index) {
+                  <tr>
+                    <td class="py-2 px-3">
+                      <p class="font-semibold text-slate-900">{{ p.name }}</p>
+                      <p class="text-[10px] text-slate-500">{{ p.reasons.join(', ') }}</p>
+                    </td>
+                    <td class="py-2 px-3 text-right font-mono">{{ p.totalQty | number:'1.0-3' }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-rose-700">{{ formatCents(p.totalLossCents) }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="3" class="py-6 text-center text-slate-500">Sin productos con merma en este periodo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- 4. CRÉDITOS VENCIDOS -->
+    @if (activeTab() === 'CREDITOS_VENCIDOS') {
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Total Vencido (al {{ bundle().overdueCredits.asOfDate }})</span>
+          <p class="text-xl font-black font-mono text-rose-700 mt-1">{{ formatCents(bundle().overdueCredits.totalOverdueCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Cartera Total Fiado</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ formatCents(bundle().overdueCredits.totalPortfolioCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Clientes Vencidos / Morosidad</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">
+            {{ bundle().overdueCredits.overdueCustomerCount }} de {{ bundle().overdueCredits.totalIndebtedCustomerCount }}
+            ({{ bundle().overdueCredits.overdueRatePct | number:'1.1-2' }}%)
+          </p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Antigüedad de Saldos Vencidos</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Rango de Antigüedad</th>
+                  <th class="py-2 px-3 text-right">Clientes</th>
+                  <th class="py-2 px-3 text-right">Saldo Vencido</th>
+                  <th class="py-2 px-3 text-right">%</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (b of bundle().overdueCredits.byAgingBucket; track b.bucket) {
+                  <tr>
+                    <td class="py-2.5 px-3 font-bold text-slate-900">{{ b.label }}</td>
+                    <td class="py-2.5 px-3 text-right font-mono">{{ b.customerCount }}</td>
+                    <td class="py-2.5 px-3 text-right font-mono font-bold text-rose-700">{{ formatCents(b.overdueCents) }}</td>
+                    <td class="py-2.5 px-3 text-right font-mono">{{ b.sharePct | number:'1.1-2' }}%</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Detalle por Cliente Vencido</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Cliente</th>
+                  <th class="py-2 px-3 text-right">Días Vencido</th>
+                  <th class="py-2 px-3 text-right">Vencido</th>
+                  <th class="py-2 px-3 text-right">Saldo Total</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (c of bundle().overdueCredits.byCustomer; track c.customerId + '_' + $index) {
+                  <tr>
+                    <td class="py-2 px-3">
+                      <p class="font-bold text-slate-900">{{ c.name }}</p>
+                      <p class="text-[10px] text-slate-500">Vence desde: {{ c.oldestDueDate || '-' }}</p>
+                    </td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-rose-700">{{ c.maxDaysOverdue }} d</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-rose-700">{{ formatCents(c.overdueCents) }}</td>
+                    <td class="py-2 px-3 text-right font-mono text-slate-700">{{ formatCents(c.totalBalanceCents) }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="4" class="py-6 text-center text-slate-500">No hay créditos vencidos a la fecha.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- 5. DIFERENCIAS STOCK-CONTEO -->
+    @if (activeTab() === 'DIFERENCIAS_CONTEO') {
+      <div class="grid sm:grid-cols-4 gap-3">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">SKUs Auditados</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ bundle().auditDifferences.totalAuditedSkus }}</p>
+          <p class="text-xs text-slate-500">{{ bundle().auditDifferences.exactMatchCount }} cuadran exacto</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Faltantes</span>
+          <p class="text-xl font-black font-mono text-rose-700 mt-1">-{{ formatCents(bundle().auditDifferences.shortageValueCents) }}</p>
+          <p class="text-xs text-slate-500">{{ bundle().auditDifferences.shortageSkuCount }} SKU(s)</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Merma Natural Tolerada</span>
+          <p class="text-xl font-black font-mono text-amber-700 mt-1">-{{ formatCents(bundle().auditDifferences.naturalToleranceLossCents) }}</p>
+          <p class="text-xs text-slate-500">{{ bundle().auditDifferences.naturalToleranceCount }} SKU(s)</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Sobrantes / Variación Neta</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">+{{ formatCents(bundle().auditDifferences.surplusValueCents) }}</p>
+          <p class="text-xs text-slate-500">Neto: {{ formatCents(bundle().auditDifferences.netVarianceCents) }}</p>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-3">Producto</th>
+                <th class="py-2.5 px-3 text-right">Sistema</th>
+                <th class="py-2.5 px-3 text-right">Físico</th>
+                <th class="py-2.5 px-3 text-right">Diferencia</th>
+                <th class="py-2.5 px-3 text-right">Impacto</th>
+                <th class="py-2.5 px-3">Clasificación</th>
+                <th class="py-2.5 px-3">Estatus</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (item of bundle().auditDifferences.items; track item.sku + '_' + $index) {
+                <tr>
+                  <td class="py-2 px-3">
+                    <p class="font-semibold text-slate-900">{{ item.name }}</p>
+                    <p class="text-[10px] font-mono text-slate-500">{{ item.sku }} · {{ item.saleUnit }}</p>
+                  </td>
+                  <td class="py-2 px-3 text-right font-mono">{{ item.systemQty | number:'1.0-3' }}</td>
+                  <td class="py-2 px-3 text-right font-mono">{{ item.countedQty | number:'1.0-3' }}</td>
+                  <td class="py-2 px-3 text-right font-mono font-bold"
+                    [class]="item.diffQty < 0 ? 'text-rose-700' : (item.diffQty > 0 ? 'text-emerald-700' : 'text-slate-600')">
+                    {{ item.diffQty > 0 ? '+' : '' }}{{ item.diffQty | number:'1.0-3' }}
+                  </td>
+                  <td class="py-2 px-3 text-right font-mono font-bold">{{ formatCents(item.diffValueCents) }}</td>
+                  <td class="py-2 px-3 font-semibold">{{ item.classification }}</td>
+                  <td class="py-2 px-3 text-slate-600">{{ item.status }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="7" class="py-6 text-center text-slate-500">Sin registros de conteo de auditoría en este periodo.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    }
+
+    <!-- 6. TIEMPO PROMEDIO POR VENTA -->
+    @if (activeTab() === 'TIEMPO_VENTAS') {
+      <div class="grid sm:grid-cols-4 gap-3">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Tiempo Promedio</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1" data-testid="timing-average-label">
+            {{ bundle().saleTiming.measuredSaleCount > 0 ? formatDuration(bundle().saleTiming.averageDurationMs) : 'Sin datos' }}
+          </p>
+          <p class="text-xs text-slate-500">{{ bundle().saleTiming.measuredSaleCount }} cronometradas / {{ bundle().saleTiming.totalSalesInRange }} ventas</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Mediana</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">
+            {{ bundle().saleTiming.measuredSaleCount > 0 ? formatDuration(bundle().saleTiming.medianDurationMs) : '-' }}
+          </p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Más Rápida / Más Lenta</span>
+          <p class="text-sm font-bold font-mono text-slate-900 mt-1.5">
+            @if (bundle().saleTiming.measuredSaleCount > 0) {
+              {{ formatDuration(bundle().saleTiming.minDurationMs) }} / {{ formatDuration(bundle().saleTiming.maxDurationMs) }}
+            } @else {
+              -
+            }
+          </p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Distribución Velocidad</span>
+          <p class="text-xs font-semibold text-slate-700 mt-1.5">
+            Ágil (&le;30s): {{ bundle().saleTiming.fastSalesCount }} · Normal: {{ bundle().saleTiming.normalSalesCount }} · Lenta (&gt;90s): {{ bundle().saleTiming.slowSalesCount }}
+          </p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Promedio por Cajero</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Cajero</th>
+                  <th class="py-2 px-3 text-right">Ventas</th>
+                  <th class="py-2 px-3 text-right">Promedio</th>
+                  <th class="py-2 px-3 text-right">Mín / Máx</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (c of bundle().saleTiming.byCashier; track c.cashier) {
+                  <tr>
+                    <td class="py-2 px-3 font-bold text-slate-900">{{ c.cashier }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ c.saleCount }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold text-emerald-700">{{ formatDuration(c.averageDurationMs) }}</td>
+                    <td class="py-2 px-3 text-right font-mono text-slate-600">
+                      {{ formatDuration(c.minDurationMs) }} / {{ formatDuration(c.maxDurationMs) }}
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="4" class="py-6 text-center text-slate-500">Aún no hay ventas cronometradas en este periodo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Tickets Cronometrados (Inicio y Fin POS)</h3>
+          </div>
+          <div class="overflow-x-auto max-h-96">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <tr>
+                  <th class="py-2 px-3">Folio</th>
+                  <th class="py-2 px-3">Cajero</th>
+                  <th class="py-2 px-3 text-right">Duración</th>
+                  <th class="py-2 px-3 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                @for (s of bundle().saleTiming.items; track s.saleId + '_' + $index) {
+                  <tr>
+                    <td class="py-2 px-3 font-mono font-bold text-slate-900">{{ s.folio }}</td>
+                    <td class="py-2 px-3 text-slate-600">{{ s.cashier }}</td>
+                    <td class="py-2 px-3 text-right font-mono font-bold">{{ formatDuration(s.durationMs) }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ formatCents(s.totalCents) }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="4" class="py-6 text-center text-slate-500">Cobra una venta en el POS para registrar su tiempo.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- 7. VALOR DEL INVENTARIO A COSTO Y A PRECIO -->
+    @if (activeTab() === 'VALUACION_INVENTARIO') {
+      <div class="grid sm:grid-cols-4 gap-3">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Valor a Costo (CPP / Hist.)</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ formatCents(bundle().inventoryValuation.totalCostCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Valor a Precio Venta</span>
+          <p class="text-xl font-black font-mono text-emerald-700 mt-1">{{ formatCents(bundle().inventoryValuation.totalRetailCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Utilidad Potencial</span>
+          <p class="text-xl font-black font-mono text-brand-700 mt-1">{{ formatCents(bundle().inventoryValuation.potentialProfitCents) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+          <span class="text-[11px] font-bold uppercase text-slate-500">Margen Potencial / SKUs</span>
+          <p class="text-xl font-black font-mono text-slate-900 mt-1">
+            {{ bundle().inventoryValuation.overallMarginPct | number:'1.1-2' }}% · {{ bundle().inventoryValuation.skuCount }} SKUs
+          </p>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Valuación Detallada por Producto</h3>
+        </div>
+        <div class="overflow-x-auto max-h-[460px]">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-3">Producto</th>
+                <th class="py-2.5 px-3">Categoría</th>
+                <th class="py-2.5 px-3 text-right">Existencia</th>
+                <th class="py-2.5 px-3 text-right">Costo Unit.</th>
+                <th class="py-2.5 px-3 text-right">Precio Unit.</th>
+                <th class="py-2.5 px-3 text-right">Valor Costo</th>
+                <th class="py-2.5 px-3 text-right">Valor Precio</th>
+                <th class="py-2.5 px-3 text-right">Margen Pot.</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (item of bundle().inventoryValuation.items; track item.sku + '_' + $index) {
+                <tr>
+                  <td class="py-2 px-3">
+                    <p class="font-semibold text-slate-900">{{ item.name }}</p>
+                    <p class="text-[10px] font-mono text-slate-500">{{ item.sku }}</p>
+                  </td>
+                  <td class="py-2 px-3 text-slate-600">{{ item.category }}</td>
+                  <td class="py-2 px-3 text-right font-mono">{{ item.stock | number:'1.0-3' }}</td>
+                  <td class="py-2 px-3 text-right font-mono text-slate-600">{{ formatCents(item.unitCostCents) }}</td>
+                  <td class="py-2 px-3 text-right font-mono">{{ formatCents(item.unitPriceCents) }}</td>
+                  <td class="py-2 px-3 text-right font-mono font-semibold">{{ formatCents(item.costValueCents) }}</td>
+                  <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">{{ formatCents(item.retailValueCents) }}</td>
+                  <td class="py-2 px-3 text-right font-mono font-bold text-emerald-700">{{ item.potentialMarginPct | number:'1.1-2' }}%</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    }
+  </section>
+</div>

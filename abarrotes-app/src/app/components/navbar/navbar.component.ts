@@ -110,6 +110,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
     { key: 'fiados', label: 'Libreta de fiados', icon: 'book', link: '/pos', query: { tab: 'fiados' } },
     { key: 'catalogo', label: 'Catálogo y precios', icon: 'box', link: '/catalogo', query: null },
     { key: 'mermas', label: 'Mermas y consumos', icon: 'trash', link: '/mermas', query: null },
+    { key: 'reportes', label: 'Reportes e indicadores', icon: 'chart', link: '/reportes', query: null },
     { key: 'ajustes', label: 'Ajustes y usuarios', icon: 'settings', link: '/ajustes', query: null },
   ];
 
@@ -220,6 +221,8 @@ export class NavbarComponent implements OnInit, OnDestroy {
   openCloseShift(): void {
     this.shiftClosedSuccess.set(false);
     this.shiftBackupMessage.set(null);
+    this.closeShiftSatisfactionRating.set(null);
+    this.closeShiftSatisfactionComment.set('');
     this.closeShiftModalOpen.set(true);
   }
   closeCloseShiftModal(): void {
@@ -240,6 +243,15 @@ export class NavbarComponent implements OnInit, OnDestroy {
     if (backupRes.entry) {
       this.shiftBackupMessage.set(`Respaldo cifrado automático generado: ${backupRes.entry.nombre}`);
     }
+    const satRating = this.closeShiftSatisfactionRating();
+    if (satRating !== null && this.inv.satisfactionDueStatus().due) {
+      this.inv.submitSatisfactionSurvey({
+        rating: satRating,
+        comment: this.closeShiftSatisfactionComment(),
+      });
+    }
+    this.closeShiftSatisfactionRating.set(null);
+    this.closeShiftSatisfactionComment.set('');
     this.shiftClosedSuccess.set(true);
   }
 
@@ -252,6 +264,8 @@ export class NavbarComponent implements OnInit, OnDestroy {
   protected readonly restorePassphraseInput = signal<string>('');
   protected readonly closeShiftPassphrase = signal<string>('');
   protected readonly shiftBackupMessage = signal<string | null>(null);
+  protected readonly closeShiftSatisfactionRating = signal<number | null>(null);
+  protected readonly closeShiftSatisfactionComment = signal<string>('');
   protected readonly selectedImportFile = signal<File | null>(null);
   protected readonly importPassphraseInput = signal<string>('');
 

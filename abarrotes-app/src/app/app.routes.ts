@@ -55,5 +55,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
     title: 'Ajustes y Gestión de Usuarios',
   },
+  {
+    path: 'reportes',
+    loadComponent: () =>
+      import('./views/reports/reports-view.component').then((m) => m.ReportsViewComponent),
+    canActivate: [authGuard],
+    title: 'Reportes e Indicadores',
+  },
   { path: '**', redirectTo: '' },
 ];

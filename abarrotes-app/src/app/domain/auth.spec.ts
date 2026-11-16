@@ -348,3 +348,10 @@ test('Elevación puntual de privilegios con PIN de supervisor (Bloque G seguimie
   const wrongAttempt = await verifySupervisorPinAttempt(users, '000000');
   assert.equal(wrongAttempt.success, false);
 });
+
+test('Control de rutas Bloque I: acceso a /reportes restringido por permiso cortes', () => {
+  assert.equal(canAccessRoute('CAJERO', '/reportes'), false);
+  assert.equal(canAccessRoute('CAJERO', '/reportes?tab=VENTAS'), false);
+  assert.equal(canAccessRoute('ENCARGADO', '/reportes'), true);
+  assert.equal(canAccessRoute('ADMINISTRADOR', '/reportes'), true);
+});

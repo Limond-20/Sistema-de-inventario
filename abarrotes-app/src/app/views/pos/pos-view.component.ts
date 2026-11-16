@@ -423,6 +423,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   }
 
   confirmBulkItem(): void {
+    this.markSaleStartIfEmpty();
     const prod = this.bulkModalProduct();
     if (!prod) return;
     const qtyKg = this.calculatedBulkKg();
@@ -458,6 +459,18 @@ export class PosViewComponent implements OnInit, OnDestroy {
   }
 
   addUnitToCart(product: Product, delta = 1): void {
+    const preExisting = this.cart().find((i) => i.sku === product.sku);
+    if (
+      delta < 0 &&
+      preExisting !== undefined &&
+      +(preExisting.qty + delta).toFixed(3) <= 0 &&
+      this.cart().length === 1
+    ) {
+      this.currentSaleStartedAt.set(null);
+    }
+    if (delta > 0 && product.approvalStatus !== 'PENDIENTE_APROBACION') {
+      this.markSaleStartIfEmpty();
+    }
     if (product.approvalStatus === 'PENDIENTE_APROBACION') return;
     this.cart.update((list) => {
       const existing = list.find((i) => i.sku === product.sku);
@@ -593,13 +606,23 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   removeFromCart(sku: string): void {
     this.cart.update((list) => list.filter((i) => i.sku !== sku));
+    if (this.cart().length === 0) {
+      this.currentSaleStartedAt.set(null);
+    }
   }
 
   removeCartItem(sku: string): void {
     this.removeFromCart(sku);
   }
 
+  private markSaleStartIfEmpty(): void {
+    if (!this.currentSaleStartedAt()) {
+      this.currentSaleStartedAt.set(new Date().toISOString());
+    }
+  }
+
   clearCart(): void {
+    this.currentSaleStartedAt.set(null);
     this.cart.set([]);
     this.ticketDiscountPct.set(0);
     this.discountAuthPin.set('');
@@ -634,6 +657,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   async confirmCashSale(): Promise<void> {
     if (!this.canConfirmCash()) return;
+    const finishedAt = new Date().toISOString();
+    const startedAt = this.currentSaleStartedAt() || finishedAt;
     const evalRes = this.cartDiscountEvaluation();
     if (evalRes.totalDiscountCents > 0 || evalRes.requiresPin) {
       const res = await this.inv.processSaleWithDiscounts({
@@ -642,11 +667,14 @@ export class PosViewComponent implements OnInit, OnDestroy {
         paymentType: 'EFECTIVO',
         cashReceived: parseMoney(this.cashReceived() || 0),
         pin: this.discountAuthPin(),
+        startedAt,
+        finishedAt,
       });
       if (res.ok) {
         const lastSale = this.inv.lastCompletedSale();
         this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
         this.cart.set([]);
+      this.currentSaleStartedAt.set(null);
         this.ticketDiscountPct.set(0);
         this.discountAuthPin.set('');
         this.closeCashModal();
@@ -656,11 +684,12 @@ export class PosViewComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const res = this.inv.processCashSale(this.cart(), parseMoney(this.cashReceived() || 0));
+    const res = this.inv.processCashSale(this.cart(), parseMoney(this.cashReceived() || 0), { startedAt, finishedAt });
     if (res.ok) {
       const lastSale = this.inv.lastCompletedSale();
       this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
       this.cart.set([]);
+      this.currentSaleStartedAt.set(null);
       this.ticketDiscountPct.set(0);
       this.closeCashModal();
     } else {
@@ -689,6 +718,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
     const customer = this.selectedCustomer();
     if (!customer) return;
 
+    const finishedAt = new Date().toISOString();
+    const startedAt = this.currentSaleStartedAt() || finishedAt;
     const evalRes = this.cartDiscountEvaluation();
     if (evalRes.totalDiscountCents > 0 || evalRes.requiresPin) {
       const res = await this.inv.processSaleWithDiscounts({
@@ -697,11 +728,14 @@ export class PosViewComponent implements OnInit, OnDestroy {
         paymentType: 'FIADO',
         customerId: customer.id,
         pin: this.discountAuthPin(),
+        startedAt,
+        finishedAt,
       });
       if (res.ok) {
         const lastSale = this.inv.lastCompletedSale();
         this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
         this.cart.set([]);
+      this.currentSaleStartedAt.set(null);
         this.ticketDiscountPct.set(0);
         this.discountAuthPin.set('');
         this.closeCreditModal();
@@ -711,11 +745,12 @@ export class PosViewComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const res = this.inv.processCreditSale(this.cart(), customer.id);
+    const res = this.inv.processCreditSale(this.cart(), customer.id, { startedAt, finishedAt });
     if (res.ok) {
       const lastSale = this.inv.lastCompletedSale();
       this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
       this.cart.set([]);
+      this.currentSaleStartedAt.set(null);
       this.ticketDiscountPct.set(0);
       this.closeCreditModal();
     } else {
@@ -745,6 +780,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       const lastSale = this.inv.lastCompletedSale();
       this.saleFeedback.set({ ok: true, text: res.message, sale: lastSale || undefined });
       this.cart.set([]);
+      this.currentSaleStartedAt.set(null);
       this.consumptionPin.set('');
       this.consumptionReason.set('');
       this.closeInternalConsumptionModal();
@@ -1002,7 +1038,13 @@ export class PosViewComponent implements OnInit, OnDestroy {
     };
   });
 
+  protected readonly shiftSatisfactionRating = signal<number | null>(null);
+  protected readonly shiftSatisfactionComment = signal<string>('');
+  protected readonly currentSaleStartedAt = signal<string | null>(null);
+
   openShiftModal(): void {
+    this.shiftSatisfactionRating.set(null);
+    this.shiftSatisfactionComment.set('');
     this.shiftCountedCash.set(this.inv.getExpectedDrawerCash());
     this.shiftPin.set('');
     this.shiftNotes.set('');
@@ -1017,6 +1059,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
   }
 
   async executeCloseShift(): Promise<void> {
+    const rating = this.shiftSatisfactionRating();
+    const comment = this.shiftSatisfactionComment();
     const counted = parseMoney(this.shiftCountedCash() || 0);
     const pin = this.shiftPin().trim();
     if (!pin) {
@@ -1024,6 +1068,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
       return;
     }
     const res = await this.inv.closeShift({
+      satisfactionRating: rating ?? undefined,
+      satisfactionComment: comment,
       physicalCash: counted,
       pin,
       notes: this.shiftNotes().trim() || undefined,
