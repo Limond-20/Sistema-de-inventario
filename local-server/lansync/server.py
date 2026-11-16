@@ -20,12 +20,13 @@ import json
 import re
 import time
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import segno
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import StaticFiles
@@ -42,6 +43,7 @@ from .backup import (
 from .netinfo import is_loopback, lan_ips
 from .pairing import PairingStore
 from .state_store import KardexIntegrityError, SQLiteStateStore, StateStoreError
+from .usb import UsbBackupCopier
 
 MAX_MESSAGE_BYTES = 8 * 1024 * 1024
 MAX_EVIDENCIA_BYTES = 5 * 1024 * 1024
@@ -154,6 +156,16 @@ def cleanup_stale_temp_evidencias(evidencias_dir: Path, max_age_seconds: float =
     return removed
 
 
+async def _usb_poll_loop(copier: UsbBackupCopier, seconds: float) -> None:
+    """Revisa cada cierto tiempo si hay una memoria USB conectada y copia el respaldo del día (Bloque L)."""
+    while True:
+        try:
+            await asyncio.to_thread(copier.maybe_copy)
+        except Exception:
+            pass  # la copia a USB nunca debe tumbar el servidor
+        await asyncio.sleep(seconds)
+
+
 def create_app(
     static_dir: Path | None = None,
     *,
@@ -163,8 +175,28 @@ def create_app(
     pairing: PairingStore | None = None,
     max_message_bytes: int = MAX_MESSAGE_BYTES,
     data_dir: Path | None = None,
+    usb_enabled: bool = False,
+    usb_dir: Path | None = None,
+    usb_poll_seconds: float | None = None,
+    usb_drives_provider=None,
 ) -> FastAPI:
-    app = FastAPI(title="Abarrotes · servidor local", docs_url=None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(app_: FastAPI):
+        task = None
+        usb_copier = app_.state.usb
+        if usb_copier.enabled and usb_poll_seconds:
+            task = asyncio.create_task(_usb_poll_loop(usb_copier, usb_poll_seconds))
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    app = FastAPI(title="Abarrotes · servidor local", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     st = app.state
     st.hub = Hub()
     st.pairing = pairing or PairingStore()
@@ -182,6 +214,13 @@ def create_app(
     st.respaldos_dir = st.data_dir / "respaldos"
     st.respaldos_dir.mkdir(parents=True, exist_ok=True)
     st.backups = BackupStore(st.respaldos_dir)
+    st.usb = UsbBackupCopier(
+        st.backups,
+        st.data_dir,
+        enabled=usb_enabled,
+        usb_dir=usb_dir,
+        drives_provider=usb_drives_provider,
+    )
     st.state_database = st.data_dir / "inventory.sqlite3"
     st.state_store = SQLiteStateStore(st.state_database)
 
@@ -451,7 +490,7 @@ def create_app(
             return raw
 
     @app.post("/api/respaldo", dependencies=[Depends(require_local)])
-    async def create_respaldo(request: Request) -> dict:
+    async def create_respaldo(request: Request, background_tasks: BackgroundTasks) -> dict:
         passphrase = _extract_backup_passphrase(request)
         if not passphrase or len(passphrase) < 8:
             raise HTTPException(
@@ -468,11 +507,14 @@ def create_app(
 
         try:
             database_copy = st.state_store.backup_bytes()
-            return st.backups.create(payload, passphrase, database_bytes=database_copy)
+            entry = st.backups.create(payload, passphrase, database_bytes=database_copy)
         except BackupPassphraseError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except BackupError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # Bloque L: después de responder, intenta la copia diaria a USB (solo copia el .bak ya cifrado).
+        background_tasks.add_task(st.usb.maybe_copy)
+        return entry
 
     @app.get("/api/respaldo", dependencies=[Depends(require_local)])
     async def list_respaldos() -> list[dict]:
@@ -539,6 +581,18 @@ def create_app(
                 "X-Content-Type-Options": "nosniff",
             },
         )
+
+    # ---------------------------- Copia a USB (Bloque L) ----------------------------
+    @app.get("/api/usb/estado", dependencies=[Depends(require_local)])
+    async def usb_status() -> dict:
+        return await asyncio.to_thread(st.usb.status)
+
+    @app.post("/api/usb/copiar", dependencies=[Depends(require_local)])
+    async def usb_copy_now() -> dict:
+        """Copia ahora el respaldo más reciente (ignora el límite de una vez al día)."""
+        if not st.usb.enabled:
+            raise HTTPException(status_code=409, detail="La copia a USB está desactivada (--sin-usb).")
+        return await asyncio.to_thread(st.usb.maybe_copy, force=True)
 
     # ---------------------------- WebSocket ----------------------------
     @app.websocket("/ws")
@@ -679,11 +733,27 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--cert-dir", default=str(root / "local-server" / "certs"))
     ap.add_argument("--data-dir", default=str(root / "local-server" / "data"), help="donde se guarda el código de vinculación")
     ap.add_argument("--no-tls", action="store_true", help="HTTP simple (la cámara en vivo del celular no funcionará)")
+    ap.add_argument(
+        "--usb-dir",
+        default=None,
+        help="carpeta o unidad donde copiar el respaldo cifrado una vez al día (ej. E:\\). Sin esto, se detectan memorias USB extraíbles solas",
+    )
+    ap.add_argument("--sin-usb", action="store_true", help="desactiva la copia automática a USB")
     args = ap.parse_args(argv)
 
     ips = lan_ips()
     pairing = PairingStore(path=Path(args.data_dir) / "pairing.json")
-    app = create_app(Path(args.static), port=args.port, tls=not args.no_tls, ips=ips, pairing=pairing, data_dir=Path(args.data_dir))
+    app = create_app(
+        Path(args.static),
+        port=args.port,
+        tls=not args.no_tls,
+        ips=ips,
+        pairing=pairing,
+        data_dir=Path(args.data_dir),
+        usb_enabled=not args.sin_usb,
+        usb_dir=Path(args.usb_dir) if args.usb_dir else None,
+        usb_poll_seconds=300.0,
+    )
     kw: dict = {}
     if not args.no_tls:
         cert, key = ensure_cert(Path(args.cert_dir), ips)
@@ -696,6 +766,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  Red local:       {scheme}://{ips[0]}:{args.port}/")
     else:
         print("  (No se detectó red local: conecta la PC al Wi-Fi)")
+    if args.sin_usb:
+        print("  Copia a USB: desactivada (--sin-usb)")
+    elif args.usb_dir:
+        print(f"  Copia a USB:     una vez al día en {args.usb_dir}")
+    else:
+        print("  Copia a USB:     automática si conectas una memoria USB")
     print("  Cierra esta ventana para detener el servidor.\n")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", access_log=False,
                 ws_max_size=MAX_MESSAGE_BYTES, **kw)

@@ -100,6 +100,20 @@ El sistema incluye un mecanismo de **respaldo cifrado en el servidor local (`loc
 
 ---
 
+## 💽 Copia automática a USB desde el servidor local (Bloque L)
+
+El navegador no puede detectar cuándo se conecta una memoria USB ni copiar en segundo plano (solo puede abrir
+el selector de carpetas del Bloque E, y la persona debe elegir la carpeta cada vez). Por eso **`local-server`
+copia solo el respaldo `.bak` más reciente a la USB, una vez al día**, y la app muestra
+**"Última copia a USB: hace X"** con un aviso si pasan más de 7 días.
+
+- Solo se copia el archivo ya cifrado (AES-256-GCM); la frase de respaldo nunca se guarda ni se copia.
+- Opciones: detección automática de unidades extraíbles, `--usb-dir E:\` para una unidad o carpeta fija, o `--sin-usb`.
+- Endpoints (solo desde la PC): `GET /api/usb/estado` y `POST /api/usb/copiar`.
+- Detalles, límites y pruebas: ver `local-server/README.md`, sección "Copia automática a USB (Bloque L)".
+
+---
+
 ## ⚙️ Ajustes del Negocio, Usuarios y Seguridad Criptográfica (Bloque G)
 
 El Bloque G introduce la centralización administrativa del sistema con base en el principio de menor privilegio, trazabilidad inmutable y desvinculación de parámetros rígidos:

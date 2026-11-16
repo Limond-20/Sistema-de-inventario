@@ -63,6 +63,19 @@
         <span>Último respaldo:</span>
         <span class="font-semibold text-white">{{ relativeBackupLabel() }}</span>
       </div>
+      @if (usbStatus(); as usb) {
+        @if (usb.activo) {
+          <div class="flex items-center justify-between text-[11px] text-brand-200" data-testid="last-usb-backup-label">
+            <span>Última copia a USB:</span>
+            <span class="font-semibold" [class]="usbWarning() ? 'text-amber-200' : 'text-white'">{{ usbLastCopyLabel() }}</span>
+          </div>
+          @if (usbWarning(); as usbMessage) {
+            <div class="rounded-lg border border-amber-400/50 bg-amber-400/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-200" data-testid="usb-backup-warning">
+              {{ usbMessage }}
+            </div>
+          }
+        }
+      }
       @if (inv.autoBackupStoppedWarning()) {
         <button type="button" (click)="openBackupModal()" data-testid="auto-backup-stopped-warning"
           class="mt-1 rounded-lg border border-amber-400/50 bg-amber-400/15 px-2.5 py-1.5 text-left text-[11px] font-semibold text-amber-200 hover:bg-amber-400/25">

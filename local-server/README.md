@@ -90,6 +90,62 @@ Pendiente en la interfaz (no lo toqué para no pisar cambios del equipo):
 * La ventana de "Vincular celular" de la PC sigue siendo simulada: puede abrir `/vincular` o mostrar
   el mismo QR con `GET /api/pairing` (solo responde desde la PC).
 
+## Copia automática a USB (Bloque L)
+
+El servidor copia **el respaldo `.bak` más reciente** a una memoria USB **una vez al día**. Solo copia el archivo
+ya cifrado (AES-256-GCM): la frase de respaldo nunca llega al servidor para este fin ni se guarda en la USB.
+
+```bash
+python -m lansync                      # detecta solo las memorias USB extraíbles
+python -m lansync --usb-dir E:\        # usa siempre esa unidad o carpeta (Windows)
+python -m lansync --usb-dir /media/tienda/USB
+python -m lansync --sin-usb            # desactiva la copia a USB
+```
+
+* La copia queda en la subcarpeta `BinniTech-Respaldos` de la unidad, con el mismo nombre `AAAAMMDD-HHMMSS.bak`.
+  Se escribe primero a un archivo temporal, se verifica con SHA-256 contra el original y recién entonces se
+  renombra: si sacan la USB a medias no queda un `.bak` incompleto.
+* **Cuándo copia:** al terminar cada `POST /api/respaldo` (en segundo plano, sin hacer esperar al tendero) y
+  cada 5 minutos revisa si conectaron una USB. Una vez al día por destino: si cambian de memoria USB el mismo
+  día, copia a la nueva.
+* **Limpieza:** dentro de `BinniTech-Respaldos` conserva los 30 `.bak` más recientes y borra temporales propios
+  (`.tmp_*`). No toca ningún otro archivo de la memoria.
+* **Estado:** `GET /api/usb/estado` (solo desde la PC) devuelve `activo`, `unidadConectada`, `ultimaCopia` (UTC),
+  `ultimoArchivo`, `diasDesdeUltimaCopia`, `aviso` (true si nunca se copió o pasaron más de 7 días) y
+  `ultimoError`. La barra lateral de la app muestra **"Última copia a USB: hace X"** y un aviso en ámbar si
+  pasan más de 7 días. `POST /api/usb/copiar` copia en el momento (ignora el límite diario).
+* Se guarda en `data/usb_estado.json` (no se sube a GitHub: `data/` está en `.gitignore`). Si ese archivo se
+  daña, se ignora y se vuelve a crear.
+
+**Detección de unidades**
+
+* Windows: `os.listdrives()` (Python 3.12+) y tipo de unidad `DRIVE_REMOVABLE` (`GetDriveTypeW`). Las memorias USB
+  y tarjetas SD casi siempre se reportan así. **Los discos duros externos suelen reportarse como "fijos" y no se
+  detectan solos:** para ellos usa `--usb-dir E:\`.
+* Linux: montajes bajo `/media` y `/run/media`. macOS: carpetas de `/Volumes`.
+
+**Lo que no se puede hacer desde el navegador (por eso lo hace el servidor)**
+
+* Una página web no puede saber cuándo conectan una USB ni listar las unidades. Lo único que existe es
+  `showDirectoryPicker` (botón "Copiar a memoria USB (.bak)" del Bloque E): exige que una persona elija la carpeta
+  **cada vez**, solo funciona en Chrome/Edge con `https://` o `localhost`, y Firefox/Safari solo pueden descargar.
+* El navegador no puede copiar en segundo plano ni con la pestaña cerrada, ni distinguir una USB de otro disco.
+* El servidor, a su vez, **no** puede: expulsar la memoria, cifrar la memoria USB completa, ni copiar si el servidor
+  no está encendido o la USB está conectada a otra computadora (el celular no ve la USB de la PC).
+* Quien tenga la memoria USB tiene el `.bak`, pero está cifrado: sin la frase de respaldo no se puede abrir. Si
+  la frase se pierde, tampoco se puede recuperar (ver Bloque E).
+
+Pruebas del Bloque L (usan carpetas temporales, nunca una USB real):
+
+```bash
+cd local-server
+python -m pytest -q tests/test_usb.py
+cd ../abarrotes-app && npm run test:domain      # incluye usb-backup.spec.ts
+```
+
+**Pendiente de probar:** con una memoria USB y un disco externo reales en Windows (la detección con
+`GetDriveTypeW` solo se probó simulada) y con la app abierta en el navegador de la PC.
+
 ## Limitaciones conocidas
 
 * **Falta probar en celulares reales:** la cámara en vivo con certificado autofirmado (iOS y Android),

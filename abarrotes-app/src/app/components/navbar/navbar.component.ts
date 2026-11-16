@@ -8,6 +8,12 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
 import { LanSyncService } from '../../services/lan-sync.service';
 import { IconComponent, IconName } from '../icon/icon.component';
 import { MIN_BACKUP_PASSPHRASE_LENGTH } from '../../domain/backup';
+import {
+  formatUsbLastCopyLabel,
+  parseUsbBackupStatus,
+  usbBackupWarning,
+  type UsbBackupStatus,
+} from '../../domain/usb-backup';
 
 /** Genera una matriz tipo QR (simulada) con los 3 cuadros de posición reales. */
 function buildFakeQr(size = 29, seed = 20931): boolean[][] {
@@ -78,6 +84,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
   // ---------- Reloj Digital en Vivo ----------
   protected readonly now = signal<Date>(new Date());
   private clockTimer: ReturnType<typeof setInterval> | null = null;
+  private usbTimer: ReturnType<typeof setInterval> | null = null;
 
   // ---------- Modales ----------
   protected readonly qrOpen = signal<boolean>(false);
@@ -134,12 +141,19 @@ export class NavbarComponent implements OnInit, OnDestroy {
     this.clockTimer = setInterval(() => {
       this.now.set(new Date());
     }, 1000);
+    // Copia a USB (Bloque L): consulta el estado a local-server al abrir y luego cada minuto.
+    void this.refreshUsbStatus();
+    this.usbTimer = setInterval(() => void this.refreshUsbStatus(), 60_000);
   }
 
   ngOnDestroy(): void {
     if (this.clockTimer) {
       clearInterval(this.clockTimer);
       this.clockTimer = null;
+    }
+    if (this.usbTimer) {
+      clearInterval(this.usbTimer);
+      this.usbTimer = null;
     }
   }
 
@@ -273,6 +287,26 @@ export class NavbarComponent implements OnInit, OnDestroy {
     const currentMs = this.now().getTime();
     return this.inv.getRelativeLastBackupLabel(currentMs);
   });
+
+  // ---------- Copia a USB desde el servidor local (Bloque L) ----------
+  /** null = el servidor no responde (por ejemplo con `ng serve`): se oculta la línea de USB. */
+  protected readonly usbStatus = signal<UsbBackupStatus | null>(null);
+  protected readonly usbLastCopyLabel = computed(() =>
+    formatUsbLastCopyLabel(this.usbStatus()?.ultimaCopia, this.now().getTime()),
+  );
+  protected readonly usbWarning = computed(() => {
+    const status = this.usbStatus();
+    return status ? usbBackupWarning(status, this.now().getTime()) : null;
+  });
+
+  private async refreshUsbStatus(): Promise<void> {
+    try {
+      const res = await fetch('/api/usb/estado', { cache: 'no-store' });
+      this.usbStatus.set(res.ok ? parseUsbBackupStatus(await res.json()) : null);
+    } catch {
+      this.usbStatus.set(null);
+    }
+  }
 
   openBackupModal(): void {
     this.backupFeedback.set(null);
