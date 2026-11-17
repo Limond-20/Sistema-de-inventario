@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterOutlet, Router } from '@angular/router';
+import { RouterOutlet, Router, RouterLink } from '@angular/router';
 import { NavbarComponent } from './components/navbar/navbar.component';
 import { IconComponent } from './components/icon/icon.component';
 import { MockInventoryService } from './services/mock-inventory.service';
@@ -9,7 +9,7 @@ import { canAccessRoute } from './domain/auth';
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule, RouterOutlet, NavbarComponent, IconComponent],
+  imports: [CommonModule, FormsModule, RouterOutlet, RouterLink, NavbarComponent, IconComponent],
   template: `
     @if (!inv.isHydrated() && inv.storageNeedsUnlock()) {
       <!-- =====================================================================
@@ -178,12 +178,29 @@ import { canAccessRoute } from './domain/auth';
         <!-- Área de trabajo con márgenes; solo esta zona se desplaza si el contenido es largo -->
         <main class="flex-1 min-w-0 overflow-y-auto flex flex-col print:overflow-visible print:h-auto print:block">
           @if (inv.isReadOnlyMode()) {
-            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-3 text-sm font-semibold flex items-center justify-between shrink-0 print:hidden no-print" role="alert" data-testid="readonly-warning-banner">
+            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-3 text-sm font-semibold flex items-center justify-between gap-4 shrink-0 print:hidden no-print" role="alert" data-testid="readonly-warning-banner">
               <div class="flex items-center gap-2.5 text-amber-900">
                 <app-icon name="lock" [size]="18" />
                 <span>{{ inv.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' }} · Modo solo lectura</span>
               </div>
-              <span class="rounded-full border border-amber-300 bg-amber-100 px-3 py-0.5 text-xs font-bold text-amber-900">Solo lectura</span>
+              <div class="flex items-center gap-2 shrink-0">
+                @if (inv.isLicenseReadOnly()) {
+                  <a routerLink="/licencia" data-testid="link-license-from-readonly" class="rounded-full border border-brand-600 bg-brand-700 px-3 py-0.5 text-xs font-bold text-white hover:bg-brand-800">
+                    Ir a Licencia
+                  </a>
+                }
+                <span class="rounded-full border border-amber-300 bg-amber-100 px-3 py-0.5 text-xs font-bold text-amber-900">Solo lectura</span>
+              </div>
+            </div>
+          } @else if (inv.licenseWarningBanner()) {
+            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-2.5 text-xs font-semibold flex items-center justify-between gap-4 shrink-0 print:hidden no-print" role="status" data-testid="license-expiry-warning-banner">
+              <div class="flex items-center gap-2 text-amber-950">
+                <app-icon name="shield" [size]="16" />
+                <span>{{ inv.licenseWarningBanner() }}</span>
+              </div>
+              <a routerLink="/licencia" data-testid="link-license-from-warning" class="shrink-0 rounded-lg border border-amber-400 bg-white px-3 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100">
+                Renovar licencia
+              </a>
             </div>
           }
 

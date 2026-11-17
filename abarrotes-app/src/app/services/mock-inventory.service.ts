@@ -211,6 +211,21 @@ import {
   exportIndicatorsPanelCsv,
 } from '../domain/reports';
 import {
+  DEFAULT_INSTALLATION_ID,
+  DEFAULT_DEMO_LICENSE_CODE,
+  DEFAULT_EMBEDDED_PUBLIC_KEY_JWK,
+  CLIENT_LICENSE_HONEST_DISCLOSURE,
+  generateInstallationId,
+  computeMaxObservedTimestamp,
+  evaluateLicenseStatus,
+  validateAndActivateLicense,
+  type LicensePlan,
+  type LicensePayload,
+  type LicenseStatusKind,
+  type LicenseEvaluationResult,
+  type LicenseActivationResult,
+} from '../domain/license';
+import {
   MIN_BACKUP_PASSPHRASE_LENGTH,
   HOURLY_BACKUP_INTERVAL_MS,
   PRERESTORE_STATE_KEY_PREFIX,
@@ -2491,6 +2506,9 @@ export class MockInventoryService implements OnDestroy {
       salesHistory: this.salesHistory(),
       usageActivityLog: this.usageActivityLog(),
       satisfactionSurveys: this.satisfactionSurveys(),
+      installationId: this.installationId(),
+      licenseCode: this.licenseCode(),
+      maxObservedTimestampIso: this.maxObservedTimestampIso(),
       saleReturns: this.saleReturns(),
       shiftCloseRecords: this.shiftCloseRecords(),
       isShiftOpen: this.isShiftOpen(),
@@ -2745,6 +2763,19 @@ export class MockInventoryService implements OnDestroy {
     this.privacyNotice.set(
       stateToValidate.privacyNotice ? structuredClone(stateToValidate.privacyNotice) : null
     );
+    if (stateToValidate.installationId && stateToValidate.installationId.trim()) {
+      this.installationId.set(stateToValidate.installationId.trim().toUpperCase());
+    }
+    if (stateToValidate.licenseCode !== undefined) {
+      this.licenseCode.set(stateToValidate.licenseCode);
+    }
+    const maxTs = computeMaxObservedTimestamp({
+      previousMaxIso: stateToValidate.maxObservedTimestampIso || this.maxObservedTimestampIso(),
+      kardexEntries: stateToValidate.kardex,
+      additionalTimestamps: [stateToValidate.timestamp],
+    });
+    this.maxObservedTimestampIso.set(maxTs);
+    void this.refreshLicenseState();
   }
 
   private async savePreRestoreSnapshot(): Promise<string> {
@@ -3176,6 +3207,19 @@ export class MockInventoryService implements OnDestroy {
         : []
     );
       this.privacyNotice.set(stateToValidate.privacyNotice ? structuredClone(stateToValidate.privacyNotice) : null);
+    if (stateToValidate.installationId && stateToValidate.installationId.trim()) {
+      this.installationId.set(stateToValidate.installationId.trim().toUpperCase());
+    }
+    if (stateToValidate.licenseCode !== undefined) {
+      this.licenseCode.set(stateToValidate.licenseCode);
+    }
+    const maxTs = computeMaxObservedTimestamp({
+      previousMaxIso: stateToValidate.maxObservedTimestampIso || this.maxObservedTimestampIso(),
+      kardexEntries: stateToValidate.kardex,
+      additionalTimestamps: [stateToValidate.timestamp],
+    });
+    this.maxObservedTimestampIso.set(maxTs);
+    void this.refreshLicenseState();
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
@@ -3450,6 +3494,44 @@ export class MockInventoryService implements OnDestroy {
   readonly lastCompletedSale = signal<SaleRecord | null>(null);
   readonly usageActivityLog = signal<UsageActivityEntry[]>([]);
   readonly satisfactionSurveys = signal<SatisfactionSurveyRecord[]>([]);
+
+  // ---------- Bloque J: Licencia Offline Semestral/Anual (ECDSA P-256) y Control de Reloj ----------
+  readonly installationId = signal<string>(DEFAULT_INSTALLATION_ID);
+  readonly licenseCode = signal<string | null>(DEFAULT_DEMO_LICENSE_CODE);
+  readonly maxObservedTimestampIso = signal<string>(new Date().toISOString());
+  readonly licensePublicKeyJwk = signal<JsonWebKey>(DEFAULT_EMBEDDED_PUBLIC_KEY_JWK);
+  readonly licenseHonestDisclosure = CLIENT_LICENSE_HONEST_DISCLOSURE;
+
+  readonly licenseEvaluation = signal<LicenseEvaluationResult>({
+    status: 'ACTIVA',
+    validSignature: true,
+    installationMatched: true,
+    clockRollbackDetected: false,
+    clockRollbackDeltaMs: 0,
+    clockRollbackMinutes: 0,
+    isReadOnly: false,
+    canSell: true,
+    canExportAndBackup: true,
+    daysRemaining: 760,
+    graceDaysRemaining: null,
+    overdueDaysAfterGrace: null,
+    warningBanner: null,
+    readOnlyReason: null,
+    statusLabel: 'Licencia activa',
+    payload: {
+      idInstalación: DEFAULT_INSTALLATION_ID,
+      idInstalacion: DEFAULT_INSTALLATION_ID,
+      plan: 'ANUAL',
+      emitida: '2026-01-01',
+      vence: '2028-12-31',
+    },
+    installationId: DEFAULT_INSTALLATION_ID,
+    maxObservedTimestampIso: new Date().toISOString(),
+    evaluatedAtIso: new Date().toISOString(),
+  });
+
+  readonly licenseWarningBanner = computed<string | null>(() => this.licenseEvaluation().warningBanner);
+  readonly isLicenseReadOnly = computed<boolean>(() => this.licenseEvaluation().isReadOnly);
   readonly usage30DaysMetric = computed(() => computeUsage30DaysMetric(this.usageActivityLog()));
   readonly satisfactionDueStatus = computed(() =>
     isSatisfactionSurveyDue(this.satisfactionSurveys())
@@ -8522,4 +8604,95 @@ export class MockInventoryService implements OnDestroy {
     return { filename: exported.filename, content: exported.content };
   }
 
+  // ---------- Métodos de Licenciamiento Offline y Detección de Reloj (Bloque J) ----------
+
+  setLicensePublicKeyForTesting(publicKeyJwk: JsonWebKey): void {
+    this.licensePublicKeyJwk.set(publicKeyJwk);
+  }
+
+  regenerateInstallationId(): string {
+    const newId = generateInstallationId();
+    this.installationId.set(newId);
+    void this.refreshLicenseState();
+    return newId;
+  }
+
+  async refreshLicenseState(nowOverride?: Date | number | string): Promise<LicenseEvaluationResult> {
+    const evalRes = await evaluateLicenseStatus({
+      licenseCode: this.licenseCode(),
+      installationId: this.installationId(),
+      now: nowOverride,
+      maxObservedTimestampIso: this.maxObservedTimestampIso(),
+      kardexEntries: this.kardex(),
+      additionalTimestamps: [
+        this.salesHistory()[0]?.timestamp,
+        this.shiftCloseRecords()[0]?.closedAt,
+        this.securityAuditLog()[0]?.timestamp,
+      ],
+      publicKeyJwk: this.licensePublicKeyJwk(),
+    });
+
+    this.maxObservedTimestampIso.set(evalRes.maxObservedTimestampIso);
+    this.licenseEvaluation.set(evalRes);
+
+    if (evalRes.isReadOnly) {
+      this.enableReadOnlyMode(
+        evalRes.readOnlyReason || 'Modo solo lectura por estado de licencia o retroceso de reloj'
+      );
+    } else if (MockInventoryService.activeWriterInstanceId === this.instanceId) {
+      this.isReadOnlyMode.set(false);
+      this.readOnlyWarning.set(null);
+    }
+
+    return evalRes;
+  }
+
+  async activateLicenseCode(
+    newCode: string,
+    nowOverride?: Date | number | string
+  ): Promise<LicenseActivationResult> {
+    const currentEval = await this.refreshLicenseState(nowOverride);
+    const res = await validateAndActivateLicense({
+      newLicenseCode: newCode,
+      installationId: this.installationId(),
+      currentPayload: currentEval.validSignature && currentEval.installationMatched ? currentEval.payload : null,
+      now: nowOverride,
+      maxObservedTimestampIso: this.maxObservedTimestampIso(),
+      kardexEntries: this.kardex(),
+      additionalTimestamps: [
+        this.salesHistory()[0]?.timestamp,
+        this.shiftCloseRecords()[0]?.closedAt,
+        this.securityAuditLog()[0]?.timestamp,
+      ],
+      publicKeyJwk: this.licensePublicKeyJwk(),
+    });
+
+    if (res.ok && res.updatedRecord) {
+      this.licenseCode.set(res.updatedRecord.licenseCode);
+      this.maxObservedTimestampIso.set(res.updatedRecord.maxObservedTimestampIso);
+      this.licenseEvaluation.set(res.evaluation);
+
+      if (!res.evaluation.isReadOnly && MockInventoryService.activeWriterInstanceId === this.instanceId) {
+        this.isReadOnlyMode.set(false);
+        this.readOnlyWarning.set(null);
+      }
+
+      this.appendSecurityAuditEntry(
+        'SETTINGS_UPDATED',
+        `Licencia ${res.evaluation.payload?.plan} activada/renovada (vence ${res.evaluation.payload?.vence}).`,
+        {
+          plan: res.evaluation.payload?.plan,
+          emitida: res.evaluation.payload?.emitida,
+          vence: res.evaluation.payload?.vence,
+          installationId: this.installationId(),
+        }
+      );
+
+      await this.flushSave();
+    } else {
+      this.licenseEvaluation.set(res.evaluation);
+    }
+
+    return res;
+  }
 }

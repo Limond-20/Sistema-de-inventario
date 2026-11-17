@@ -28,3 +28,9 @@ local-server/data/
 local-server/**/__pycache__/
 local-server/.pytest_cache/
 local-server/tools/node_modules/
+
+# Emisor de licencias (Bloque J: la clave privada NUNCA se versiona)
+local-server/tools/license-issuer/*private*
+local-server/tools/license-issuer/*.key
+local-server/tools/license-issuer/*.pem
+local-server/tools/license-issuer/keys/

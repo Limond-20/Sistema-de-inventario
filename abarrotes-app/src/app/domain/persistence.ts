@@ -198,6 +198,9 @@ export interface PersistedAppState {
   satisfactionSurveys?: SatisfactionSurveyRecord[];
   /** Bloque K: aviso de privacidad configurable y versionado (campo opcional, sin cambio de esquema). */
   privacyNotice?: PrivacyNoticeConfig;
+  installationId?: string;
+  licenseCode?: string | null;
+  maxObservedTimestampIso?: string;
 }
 
 export interface ValidationResult {
@@ -564,6 +567,18 @@ export function migrateState(data: any): MigrationResult {
           : 'TURNO-1',
       usageActivityLog: Array.isArray(working.usageActivityLog) ? working.usageActivityLog : [],
       satisfactionSurveys: Array.isArray(working.satisfactionSurveys) ? working.satisfactionSurveys : [],
+      installationId:
+        typeof working.installationId === 'string' && working.installationId.trim()
+          ? working.installationId.trim().toUpperCase()
+          : 'BT-DEMO-TIENDA-0001',
+      licenseCode:
+        typeof working.licenseCode === 'string' && working.licenseCode.trim()
+          ? working.licenseCode.trim()
+          : undefined,
+      maxObservedTimestampIso:
+        typeof working.maxObservedTimestampIso === 'string' && working.maxObservedTimestampIso.trim()
+          ? working.maxObservedTimestampIso.trim()
+          : working.timestamp || new Date().toISOString(),
     };
   }
 

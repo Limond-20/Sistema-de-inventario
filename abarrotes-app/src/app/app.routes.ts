@@ -62,5 +62,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
     title: 'Reportes e Indicadores',
   },
+  {
+    path: 'licencia',
+    loadComponent: () =>
+      import('./views/license/license-view.component').then((m) => m.LicenseViewComponent),
+    canActivate: [authGuard],
+    title: 'Licencia y Vigencia del Sistema',
+  },
   { path: '**', redirectTo: '' },
 ];

@@ -119,6 +119,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
     { key: 'mermas', label: 'Mermas y consumos', icon: 'trash', link: '/mermas', query: null },
     { key: 'reportes', label: 'Reportes e indicadores', icon: 'chart', link: '/reportes', query: null },
     { key: 'ajustes', label: 'Ajustes y usuarios', icon: 'settings', link: '/ajustes', query: null },
+    { key: 'licencia', label: 'Licencia', icon: 'shield', link: '/licencia', query: null },
   ];
 
   protected isActive(key: string): boolean {
