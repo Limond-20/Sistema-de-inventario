@@ -171,11 +171,11 @@ import { canAccessRoute } from './domain/auth';
         <p class="text-sm text-brand-200 mt-1.5">Verificando integridad del Kardex y existencias por producto</p>
       </div>
     } @else {
-      <div class="h-screen w-screen flex bg-slate-100 overflow-hidden select-none print-shell print:h-auto print:w-full print:overflow-visible print:bg-white print:block">
-        <!-- Barra lateral fija -->
-        <app-navbar class="print:hidden no-print" />
+      <div class="h-screen w-screen flex flex-col bg-slate-100 overflow-hidden select-none print-shell print:h-auto print:w-full print:overflow-visible print:bg-white print:block">
+        <!-- Cabecera superior compacta y menú lateral desplegable -->
+        <app-navbar class="print:hidden no-print shrink-0" />
 
-        <!-- Área de trabajo con márgenes; solo esta zona se desplaza si el contenido es largo -->
+        <!-- Área de trabajo con todo el ancho disponible -->
         <main class="flex-1 min-w-0 overflow-y-auto flex flex-col print:overflow-visible print:h-auto print:block">
           @if (inv.isReadOnlyMode()) {
             <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-3 text-sm font-semibold flex items-center justify-between gap-4 shrink-0 print:hidden no-print" role="alert" data-testid="readonly-warning-banner">
@@ -214,7 +214,7 @@ import { canAccessRoute } from './domain/auth';
             </div>
           }
 
-          <div class="px-10 py-8 max-w-[1440px] w-full mx-auto flex-1 print:p-0 print:max-w-none">
+          <div class="px-6 py-5 max-w-[1440px] w-full mx-auto flex-1 print:p-0 print:max-w-none">
             <router-outlet />
           </div>
         </main>

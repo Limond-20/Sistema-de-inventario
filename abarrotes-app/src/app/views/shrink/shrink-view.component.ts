@@ -10,13 +10,7 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
     <!-- ===================== ENCABEZADO EJECUTIVO ===================== -->
     <section class="mb-5 flex flex-wrap items-end justify-between gap-4 pb-3 border-b border-slate-200">
       <div>
-        <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
-          Control de Pérdidas · Evidencia Fotográfica
-        </span>
-        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Mermas y Bajas de Mercancía</h1>
-        <p class="text-sm text-slate-600 mt-0.5">
-          Productos dados de baja por rotura o caducidad sin devolución reportados desde la terminal móvil.
-        </p>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900">Mermas y Bajas de Mercancía</h1>
       </div>
 
       <div class="flex items-center gap-5">

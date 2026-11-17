@@ -1,5 +1,5 @@
 <!-- ===================== INICIO: MÓDULOS OPERATIVOS ===================== -->
-<div class="flex h-[calc(100vh-4rem)] min-h-[36rem] flex-col gap-5 select-none">
+<div class="flex min-h-[calc(100dvh-4rem)] flex-col gap-5 select-none">
 
   <!-- Alertas visibles de stock negativo / faltantes en sistema -->
   @if (shortageAlerts().length > 0) {
@@ -87,144 +87,83 @@
     </section>
   }
 
-  <div class="grid min-h-0 flex-1 grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 xl:grid-rows-2">
+  <div class="grid flex-1 grid-cols-1 gap-5 md:grid-cols-2 md:auto-rows-fr xl:grid-cols-3">
 
     <!-- 1. PUNTO DE VENTA -->
-    <a routerLink="/pos" class="module-card btn">
+    <a routerLink="/pos" class="module-card btn justify-center gap-4 min-h-[160px]">
       <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-emerald-100 text-emerald-700"><app-icon name="cart" [size]="26" /></span>
-        <span class="module-tag bg-emerald-50 text-emerald-800">Tecla F1 · Caja registradora</span>
+        <span class="module-icon bg-emerald-100 text-emerald-700"><app-icon name="cart" [size]="28" /></span>
       </div>
-      <div>
-        <h2 class="text-2xl font-bold leading-tight text-slate-900">Punto de venta (POS)</h2>
-        <p class="mt-1.5 text-[15px] text-slate-600">Cobro rápido, báscula de granel ($ o Kg) y lector láser</p>
-      </div>
-      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-        <span>Listo para cobrar en mostrador</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold text-emerald-700">Entrar <app-icon name="arrow" [size]="16" /></span>
-      </div>
+      <h2 class="text-2xl font-bold leading-tight text-slate-900">Punto de venta</h2>
     </a>
 
     <!-- 2. RECEPCIÓN DE MERCANCÍA -->
-    <a routerLink="/recepcion" class="module-card btn">
+    <a routerLink="/recepcion" class="module-card btn justify-center gap-4 min-h-[160px]">
       @if (marginAlertsCount() > 0) {
         <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
           {{ marginAlertsCount() }}
         </span>
       }
       <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-sky-100 text-sky-700"><app-icon name="inbox" [size]="26" /></span>
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <span class="module-tag bg-slate-100 text-slate-700">Facturas / Entradas</span>
-          @if (inv.hasPendingOcrMarginIssue()) {
-            <span class="module-tag bg-red-100 text-red-800">{{ inv.brokenMarginLinesCount() }} con Margen Caído</span>
-          } @else if (inv.ocrNote()) {
-            <span class="module-tag bg-sky-100 text-sky-800">1 Nota Pendiente</span>
-          }
-        </div>
+        <span class="module-icon bg-sky-100 text-sky-700"><app-icon name="inbox" [size]="28" /></span>
+        @if (inv.hasPendingOcrMarginIssue()) {
+          <span class="module-tag bg-red-100 text-red-800">{{ inv.brokenMarginLinesCount() }} con Margen Caído</span>
+        } @else if (inv.ocrNote()) {
+          <span class="module-tag bg-sky-100 text-sky-800">1 Nota Pendiente</span>
+        }
       </div>
-      <div>
-        <h2 class="text-2xl font-bold leading-tight text-slate-900">Recepción de mercancía</h2>
-        <p class="mt-1.5 text-[15px] text-slate-600">Escáner OCR de tickets del celular y blindaje contra inflación</p>
-      </div>
-      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-        <span>Control de costos y compras</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold text-sky-700">Entrar <app-icon name="arrow" [size]="16" /></span>
-      </div>
+      <h2 class="text-2xl font-bold leading-tight text-slate-900">Recepción de mercancía</h2>
     </a>
 
     <!-- 3. AUDITORÍA DE PASILLO -->
-    <a routerLink="/auditoria" class="module-card btn">
+    <a routerLink="/auditoria" class="module-card btn justify-center gap-4 min-h-[160px]">
       @if (pendingAuditMissionCount() > 0) {
         <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
           {{ pendingAuditMissionCount() }}
         </span>
       }
       <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-amber-100 text-amber-700"><app-icon name="clipboard" [size]="26" /></span>
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <span class="module-tag bg-amber-50 text-amber-800">Conteo físico ciego</span>
-          @if (inv.pendingAuditCount() > 0) {
-            <span class="module-tag bg-amber-200 text-amber-950">{{ inv.pendingAuditCount() }} Diferencias por Dictaminar</span>
-          }
-        </div>
+        <span class="module-icon bg-amber-100 text-amber-700"><app-icon name="clipboard" [size]="28" /></span>
+        @if (inv.pendingAuditCount() > 0) {
+          <span class="module-tag bg-amber-200 text-amber-950">{{ inv.pendingAuditCount() }} Diferencias por Dictaminar</span>
+        }
       </div>
-      <div>
-        <h2 class="text-2xl font-bold leading-tight text-slate-900">Auditoría de pasillo</h2>
-        <p class="mt-1.5 text-[15px] text-slate-600">Conciliación ciega de anaqueles vs sistema desde el celular</p>
-      </div>
-      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-        <span>Pasillo 3 · Aceites y Granos</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold text-amber-700">Entrar <app-icon name="arrow" [size]="16" /></span>
-      </div>
+      <h2 class="text-2xl font-bold leading-tight text-slate-900">Auditoría de pasillo</h2>
     </a>
 
     <!-- 4. LIBRETA DE FIADOS -->
-    <button type="button" (click)="goToFiados()" class="module-card btn">
+    <button type="button" (click)="goToFiados()" class="module-card btn justify-center gap-4 min-h-[160px]">
       <div class="flex w-full items-start justify-between gap-3">
-        <span class="module-icon bg-purple-100 text-purple-700"><app-icon name="book" [size]="26" /></span>
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <span class="module-tag bg-purple-50 text-purple-800">Cuentas por cobrar</span>
-          @if (inv.overdueCustomersCount() > 0) {
-            <span class="module-tag bg-red-100 text-red-800">{{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)</span>
-          } @else {
-            <span class="module-tag bg-purple-100 text-purple-800">{{ inv.creditCustomers().length }} Clientes</span>
-          }
-        </div>
+        <span class="module-icon bg-purple-100 text-purple-700"><app-icon name="book" [size]="28" /></span>
+        @if (inv.overdueCustomersCount() > 0) {
+          <span class="module-tag bg-red-100 text-red-800">{{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)</span>
+        }
       </div>
-      <div class="w-full">
-        <h2 class="text-2xl font-bold leading-tight text-slate-900">Libreta de fiados</h2>
-        <p class="mt-1.5 text-[15px] text-slate-600">Control de deuda de vecinos, límites de crédito y abonos</p>
-      </div>
-      <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-        <span>Deuda total: {{ inv.totalAccountsReceivable() | currency:'MXN':'symbol-narrow' }}</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold text-purple-700">Abrir libreta <app-icon name="arrow" [size]="16" /></span>
-      </div>
+      <h2 class="w-full text-2xl font-bold leading-tight text-slate-900">Libreta de fiados</h2>
     </button>
 
     <!-- 5. CATÁLOGO Y PRECIOS -->
-    <a routerLink="/catalogo" class="module-card btn">
+    <a routerLink="/catalogo" class="module-card btn justify-center gap-4 min-h-[160px]">
       <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-brand-100 text-brand-700"><app-icon name="box" [size]="26" /></span>
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <span class="module-tag bg-slate-100 text-slate-700">Maestro de artículos</span>
-          <span class="module-tag bg-slate-100 text-slate-600">EAN-13 · ROP</span>
-        </div>
+        <span class="module-icon bg-brand-100 text-brand-700"><app-icon name="box" [size]="28" /></span>
       </div>
-      <div>
-        <h2 class="text-2xl font-bold leading-tight text-slate-900">Catálogo y precios</h2>
-        <p class="mt-1.5 text-[15px] text-slate-600">Clasificación ABC, Punto de Reorden y Hoja PDF de mostrador</p>
-      </div>
-      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-        <span>{{ inv.products().length }} productos dados de alta</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold text-brand-700">Entrar <app-icon name="arrow" [size]="16" /></span>
-      </div>
+      <h2 class="text-2xl font-bold leading-tight text-slate-900">Catálogo y precios</h2>
     </a>
 
     <!-- 6. MERMAS Y CONSUMOS -->
-    <a routerLink="/mermas" class="module-card btn">
+    <a routerLink="/mermas" class="module-card btn justify-center gap-4 min-h-[160px]">
       @if (urgentFefoCount() > 0) {
         <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
           {{ urgentFefoCount() }}
         </span>
       }
       <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-rose-100 text-rose-700"><app-icon name="trash" [size]="26" /></span>
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <span class="module-tag bg-rose-50 text-rose-800">Mermas y consumos</span>
-          @if (inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
-            <span class="module-tag bg-red-100 text-red-800">{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos</span>
-          }
-        </div>
+        <span class="module-icon bg-rose-100 text-rose-700"><app-icon name="trash" [size]="28" /></span>
+        @if (inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
+          <span class="module-tag bg-red-100 text-red-800">{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos</span>
+        }
       </div>
-      <div>
-        <h2 class="text-2xl font-bold leading-tight text-slate-900">Mermas y consumos</h2>
-        <p class="mt-1.5 text-[15px] text-slate-600">Bajas por caducidad/rotura con foto y consumos de personal al costo</p>
-      </div>
-      <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-        <span>Costo de consumos: {{ inv.cashShift().internalConsumptionTotalCost | currency:'MXN':'symbol-narrow' }}</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold text-rose-700">Entrar <app-icon name="arrow" [size]="16" /></span>
-      </div>
+      <h2 class="text-2xl font-bold leading-tight text-slate-900">Mermas y consumos</h2>
     </a>
 
   </div>
@@ -255,8 +194,6 @@
         class="h-11 rounded-xl bg-brand-700 px-5 text-sm font-semibold text-white hover:bg-brand-800">
         Revisar actualización ABC del mes ({{ pendingAbcCount() }})
       </button>
-    } @else {
-      <span class="text-slate-500">Clasificación ABC: Al día</span>
     }
   </footer>
 

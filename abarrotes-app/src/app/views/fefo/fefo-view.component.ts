@@ -11,11 +11,7 @@ import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../serv
       <!-- ===================== ENCABEZADO ===================== -->
       <section class="flex flex-wrap items-end justify-between gap-4 pb-3 border-b border-slate-200">
         <div>
-          <!-- Se eliminó el span superior que decía "Control de Caducidades..." -->
-          <h1 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Caducidades y Cambio Físico</h1>
-          <p class="text-sm text-slate-600 mt-0.5">
-            Lotes con fecha de caducidad crítica que deben retirarse hoy del anaquel para el cambio mano a mano con el repartidor.
-          </p>
+          <h1 class="text-2xl sm:text-3xl font-black text-slate-900">Caducidades y Cambio Físico</h1>
         </div>
 
         <div class="flex items-center gap-2">

@@ -299,4 +299,24 @@ export class SettingsViewComponent implements OnInit {
     this.pinConfirm.set('');
     setTimeout(() => this.pinFeedback.set(''), 3500);
   }
+
+  // ---------- Restablecimiento Demo ----------
+  protected readonly resetDemoConfirm = signal<boolean>(false);
+  protected readonly resetDemoDone = signal<boolean>(false);
+
+  requestResetDemo(): void {
+    this.resetDemoDone.set(false);
+    this.resetDemoConfirm.set(true);
+  }
+
+  cancelResetDemo(): void {
+    this.resetDemoConfirm.set(false);
+  }
+
+  async confirmResetDemoData(): Promise<void> {
+    await this.inv.resetToDemoData();
+    this.resetDemoConfirm.set(false);
+    this.resetDemoDone.set(true);
+    setTimeout(() => this.resetDemoDone.set(false), 3500);
+  }
 }

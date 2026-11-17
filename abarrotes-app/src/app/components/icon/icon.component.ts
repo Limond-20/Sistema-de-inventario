@@ -29,6 +29,7 @@ const ICONS = {
   ],
   shield: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'],
   chart: ['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3'],
+  menu: ['M3 6h18', 'M3 12h18', 'M3 18h18'],
 } as const;
 
 export type IconName = keyof typeof ICONS;

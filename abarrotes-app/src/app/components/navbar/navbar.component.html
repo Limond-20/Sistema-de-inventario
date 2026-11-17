@@ -1,174 +1,167 @@
-<!-- ===================== BARRA LATERAL ===================== -->
-<aside class="w-72 shrink-0 h-full bg-brand-700 text-white flex flex-col px-5 py-6 select-none z-30">
+<!-- ===================== BARRA SUPERIOR COMPACTA Y SIEMPRE VISIBLE ===================== -->
+<header class="h-14 w-full bg-brand-700 text-white px-4 sm:px-6 flex items-center justify-between gap-3 border-b border-brand-800 select-none z-30">
 
-  <!-- Marca -->
-  <a routerLink="/" class="flex items-center gap-3 px-1 pb-6" title="Ir al inicio">
-    <span class="grid h-11 w-11 place-items-center rounded-xl bg-amber-400 text-slate-900">
-      <app-icon name="logo" [size]="24" />
-    </span>
-    <span>
-      <span class="block font-display text-lg font-bold leading-tight">{{ inv.storeName }}</span>
-      <span class="block text-xs text-brand-200 mt-0.5">Terminal Punto de Venta v2.4</span>
-    </span>
-  </a>
-
-  <!-- Navegación -->
-  <nav class="flex flex-col gap-1" aria-label="Secciones">
-    @for (item of navItems; track item.key) {
-      <a [routerLink]="item.link" [queryParams]="item.query"
-        class="btn flex items-center gap-3 rounded-xl px-3.5 py-3 text-[15px] font-semibold leading-tight"
-        [class]="isActive(item.key)
-          ? 'bg-white text-brand-700 shadow-xs'
-          : 'text-brand-100 hover:bg-white/10 hover:text-white'">
-        <app-icon [name]="item.icon" [size]="20" />
-        <span>{{ item.label }}</span>
-      </a>
-    }
-  </nav>
-
-  <!-- Estado de la terminal -->
-  <div class="mt-auto flex flex-col gap-3 border-t border-white/15 pt-5">
-
-    <div class="px-1">
-      <p class="font-display text-3xl font-bold leading-none tabular-nums">{{ now() | date:'hh:mm a' }}</p>
-            <p class="mt-1.5 text-sm text-brand-200 first-letter:uppercase">{{ now() | date:"EEEE, d 'de' MMMM 'de' yyyy" }}</p>
-    </div>
-
-    <div class="flex items-center gap-2 px-1 text-sm text-brand-100">
-      <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
-      Modo local (offline)
-    </div>
-
-    <!-- Indicador de Guardado Visible (SQLite + espejo IndexedDB) y Último Respaldo -->
-    <div class="flex flex-col gap-1.5 rounded-xl bg-brand-800 px-3.5 py-2.5 text-xs" data-testid="save-status-panel">
-      <div class="flex items-center justify-between">
-        <span class="text-brand-200 font-medium">SQLite / respaldo local:</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold" data-testid="indexeddb-save-indicator"
-          [class]="inv.indexedDbSaveStatus() === 'error' ? 'text-rose-200' : (inv.indexedDbSaveStatus() === 'saving' ? 'text-amber-200' : 'text-emerald-200')">
-          <span class="h-2 w-2 rounded-full"
-            [class]="inv.indexedDbSaveStatus() === 'error' ? 'bg-rose-400' : (inv.indexedDbSaveStatus() === 'saving' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400')"></span>
-          {{ inv.indexedDbSaveLabel() }}
-        </span>
-      </div>
-      <div class="flex items-center justify-between">
-        <span class="text-brand-200 font-medium">Respaldo:</span>
-        <span class="inline-flex items-center gap-1.5 font-semibold" data-testid="backup-save-indicator"
-          [class]="inv.backupSaveStatus() === 'error' ? 'text-rose-200' : (inv.backupSaveStatus() === 'saving' ? 'text-amber-200' : 'text-emerald-200')">
-          <span class="h-2 w-2 rounded-full"
-            [class]="inv.backupSaveStatus() === 'error' ? 'bg-rose-400' : (inv.backupSaveStatus() === 'saving' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400')"></span>
-          {{ inv.backupSaveLabel() }}
-        </span>
-      </div>
-      <div class="mt-0.5 border-t border-white/10 pt-1.5 flex items-center justify-between text-[11px] text-brand-200" data-testid="last-backup-label">
-        <span>Último respaldo:</span>
-        <span class="font-semibold text-white">{{ relativeBackupLabel() }}</span>
-      </div>
-      @if (usbStatus(); as usb) {
-        @if (usb.activo) {
-          <div class="flex items-center justify-between text-[11px] text-brand-200" data-testid="last-usb-backup-label">
-            <span>Última copia a USB:</span>
-            <span class="font-semibold" [class]="usbWarning() ? 'text-amber-200' : 'text-white'">{{ usbLastCopyLabel() }}</span>
-          </div>
-          @if (usbWarning(); as usbMessage) {
-            <div class="rounded-lg border border-amber-400/50 bg-amber-400/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-200" data-testid="usb-backup-warning">
-              {{ usbMessage }}
-            </div>
-          }
-        }
-      }
-      @if (inv.autoBackupStoppedWarning()) {
-        <button type="button" (click)="openBackupModal()" data-testid="auto-backup-stopped-warning"
-          class="mt-1 rounded-lg border border-amber-400/50 bg-amber-400/15 px-2.5 py-1.5 text-left text-[11px] font-semibold text-amber-200 hover:bg-amber-400/25">
-          {{ inv.autoBackupStoppedWarning() }}
-        </button>
-      }
-    </div>
-
-    <button type="button" (click)="handleQuickBackupNow()" data-testid="btn-backup-now"
-      class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 bg-brand-800/80 px-3.5 text-xs font-semibold text-white hover:bg-brand-800">
-      <app-icon name="lock" [size]="16" />
-      <span>Respaldar ahora</span>
+  <!-- Izquierda: Botón Menú + Marca -->
+  <div class="flex items-center gap-3 min-w-0">
+    <button
+      type="button"
+      id="nav-drawer-open"
+      (click)="openDrawer()"
+      [attr.aria-expanded]="drawerOpen()"
+      aria-controls="main-nav-drawer"
+      aria-label="Abrir menú de navegación"
+      data-testid="btn-open-nav-drawer"
+      class="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/20 bg-brand-800/80 text-white hover:bg-brand-800 transition-colors">
+      <app-icon name="menu" [size]="20" />
     </button>
 
-    <!-- Tarjeta de Usuario Autenticado (Bloque G) -->
-    <div class="flex flex-col gap-2 rounded-xl bg-brand-800 px-3.5 py-2.5" data-testid="authenticated-user-panel">
-      <div class="flex items-center justify-between">
-        <span class="text-xs font-semibold text-brand-200 flex items-center gap-1.5">
-          <app-icon name="user" [size]="15" />
-          <span>Usuario en turno:</span>
-        </span>
-        <span class="inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-          [class]="inv.currentUser()?.role === 'ADMINISTRADOR'
-            ? 'bg-purple-400/25 text-purple-200 border border-purple-400/40'
-            : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-blue-400/25 text-blue-200 border border-blue-400/40' : 'bg-slate-700 text-slate-200')">
-          {{ inv.currentUser()?.role || 'CAJERO' }}
-        </span>
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <div class="min-w-0">
-          <p class="text-sm font-bold text-white truncate" data-testid="current-user-name">
-            {{ inv.currentUser()?.name || inv.activeUser() }}
-          </p>
-          <p class="text-[11px] text-brand-200">
-            Sesión activa
-          </p>
-        </div>
-        <button
-          type="button"
-          (click)="inv.lockSession()"
-          title="Bloquear sesión y cambiar de usuario"
-          data-testid="btn-lock-session"
-          class="h-8 px-2.5 rounded-lg border border-white/20 bg-brand-900 hover:bg-brand-950 text-white font-bold text-xs flex items-center gap-1.5 transition-colors">
-          <app-icon name="lock" [size]="13" />
-          <span>Bloquear</span>
-        </button>
-      </div>
+    <a routerLink="/" class="flex items-center gap-2.5 min-w-0" title="Ir al inicio">
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-400 text-slate-900">
+        <app-icon name="logo" [size]="20" />
+      </span>
+      <span class="font-display text-base sm:text-lg font-bold leading-tight truncate">
+        {{ inv.storeName }}
+      </span>
+    </a>
+
+    @if (inv.indexedDbSaveStatus() === 'error' || inv.backupSaveStatus() === 'error') {
+      <button type="button" (click)="openBackupModal()" data-testid="save-error-pill"
+        class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-rose-300/60 bg-rose-500/20 px-2.5 py-1 text-xs font-semibold text-rose-100">
+        <app-icon name="alert" [size]="14" />
+        <span>Error de guardado</span>
+      </button>
+    } @else if (inv.corruptedDataWarning()) {
+      <button type="button" (click)="inv.corruptedModalOpen.set(true)"
+        class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-amber-300/60 bg-amber-400/20 px-2.5 py-1 text-xs font-semibold text-amber-100">
+        <app-icon name="alert" [size]="14" />
+        <span>Datos dañados</span>
+      </button>
+    }
+  </div>
+
+  <!-- Derecha: Datos de usuario siempre visibles + accesos rápidos compactos -->
+  <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
+    <div class="hidden lg:flex items-center gap-1.5 rounded-xl bg-brand-800 px-3 py-1.5 text-xs font-semibold">
+      <app-icon name="cash" [size]="15" />
+      <span class="tabular-nums">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
     </div>
 
     <button type="button" (click)="openQr()"
-      class="flex h-11 items-center gap-2.5 rounded-xl border px-3.5 text-sm font-semibold"
+      class="hidden sm:flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-colors"
       [class]="isPhoneLinked()
         ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25'
         : 'border-white/25 text-white hover:bg-white/10'">
-      <app-icon [name]="isPhoneLinked() ? 'phone' : 'qr'" [size]="18" />
-      <span>{{ phoneButtonLabel() }}</span>
+      <app-icon [name]="isPhoneLinked() ? 'phone' : 'qr'" [size]="16" />
+      <span class="hidden md:inline">{{ phoneButtonLabel() }}</span>
     </button>
-
-    <div class="flex items-center justify-between rounded-xl bg-brand-800 px-3.5 py-3">
-      <span class="flex items-center gap-2 text-sm text-brand-200">
-        <app-icon name="cash" [size]="18" />
-        Cajón:
-      </span>
-      <span class="font-display text-lg font-bold tabular-nums">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
-    </div>
 
     <button type="button" (click)="openCloseShift()"
-      class="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/25 text-sm font-semibold text-brand-100 hover:border-rose-200/60 hover:bg-rose-300/15 hover:text-white">
-      <app-icon name="power" [size]="18" />
-      Cerrar Turno
+      class="hidden sm:flex h-9 items-center gap-1.5 rounded-xl border border-white/25 px-3 text-xs font-semibold text-brand-100 hover:border-rose-200/60 hover:bg-rose-300/15 hover:text-white transition-colors">
+      <app-icon name="power" [size]="15" />
+      <span class="hidden md:inline">Cerrar Turno</span>
     </button>
 
-    @if (inv.corruptedDataWarning()) {
-      <button type="button" (click)="inv.corruptedModalOpen.set(true)"
-        class="rounded-xl border border-amber-400/60 bg-brand-800 p-2.5 text-left text-xs text-amber-200 hover:bg-brand-900">
-        <span class="font-bold flex items-center gap-1.5">
-          <app-icon name="alert" [size]="15" />
-          <span>Datos dañados (Autoguardado bloqueado)</span>
-        </span>
-        <span class="block text-[11px] text-brand-200 mt-1 line-clamp-2">
-          {{ inv.corruptedDataWarning() }}
-        </span>
+    <!-- Datos de usuario SIEMPRE visibles -->
+    <div class="flex items-center gap-2 rounded-xl bg-brand-800 px-2.5 py-1.5" data-testid="authenticated-user-panel">
+      <app-icon name="user" [size]="15" />
+      <span class="max-w-[140px] truncate text-xs font-bold text-white" data-testid="current-user-name">
+        {{ inv.currentUser()?.name || inv.activeUser() }}
+      </span>
+      <span class="hidden sm:inline-block rounded px-1.5 py-0.5 text-[10px] font-bold"
+        [class]="inv.currentUser()?.role === 'ADMINISTRADOR'
+          ? 'bg-purple-400/25 text-purple-200 border border-purple-400/40'
+          : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-blue-400/25 text-blue-200 border border-blue-400/40' : 'bg-slate-700 text-slate-200')">
+        {{ inv.currentUser()?.role || 'CAJERO' }}
+      </span>
+      <button
+        type="button"
+        (click)="inv.lockSession()"
+        title="Bloquear sesión y cambiar de usuario"
+        data-testid="btn-lock-session"
+        class="h-7 px-2 rounded-lg border border-white/20 bg-brand-900 hover:bg-brand-950 text-white font-bold text-xs flex items-center gap-1 transition-colors">
+        <app-icon name="lock" [size]="12" />
+        <span>Bloquear</span>
       </button>
-    }
-
-    <button type="button" (click)="openResetDemoModal()"
-      class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 text-xs font-semibold text-brand-200 hover:bg-white/10 hover:text-white">
-      <app-icon name="refresh" [size]="15" />
-      Restablecer datos de demostración
-    </button>
-    
+    </div>
   </div>
-</aside>
+</header>
+
+<!-- ===================== MENÚ LATERAL DESPLEGABLE (NO ESTÁTICO · DIALOG) ===================== -->
+<dialog
+  #navDrawer
+  id="main-nav-drawer"
+  aria-label="Menú de navegación"
+  (close)="onDrawerNativeClose()"
+  (click)="onDrawerBackdropClick($event)"
+  class="fixed inset-0 m-0 p-0 h-screen max-h-none w-screen max-w-none bg-transparent border-0 backdrop:bg-slate-950/60 select-none">
+
+  <aside class="w-72 max-w-[85vw] h-full bg-brand-700 text-white flex flex-col px-5 py-5 shadow-2xl overflow-y-auto overscroll-contain">
+    <div class="flex items-center justify-between gap-3 pb-4 border-b border-white/15">
+      <a routerLink="/" (click)="closeDrawer()" class="flex items-center gap-2.5 min-w-0">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-400 text-slate-900">
+          <app-icon name="logo" [size]="20" />
+        </span>
+        <span class="font-display text-lg font-bold leading-tight truncate">{{ inv.storeName }}</span>
+      </a>
+      <button
+        type="button"
+        id="drawer-close-btn"
+        autofocus
+        (click)="closeDrawer()"
+        aria-label="Cerrar menú"
+        data-testid="btn-close-nav-drawer"
+        class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-brand-100 hover:bg-white/10 hover:text-white">
+        <app-icon name="close" [size]="20" />
+      </button>
+    </div>
+
+    <nav class="flex flex-col gap-1 py-4" aria-label="Secciones">
+      @for (item of navItems; track item.key) {
+        <a [routerLink]="item.link" [queryParams]="item.query" (click)="closeDrawer()"
+          class="btn flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[15px] font-semibold leading-tight"
+          [class]="isActive(item.key)
+            ? 'bg-white text-brand-700 shadow-xs'
+            : 'text-brand-100 hover:bg-white/10 hover:text-white'">
+          <app-icon [name]="item.icon" [size]="19" />
+          <span>{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+
+    <div class="mt-auto flex flex-col gap-2.5 border-t border-white/15 pt-4">
+      @if (inv.autoBackupStoppedWarning()) {
+        <button type="button" (click)="closeDrawer(); openBackupModal()" data-testid="auto-backup-stopped-warning"
+          class="rounded-xl border border-amber-400/50 bg-amber-400/15 px-3 py-2 text-left text-xs font-semibold text-amber-200 hover:bg-amber-400/25">
+          {{ inv.autoBackupStoppedWarning() }}
+        </button>
+      }
+      @if (usbWarning(); as usbMessage) {
+        <div class="rounded-xl border border-amber-400/50 bg-amber-400/15 px-3 py-2 text-xs font-semibold text-amber-200" data-testid="usb-backup-warning">
+          {{ usbMessage }}
+        </div>
+      }
+
+      <button type="button" (click)="closeDrawer(); handleQuickBackupNow()" data-testid="btn-backup-now"
+        class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 bg-brand-800/80 px-3.5 text-xs font-semibold text-white hover:bg-brand-800">
+        <app-icon name="lock" [size]="15" />
+        <span>Respaldar ahora</span>
+      </button>
+
+      <div class="sm:hidden flex flex-col gap-2">
+        <button type="button" (click)="closeDrawer(); openQr()"
+          class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 px-3.5 text-xs font-semibold text-white hover:bg-white/10">
+          <app-icon [name]="isPhoneLinked() ? 'phone' : 'qr'" [size]="16" />
+          <span>{{ phoneButtonLabel() }}</span>
+        </button>
+        <button type="button" (click)="closeDrawer(); openCloseShift()"
+          class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 text-xs font-semibold text-brand-100 hover:bg-rose-300/15">
+          <app-icon name="power" [size]="16" />
+          <span>Cerrar Turno</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+</dialog>
 
 <!-- ===================== MODAL VINCULACIÓN QR ===================== -->
 @if (qrOpen()) {
@@ -424,50 +417,6 @@
 
             <button type="button" (click)="confirmCloseShift()" class="h-11 rounded-xl bg-[#a33f3f] px-6 text-sm font-semibold text-white hover:bg-[#8c3434]">
               Confirmar y Cerrar Turno
-            </button>
-          </div>
-        }
-      </div>
-    </div>
-  </div>
-}
-
-<!-- ===================== MODAL RESTABLECER DATOS DEMO ===================== -->
-@if (resetDemoModalOpen()) {
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true">
-    <div class="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5">
-        <h2 class="text-xl font-bold text-slate-900">Restablecer Datos de Demostración</h2>
-        <button type="button" (click)="closeResetDemoModal()" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
-          <app-icon name="close" [size]="20" />
-        </button>
-      </div>
-
-      <div class="p-7">
-        @if (resetDemoSuccess()) {
-          <div class="flex flex-col items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-7 text-center">
-            <span class="grid h-11 w-11 place-items-center rounded-xl bg-brand-700 text-white">
-              <app-icon name="check" [size]="20" />
-            </span>
-            <h3 class="text-xl font-bold text-slate-900">Datos de demostración restablecidos</h3>
-            <p class="text-[15px] text-slate-700">
-              El catálogo, libreta de fiado, caja y Kardex han vuelto a los valores iniciales limpios.
-            </p>
-          </div>
-        } @else {
-          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-800">
-            <p class="font-semibold text-[15px] text-slate-900">¿Deseas restablecer todos los datos del sistema?</p>
-            <p class="mt-2 text-sm text-slate-600 leading-relaxed">
-              Esta acción borrará los cambios locales guardados en IndexedDB de este navegador y restablecerá el catálogo de productos, libreta de fiado, turnos de caja, mermas y el Kardex a sus valores iniciales de demostración.
-            </p>
-          </div>
-
-          <div class="mt-6 flex justify-end gap-3">
-            <button type="button" (click)="closeResetDemoModal()" class="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Cancelar
-            </button>
-            <button type="button" (click)="confirmResetDemo()" class="h-11 rounded-xl bg-[#a33f3f] px-6 text-sm font-semibold text-white hover:bg-[#8c3434]">
-              Sí, restablecer datos
             </button>
           </div>
         }

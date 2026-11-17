@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterModule } from '@angular/router';
@@ -86,10 +86,39 @@ export class NavbarComponent implements OnInit, OnDestroy {
   private clockTimer: ReturnType<typeof setInterval> | null = null;
   private usbTimer: ReturnType<typeof setInterval> | null = null;
 
-  // ---------- Modales ----------
+  // ---------- Modales y Menú Lateral Desplegable ----------
+  protected readonly navDrawerRef = viewChild<ElementRef<HTMLDialogElement>>('navDrawer');
+  protected readonly drawerOpen = signal<boolean>(false);
   protected readonly qrOpen = signal<boolean>(false);
   protected readonly closeShiftModalOpen = signal<boolean>(false);
   protected readonly shiftClosedSuccess = signal<boolean>(false);
+
+  openDrawer(): void {
+    const dlg = this.navDrawerRef()?.nativeElement;
+    this.drawerOpen.set(true);
+    if (dlg && typeof dlg.showModal === 'function' && !dlg.open) {
+      dlg.showModal();
+    }
+  }
+
+  closeDrawer(): void {
+    const dlg = this.navDrawerRef()?.nativeElement;
+    this.drawerOpen.set(false);
+    if (dlg && typeof dlg.close === 'function' && dlg.open) {
+      dlg.close();
+    }
+  }
+
+  onDrawerNativeClose(): void {
+    this.drawerOpen.set(false);
+  }
+
+  onDrawerBackdropClick(event: MouseEvent): void {
+    const dlg = this.navDrawerRef()?.nativeElement;
+    if (dlg && event.target === dlg) {
+      this.closeDrawer();
+    }
+  }
 
   protected readonly qr = buildFakeQr();
   protected readonly mobileUrl = typeof window !== 'undefined' ? `${window.location.origin}/movil-prototipo.html` : '/movil-prototipo.html';

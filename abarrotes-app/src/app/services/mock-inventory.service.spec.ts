@@ -9,6 +9,8 @@ import { MockInventoryService, ShrinkRecord, ReceptionLine, PosSaleItem } from '
 import { PosViewComponent } from '../views/pos/pos-view.component';
 import { ReportsViewComponent } from '../views/reports/reports-view.component';
 import { LicenseViewComponent } from '../views/license/license-view.component';
+import { NavbarComponent } from '../components/navbar/navbar.component';
+import { DashboardViewComponent } from '../views/dashboard/dashboard-view.component';
 import { UTF8_BOM, formatLocalYyyyMmDd } from '../domain/reports';
 import {
   generateLicenseKeyPair,
@@ -4870,5 +4872,30 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(service.licenseEvaluation().status).toBe('ACTIVA');
     expect(service.isReadOnlyMode()).toBeFalse();
     expect(hostEl.querySelector('[data-testid="license-activation-feedback"]')?.textContent).toContain('activada correctamente');
+  });
+
+  it('89. Diseño UI limpio: Barra superior siempre muestra usuario, menú lateral es desplegable y Dashboard no muestra relleno', () => {
+    const navFixture = TestBed.createComponent(NavbarComponent);
+    navFixture.detectChanges();
+    const navEl: HTMLElement = navFixture.nativeElement;
+
+    expect(navEl.querySelector('[data-testid="authenticated-user-panel"]')).not.toBeNull();
+    expect(navEl.querySelector('[data-testid="btn-lock-session"]')).not.toBeNull();
+    expect(navEl.querySelector('[data-testid="save-status-panel"]')).toBeNull();
+    expect(navEl.textContent).not.toContain('Terminal Punto de Venta v2.4');
+    expect(navEl.textContent).not.toContain('Restablecer datos de demostración');
+
+    const navComp = navFixture.componentInstance as any;
+    navComp.openDrawer();
+    expect(navComp.drawerOpen()).toBeTrue();
+    navComp.closeDrawer();
+    expect(navComp.drawerOpen()).toBeFalse();
+
+    const dashFixture = TestBed.createComponent(DashboardViewComponent);
+    dashFixture.detectChanges();
+    const dashEl: HTMLElement = dashFixture.nativeElement;
+    expect(dashEl.textContent).toContain('Punto de venta');
+    expect(dashEl.textContent).not.toContain('Punto de venta (POS)');
+    expect(dashEl.textContent).not.toContain('Cobro rápido');
   });
 });
