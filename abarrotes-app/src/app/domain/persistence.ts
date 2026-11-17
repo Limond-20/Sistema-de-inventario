@@ -18,6 +18,7 @@ import type { BusinessSettings } from './settings';
 import type { AppUser } from './auth';
 import type { SecurityAuditEntry } from './audit-log';
 import type { UsageActivityEntry, SatisfactionSurveyRecord } from './reports';
+import type { PrivacyNoticeConfig } from './privacy';
 
 export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
   storeName: 'Mi Tiendita',
@@ -195,6 +196,8 @@ export interface PersistedAppState {
   currentShiftId?: string;
   usageActivityLog?: UsageActivityEntry[];
   satisfactionSurveys?: SatisfactionSurveyRecord[];
+  /** Bloque K: aviso de privacidad configurable y versionado (campo opcional, sin cambio de esquema). */
+  privacyNotice?: PrivacyNoticeConfig;
 }
 
 export interface ValidationResult {
@@ -840,6 +843,11 @@ export class ServerStateStorageAdapter implements StateStorageAdapter {
     this.baseUrl = baseUrl;
   }
 
+  /** Adaptador local de contingencia (Bloque K lo usa para encontrar la capa de cifrado). */
+  get fallbackAdapter(): StateStorageAdapter {
+    return this.fallback;
+  }
+
   private get enabled(): boolean {
     if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
     const hostname = window.location?.hostname?.toLowerCase().replace(/^\[|\]$/g, '') || '';
@@ -1057,17 +1065,23 @@ export async function backupCorruptedState(
 /**
  * Obtiene el adaptador predeterminado: SQLite en la PC local, IndexedDB en otros
  * navegadores y MemoryAdapter en Node/CLI.
+ *
+ * `wrapLocalAdapter` permite envolver el almacenamiento del navegador (IndexedDB) sin que este
+ * módulo dependa de otros en tiempo de ejecución; el Bloque K lo usa para cifrarlo en reposo.
+ * SQLite no se envuelve: el servidor necesita leer el Kardex para verificar su cadena SHA-256.
  */
-export function getDefaultStorageAdapter(): StateStorageAdapter {
+export function getDefaultStorageAdapter(
+  wrapLocalAdapter: (local: StateStorageAdapter) => StateStorageAdapter = (local) => local
+): StateStorageAdapter {
   if (typeof window !== 'undefined') {
     const hostname = window.location?.hostname?.toLowerCase().replace(/^\[|\]$/g, '') || '';
     const localHost = hostname === 'localhost' || hostname === '::1' || hostname.startsWith('127.');
     if (localHost && window.location.port === '8443') {
-      return new ServerStateStorageAdapter(new IndexedDbStateStorageAdapter());
+      return new ServerStateStorageAdapter(wrapLocalAdapter(new IndexedDbStateStorageAdapter()));
     }
   }
   if (typeof globalThis.indexedDB !== 'undefined') {
-    return new IndexedDbStateStorageAdapter();
+    return wrapLocalAdapter(new IndexedDbStateStorageAdapter());
   }
   return new MemoryStateStorageAdapter();
 }

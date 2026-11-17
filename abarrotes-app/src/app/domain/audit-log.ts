@@ -17,7 +17,15 @@ export type SecurityAuditAction =
   | 'USER_REACTIVATED'
   | 'PIN_CHANGED'
   | 'SETTINGS_UPDATED'
-  | 'OVERRIDE_AUTHORIZED';
+  | 'OVERRIDE_AUTHORIZED'
+  // Bloque K: datos personales y cifrado en reposo
+  | 'STORAGE_ENCRYPTION_CONFIGURED'
+  | 'STORAGE_RECOVERED_FROM_BACKUP'
+  | 'PRIVACY_NOTICE_PUBLISHED'
+  | 'CUSTOMER_CONSENT_RECORDED'
+  | 'CUSTOMER_DATA_EXPORTED'
+  | 'CUSTOMER_ANONYMIZED'
+  | 'CUSTOMER_OPPOSITION_RECORDED';
 
 export interface SecurityAuditEntry {
   id: string;

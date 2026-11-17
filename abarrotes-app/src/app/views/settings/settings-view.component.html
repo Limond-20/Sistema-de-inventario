@@ -117,6 +117,18 @@
 
       <button
         type="button"
+        (click)="setTab('privacidad')"
+        data-testid="tab-privacidad"
+        class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors"
+        [class]="activeTab() === 'privacidad'
+          ? 'border-slate-900 text-slate-900 bg-slate-50 rounded-t-xl'
+          : 'border-transparent text-slate-500 hover:text-slate-800'">
+        <app-icon name="shield" [size]="16" />
+        <span>Privacidad y Datos</span>
+      </button>
+
+      <button
+        type="button"
         (click)="setTab('bitacora')"
         data-testid="tab-bitacora"
         class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors"
@@ -566,6 +578,146 @@
               Actualizar PIN Criptográfico
             </button>
           </div>
+        </div>
+      </div>
+    }
+
+    <!-- =========================================================================
+         PESTAÑA BLOQUE K: PRIVACIDAD, AVISO Y CIFRADO EN REPOSO
+         ========================================================================= -->
+    @if (activeTab() === 'privacidad') {
+      <div class="space-y-6" data-testid="panel-privacidad">
+        <!-- Cifrado en reposo -->
+        <div class="rounded-2xl border p-5 space-y-3"
+          [class]="inv.storageCryptoStatus() === 'unlocked' ? 'border-emerald-300 bg-emerald-50/60' : 'border-amber-300 bg-amber-50'"
+          data-testid="storage-crypto-status-card">
+          <div class="flex items-center gap-3">
+            <span class="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-2xs"
+              [class]="inv.storageCryptoStatus() === 'unlocked' ? 'text-emerald-700' : 'text-amber-700'">
+              <app-icon name="lock" [size]="20" />
+            </span>
+            <div>
+              <h2 class="text-sm font-bold text-slate-900">
+                @if (inv.storageCryptoStatus() === 'unlocked') {
+                  Datos cifrados en este equipo (AES-256-GCM)
+                } @else {
+                  Cifrado en reposo no disponible en este entorno
+                }
+              </h2>
+              <p class="text-xs text-slate-600 mt-0.5">
+                @if (inv.storageCryptoStatus() === 'unlocked') {
+                  Llave derivada del PIN de administrador con PBKDF2 (600,000 iteraciones). Administradores con llave: {{ inv.storageCryptoSlotCount() }}.
+                } @else {
+                  Sin IndexedDB (por ejemplo, en pruebas o en Node) no hay nada que cifrar en el navegador.
+                }
+              </p>
+            </div>
+          </div>
+          <ul class="text-xs text-slate-700 list-disc pl-5 space-y-1">
+            <li>Al abrir la app se pide el PIN de un administrador; sin él los datos guardados no se pueden leer.</li>
+            <li>Cambiar el PIN de un administrador en "Seguridad y PIN" actualiza su llave automáticamente.</li>
+            <li><b>Si se olvida el PIN no hay puerta trasera.</b> La recuperación es con un respaldo .bak y su frase de respaldo
+              (pantalla de inicio → "¿Olvidaste el PIN?"). Por eso conviene tener respaldos recientes en una memoria USB.</li>
+            <li>Usa un PIN de 8 dígitos o más: un PIN de 6 dígitos es más fácil de adivinar si alguien se roba la computadora.</li>
+          </ul>
+        </div>
+
+        <!-- Aviso de privacidad configurable -->
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-5">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 class="text-base font-bold text-slate-900">Aviso de privacidad para clientes de crédito</h2>
+              <p class="text-xs text-slate-500 mt-0.5">
+                Se le lee o muestra al cliente antes de abrirle cuenta de fiado. Cada publicación crea una versión nueva y
+                los clientes con una versión anterior deben aceptarla otra vez. Es una plantilla: revísenla antes de usarla.
+              </p>
+            </div>
+            @if (inv.currentPrivacyNoticeVersion(); as current) {
+              <span class="rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 tabular-nums" data-testid="privacy-current-version">
+                Versión vigente: {{ current.version }}
+              </span>
+            }
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs font-bold text-slate-700">Responsable de los datos (dueño o encargado)</span>
+              <input type="text" [ngModel]="privacyResponsible()" (ngModelChange)="privacyResponsible.set($event)"
+                placeholder="Ej. Guadalupe Martínez" data-testid="privacy-responsible"
+                class="h-10 rounded-lg border border-slate-300 px-3 text-sm" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-xs font-bold text-slate-700">Contacto para solicitudes ARCO</span>
+              <input type="text" [ngModel]="privacyContact()" (ngModelChange)="privacyContact.set($event)"
+                placeholder="Teléfono, WhatsApp, correo o domicilio" data-testid="privacy-contact"
+                class="h-10 rounded-lg border border-slate-300 px-3 text-sm" />
+            </label>
+          </div>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-bold text-slate-700">
+              Texto del aviso (puedes usar {{ privacyPlaceholders }})
+            </span>
+            <textarea rows="14" [ngModel]="privacyTemplate()" (ngModelChange)="privacyTemplate.set($event)"
+              data-testid="privacy-template"
+              class="rounded-lg border border-slate-300 p-3 text-xs leading-relaxed font-mono"></textarea>
+          </label>
+
+          @if (privacyError()) {
+            <div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800" data-testid="privacy-error">{{ privacyError() }}</div>
+          }
+          @if (privacyFeedback()) {
+            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800" data-testid="privacy-feedback">{{ privacyFeedback() }}</div>
+          }
+
+          <div class="flex flex-wrap justify-end gap-3">
+            <button type="button" (click)="resetPrivacyTemplate()"
+              class="h-10 rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+              Restaurar plantilla
+            </button>
+            <button type="button" [disabled]="privacyBusy()" (click)="publishPrivacyNotice()" data-testid="btn-publish-privacy"
+              class="h-10 rounded-xl bg-brand-700 px-5 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
+              {{ privacyBusy() ? 'Publicando…' : 'Publicar nueva versión' }}
+            </button>
+          </div>
+
+          @if (privacyVersionsDesc().length > 0) {
+            <div class="border-t border-slate-200 pt-4 space-y-2">
+              <h3 class="text-xs font-bold text-slate-700 uppercase">Historial de versiones</h3>
+              @for (v of privacyVersionsDesc(); track v.version) {
+                <details class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <summary class="cursor-pointer text-xs font-semibold text-slate-800">
+                    Versión {{ v.version }} · {{ v.publishedAt | date:'dd/MM/yyyy HH:mm' }} · {{ v.publishedBy }}
+                    <span class="font-mono text-slate-500">· SHA-256 {{ v.textHash.slice(0, 12) }}…</span>
+                  </summary>
+                  <pre class="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-slate-700">{{ v.text }}</pre>
+                </details>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Clientes sin consentimiento vigente -->
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-3" data-testid="privacy-pending-consents">
+          <h2 class="text-base font-bold text-slate-900">Clientes de crédito sin consentimiento vigente</h2>
+          <p class="text-xs text-slate-500">
+            El consentimiento se registra desde Caja → ficha del cliente. Ahí también están Acceso (exportar), Rectificación,
+            Cancelación (anonimizar) y Oposición.
+          </p>
+          @if (inv.customersPendingConsent().length === 0) {
+            <p class="text-sm font-semibold text-emerald-700">Todos los clientes activos tienen el aviso vigente aceptado.</p>
+          } @else {
+            <ul class="divide-y divide-slate-100 rounded-xl border border-slate-200">
+              @for (c of inv.customersPendingConsent(); track c.id) {
+                <li class="flex items-center justify-between px-4 py-2 text-sm">
+                  <span class="font-semibold text-slate-800">{{ c.name }} <span class="text-xs text-slate-500">({{ c.id }})</span></span>
+                  <span class="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
+                    {{ inv.getCustomerConsentStatus(c) === 'VERSION_ANTERIOR' ? 'Aceptó una versión anterior' : 'Sin consentimiento' }}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
         </div>
       </div>
     }
