@@ -8,7 +8,14 @@ import { provideRouter, Router } from '@angular/router';
 import { MockInventoryService, ShrinkRecord, ReceptionLine, PosSaleItem } from './mock-inventory.service';
 import { PosViewComponent } from '../views/pos/pos-view.component';
 import { ReportsViewComponent } from '../views/reports/reports-view.component';
+import { LicenseViewComponent } from '../views/license/license-view.component';
 import { UTF8_BOM, formatLocalYyyyMmDd } from '../domain/reports';
+import {
+  generateLicenseKeyPair,
+  signLicensePayload,
+  bytesToBase64Url,
+  base64UrlToBytes,
+} from '../domain/license';
 import { createKardexEntry, verifyProductContinuity } from '../domain/kardex';
 import {
   CORRUPT_STATE_KEY_PREFIX,
@@ -4646,5 +4653,217 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
 
     const v5AfterSuccess = await adapter.load(LEGACY_STATE_STORAGE_KEY_V5);
     expect(v5AfterSuccess).toBeNull();
+  });
+
+  // =====================================================================
+  //  BLOQUE J: LICENCIA SEMESTRAL/ANUAL SIN INTERNET Y RETROCESO DE RELOJ
+  // =====================================================================
+
+  it('85. Bloque J: Licencia válida, aviso 15 días antes, 7 días de gracia y modo solo lectura tras vencer (permite exportar y respaldar, bloquea ventas)', async () => {
+    const { privateKeyJwk, publicKeyJwk } = await generateLicenseKeyPair();
+    service.setLicensePublicKeyForTesting(publicKeyJwk);
+    const instId = service.regenerateInstallationId();
+    expect(instId).toMatch(/^BT-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+
+    const code = await signLicensePayload(
+      {
+        idInstalación: instId,
+        plan: 'SEMESTRAL',
+        emitida: '2026-06-15',
+        vence: '2026-12-15',
+      },
+      privateKeyJwk
+    );
+
+    // 1) Activar a los 25 días antes de vencer (2026-11-20) -> ACTIVA sin aviso
+    const actRes = await service.activateLicenseCode(code, new Date(2026, 10, 20, 10, 0, 0));
+    expect(actRes.ok).toBeTrue();
+    expect(service.licenseEvaluation().status).toBe('ACTIVA');
+    expect(service.isReadOnlyMode()).toBeFalse();
+    expect(service.licenseWarningBanner()).toBeNull();
+
+    // 2) 15 días antes de vencer (2026-11-30) -> POR_VENCER con aviso, permite vender
+    const eval15d = await service.refreshLicenseState(new Date(2026, 10, 30, 10, 0, 0));
+    expect(eval15d.status).toBe('POR_VENCER');
+    expect(eval15d.daysRemaining).toBe(15);
+    expect(service.isReadOnlyMode()).toBeFalse();
+    expect(service.licenseWarningBanner()).toContain('vence en 15 días');
+
+    // 3) 5 días después de vencer (2026-12-20) -> PERIODO_GRACIA (quedan 3 días de los 7), aún permite vender
+    const evalGrace = await service.refreshLicenseState(new Date(2026, 11, 20, 10, 0, 0));
+    expect(evalGrace.status).toBe('PERIODO_GRACIA');
+    expect(evalGrace.graceDaysRemaining).toBe(3);
+    expect(service.isReadOnlyMode()).toBeFalse();
+
+    const prod = service.products()[0];
+    const saleDuringGrace = service.processCashSale(
+      [
+        {
+          sku: prod.sku,
+          name: prod.name,
+          barcode: prod.barcode,
+          emoji: prod.emoji,
+          isBulk: prod.isBulk,
+          qty: 1,
+          saleUnit: prod.saleUnit,
+          unitPrice: prod.salePrice,
+          subtotal: prod.salePrice,
+        },
+      ],
+      prod.salePrice
+    );
+    expect(saleDuringGrace.ok).toBeTrue();
+
+    // 4) 8 días después de vencer (2026-12-23, agotados los 7 días de gracia) -> VENCIDA en modo solo lectura
+    const evalExpired = await service.refreshLicenseState(new Date(2026, 11, 23, 10, 0, 0));
+    expect(evalExpired.status).toBe('VENCIDA');
+    expect(evalExpired.isReadOnly).toBeTrue();
+    expect(service.isReadOnlyMode()).toBeTrue();
+
+    // Bloquea ventas en POS
+    const blockedSale = service.processCashSale(
+      [
+        {
+          sku: prod.sku,
+          name: prod.name,
+          barcode: prod.barcode,
+          emoji: prod.emoji,
+          isBulk: prod.isBulk,
+          qty: 1,
+          saleUnit: prod.saleUnit,
+          unitPrice: prod.salePrice,
+          subtotal: prod.salePrice,
+        },
+      ],
+      prod.salePrice
+    );
+    expect(blockedSale.ok).toBeFalse();
+    expect(blockedSale.message).toContain('Modo solo lectura');
+
+    // Pero SÍ permite exportar reportes CSV y crear respaldos cifrados .bak
+    const csvExport = service.exportReportCsv('VENTAS', { preset: 'MES' });
+    expect(csvExport.content.startsWith(UTF8_BOM)).toBeTrue();
+
+    const backupRes = await service.backupNow('frase-segura-2026');
+    expect(backupRes.ok).toBeTrue();
+  });
+
+  it('86. Bloque J: Rechaza código con firma ECDSA P-256 alterada y código emitido para otro idInstalación', async () => {
+    const { privateKeyJwk, publicKeyJwk } = await generateLicenseKeyPair();
+    service.setLicensePublicKeyForTesting(publicKeyJwk);
+    const myId = service.regenerateInstallationId();
+
+    const codeOtherStore = await signLicensePayload(
+      {
+        idInstalación: 'BT-OTRA-TIEN-9999',
+        plan: 'ANUAL',
+        emitida: '2026-11-01',
+        vence: '2027-11-01',
+      },
+      privateKeyJwk
+    );
+
+    const resOther = await service.activateLicenseCode(codeOtherStore, new Date(2026, 10, 17, 12, 0, 0));
+    expect(resOther.ok).toBeFalse();
+    expect(resOther.message).toContain('BT-OTRA-TIEN-9999');
+
+    // Código para mi instalación pero con firma alterada
+    const validForMe = await signLicensePayload(
+      {
+        idInstalación: myId,
+        plan: 'ANUAL',
+        emitida: '2026-11-01',
+        vence: '2027-11-01',
+      },
+      privateKeyJwk
+    );
+    const parts = validForMe.split('.');
+    const sigBytes = base64UrlToBytes(parts[2]);
+    sigBytes[5] ^= 0xff;
+    const tamperedCode = `${parts[0]}.${parts[1]}.${bytesToBase64Url(sigBytes)}`;
+
+    const resTampered = await service.activateLicenseCode(tamperedCode, new Date(2026, 10, 17, 12, 0, 0));
+    expect(resTampered.ok).toBeFalse();
+    expect(resTampered.evaluation.validSignature).toBeFalse();
+  });
+
+  it('87. Bloque J: Detección de retroceso del reloj (> 5 min respecto al Kardex encadenado) activa modo solo lectura', async () => {
+    const { privateKeyJwk, publicKeyJwk } = await generateLicenseKeyPair();
+    service.setLicensePublicKeyForTesting(publicKeyJwk);
+    const myId = service.installationId();
+
+    const validCode = await signLicensePayload(
+      {
+        idInstalación: myId,
+        plan: 'ANUAL',
+        emitida: '2026-10-01',
+        vence: '2027-10-01',
+      },
+      privateKeyJwk
+    );
+    await service.activateLicenseCode(validCode, '2026-11-17T18:00:00.000Z');
+    expect(service.isReadOnlyMode()).toBeFalse();
+
+    // Simular que el reloj del sistema retrocede 10 minutos (17:50:00Z vs 18:00:00Z vista máxima)
+    const rollbackEval = await service.refreshLicenseState('2026-11-17T17:50:00.000Z');
+    expect(rollbackEval.clockRollbackDetected).toBeTrue();
+    expect(rollbackEval.status).toBe('RELOJ_RETROCEDIDO');
+    expect(service.isReadOnlyMode()).toBeTrue();
+    expect(service.readOnlyWarning()).toContain('retroceso en el reloj');
+
+    // Al restaurar la hora correcta (18:02:00Z), sale de modo solo lectura
+    const restoredEval = await service.refreshLicenseState('2026-11-17T18:02:00.000Z');
+    expect(restoredEval.clockRollbackDetected).toBeFalse();
+    expect(restoredEval.status).toBe('ACTIVA');
+    expect(service.isReadOnlyMode()).toBeFalse();
+  });
+
+  it('88. Bloque J: Vista LicenseViewComponent (/licencia) muestra estado, divulgación honesta y permite renovar licencia vencida', async () => {
+    const { privateKeyJwk, publicKeyJwk } = await generateLicenseKeyPair();
+    service.setLicensePublicKeyForTesting(publicKeyJwk);
+    const myId = service.installationId();
+
+    // Poner una licencia vencida hace más de 7 días para arrancar en modo solo lectura
+    const expiredCode = await signLicensePayload(
+      {
+        idInstalación: myId,
+        plan: 'SEMESTRAL',
+        emitida: '2025-01-01',
+        vence: '2025-07-01',
+      },
+      privateKeyJwk
+    );
+    service.licenseCode.set(expiredCode);
+    await service.refreshLicenseState();
+    expect(service.isReadOnlyMode()).toBeTrue();
+
+    const fixture = TestBed.createComponent(LicenseViewComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const hostEl: HTMLElement = fixture.nativeElement;
+    expect(hostEl.querySelector('[data-testid="license-installation-id"]')?.textContent?.trim()).toBe(myId);
+    expect(hostEl.querySelector('[data-testid="license-honest-disclosure"]')?.textContent).toContain('no es infalible');
+
+    // Generar código nuevo vigente hasta 2028-12-31 y activarlo desde el componente
+    const newValidCode = await signLicensePayload(
+      {
+        idInstalación: myId,
+        plan: 'ANUAL',
+        emitida: '2026-11-01',
+        vence: '2028-12-31',
+      },
+      privateKeyJwk
+    );
+
+    const comp = fixture.componentInstance as any;
+    comp.codeInput.set(newValidCode);
+    await comp.onActivateLicense();
+    fixture.detectChanges();
+
+    expect(service.licenseEvaluation().status).toBe('ACTIVA');
+    expect(service.isReadOnlyMode()).toBeFalse();
+    expect(hostEl.querySelector('[data-testid="license-activation-feedback"]')?.textContent).toContain('activada correctamente');
   });
 });
