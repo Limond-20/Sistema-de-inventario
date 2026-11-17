@@ -24,6 +24,7 @@ import {
   type ReturnCondition,
 } from '../../domain/sales';
 import type { TicketPaperWidth } from '../../domain/ticket';
+import type { ConsentMethod, ConsentStatus } from '../../domain/privacy';
 
 type BulkCalcMode = 'weight' | 'amount';
 
@@ -844,6 +845,11 @@ export class PosViewComponent implements OnInit, OnDestroy {
   protected readonly customerFicha = signal<CreditCustomer | null>(null);
 
   openCreateCustomerModal(): void {
+    // Bloque K: el aviso de privacidad debe existir para poder recabar el consentimiento.
+    void this.inv.ensurePrivacyNoticeInitialized();
+    this.customerConsentAccepted.set(false);
+    this.customerConsentMethod.set('PRESENCIAL_VERBAL');
+    this.privacyNoticeExpanded.set(false);
     this.customerFormMode.set('create');
     this.customerFormId.set('');
     this.customerFormName.set('');
@@ -893,7 +899,10 @@ export class PosViewComponent implements OnInit, OnDestroy {
     };
 
     if (this.customerFormMode() === 'create') {
-      const res = this.inv.createCustomer(input, confirmDuplicate);
+      const res = this.inv.createCustomer(input, confirmDuplicate, {
+        accepted: this.customerConsentAccepted(),
+        method: this.customerConsentMethod(),
+      });
       if (!res.ok) {
         if (res.duplicateWarning) {
           this.customerDuplicateWarning.set(true);
@@ -923,6 +932,14 @@ export class PosViewComponent implements OnInit, OnDestroy {
       }
       this.customerDuplicateWarning.set(false);
       this.customerFormFeedback.set(res.message);
+      if (this.arcoRectificationCustomerId() === this.customerFormId()) {
+        await this.inv.registerCustomerArcoRequest(
+          this.customerFormId(),
+          'RECTIFICACION',
+          'Datos de identificación corregidos a petición del titular.'
+        );
+        this.arcoRectificationCustomerId.set('');
+      }
       setTimeout(() => this.closeCustomerFormModal(), 600);
     }
   }
@@ -946,7 +963,117 @@ export class PosViewComponent implements OnInit, OnDestroy {
     if (ev) ev.stopPropagation();
     const detail = this.inv.getCustomerDetail(c.id);
     this.customerFicha.set(detail || c);
+    this.resetArcoPanel();
+    void this.inv.ensurePrivacyNoticeInitialized();
     this.customerFichaModalOpen.set(true);
+  }
+
+  // =========================================================================
+  // BLOQUE K: AVISO DE PRIVACIDAD, CONSENTIMIENTO Y DERECHOS ARCO
+  // =========================================================================
+  protected readonly customerConsentAccepted = signal<boolean>(false);
+  protected readonly customerConsentMethod = signal<ConsentMethod>('PRESENCIAL_VERBAL');
+  protected readonly privacyNoticeExpanded = signal<boolean>(false);
+  protected readonly arcoPin = signal<string>('');
+  protected readonly arcoFeedback = signal<string>('');
+  protected readonly arcoError = signal<string>('');
+  protected readonly arcoBusy = signal<boolean>(false);
+  protected readonly arcoConfirmAnonymize = signal<boolean>(false);
+  protected readonly arcoRectificationCustomerId = signal<string>('');
+
+  protected consentStatusLabel(status: ConsentStatus): string {
+    switch (status) {
+      case 'VIGENTE':
+        return 'Aviso aceptado';
+      case 'VERSION_ANTERIOR':
+        return 'Aviso desactualizado';
+      case 'ANONIMIZADO':
+        return 'Anonimizado';
+      default:
+        return 'Sin aviso aceptado';
+    }
+  }
+
+  private resetArcoPanel(): void {
+    this.arcoPin.set('');
+    this.arcoFeedback.set('');
+    this.arcoError.set('');
+    this.arcoConfirmAnonymize.set(false);
+    this.privacyNoticeExpanded.set(false);
+  }
+
+  private refreshCustomerFicha(customerId: string): void {
+    const detail = this.inv.getCustomerDetail(customerId);
+    if (detail) this.customerFicha.set(detail);
+  }
+
+  private async runArcoAction(
+    action: (customerId: string) => Promise<{ ok: boolean; message: string }>
+  ): Promise<void> {
+    const f = this.customerFicha();
+    if (!f || this.arcoBusy()) return;
+    this.arcoFeedback.set('');
+    this.arcoError.set('');
+    this.arcoBusy.set(true);
+    try {
+      const res = await action(f.id);
+      if (res.ok) {
+        this.arcoFeedback.set(res.message);
+        this.arcoPin.set('');
+        this.arcoConfirmAnonymize.set(false);
+      } else {
+        this.arcoError.set(res.message);
+      }
+      this.refreshCustomerFicha(f.id);
+    } finally {
+      this.arcoBusy.set(false);
+    }
+  }
+
+  async recordConsentFromFicha(): Promise<void> {
+    await this.runArcoAction((id) => this.inv.recordCustomerConsent(id, { method: this.customerConsentMethod() }));
+  }
+
+  async exportCustomerData(): Promise<void> {
+    await this.runArcoAction(async (id) => {
+      const res = await this.inv.exportCustomerPersonalData(id, this.arcoPin());
+      if (res.ok && res.json && res.fileName) {
+        this.inv.downloadTextFile(res.json, res.fileName, 'application/json');
+      }
+      return res;
+    });
+  }
+
+  startRectification(): void {
+    const f = this.customerFicha();
+    if (!f) return;
+    this.arcoRectificationCustomerId.set(f.id);
+    this.closeCustomerFichaModal();
+    this.openEditCustomerModal(f);
+  }
+
+  async registerOppositionFromFicha(): Promise<void> {
+    await this.runArcoAction((id) =>
+      this.inv.registerCustomerOpposition(id, {
+        scope: 'RECORDATORIOS',
+        note: 'No desea recibir avisos ni recordatorios de cobro.',
+      })
+    );
+  }
+
+  async confirmAnonymizeCustomer(): Promise<void> {
+    await this.runArcoAction(async (id) => {
+      const res = await this.inv.anonymizeCustomer(id, this.arcoPin());
+      if (res.ok && res.report) {
+        return {
+          ok: true,
+          message:
+            `${res.message} Saldo conservado: $${res.report.balancePreserved.toFixed(2)}. ` +
+            `Movimientos del Kardex conservados sin cambios: ${res.report.kardexEntriesRetained}.`,
+        };
+      }
+      return res;
+    });
   }
 
   closeCustomerFichaModal(): void {

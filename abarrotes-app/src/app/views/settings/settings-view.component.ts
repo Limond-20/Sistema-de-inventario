@@ -5,8 +5,9 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
 import { IconComponent } from '../../components/icon/icon.component';
 import { hasPermission, ROLE_PERMISSIONS, type AppUser, type UserRole } from '../../domain/auth';
 import { verifySecurityAuditChain } from '../../domain/audit-log';
+import { DEFAULT_PRIVACY_NOTICE_TEMPLATE } from '../../domain/privacy';
 
-type SettingsTab = 'parametros' | 'usuarios' | 'seguridad' | 'bitacora';
+type SettingsTab = 'parametros' | 'usuarios' | 'seguridad' | 'privacidad' | 'bitacora';
 
 @Component({
   selector: 'app-settings-view',
@@ -50,6 +51,18 @@ export class SettingsViewComponent implements OnInit {
   protected readonly pinConfirm = signal<string>('');
   protected readonly pinError = signal<string>('');
   protected readonly pinFeedback = signal<string>('');
+
+  // ---------- Bloque K: Aviso de privacidad y cifrado en reposo ----------
+  protected readonly privacyResponsible = signal<string>('');
+  protected readonly privacyContact = signal<string>('');
+  protected readonly privacyTemplate = signal<string>('');
+  protected readonly privacyFeedback = signal<string>('');
+  protected readonly privacyError = signal<string>('');
+  protected readonly privacyBusy = signal<boolean>(false);
+  protected readonly privacyPlaceholders = '{{negocio}}, {{responsable}} y {{contacto}}';
+  protected readonly privacyVersionsDesc = computed(() =>
+    [...(this.inv.privacyNotice()?.versions || [])].sort((a, b) => b.version - a.version)
+  );
 
   // ---------- Integridad de Bitácora de Auditoría ----------
   protected readonly auditChainStatus = computed(() => {
@@ -113,6 +126,42 @@ export class SettingsViewComponent implements OnInit {
     this.settingsError.set('');
     this.pinFeedback.set('');
     this.pinError.set('');
+    if (tab === 'privacidad') {
+      void this.loadPrivacyForm();
+    }
+  }
+
+  async loadPrivacyForm(): Promise<void> {
+    this.privacyFeedback.set('');
+    this.privacyError.set('');
+    const config = await this.inv.ensurePrivacyNoticeInitialized();
+    this.privacyResponsible.set(config.responsibleName);
+    this.privacyContact.set(config.contact);
+    this.privacyTemplate.set(config.template);
+  }
+
+  resetPrivacyTemplate(): void {
+    this.privacyTemplate.set(DEFAULT_PRIVACY_NOTICE_TEMPLATE);
+  }
+
+  async publishPrivacyNotice(): Promise<void> {
+    this.privacyFeedback.set('');
+    this.privacyError.set('');
+    this.privacyBusy.set(true);
+    try {
+      const res = await this.inv.publishPrivacyNotice({
+        template: this.privacyTemplate(),
+        responsibleName: this.privacyResponsible(),
+        contact: this.privacyContact(),
+      });
+      if (res.ok) {
+        this.privacyFeedback.set(res.message);
+      } else {
+        this.privacyError.set(res.message);
+      }
+    } finally {
+      this.privacyBusy.set(false);
+    }
   }
 
   async saveSettings(): Promise<void> {

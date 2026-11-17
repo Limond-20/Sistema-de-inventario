@@ -42,6 +42,8 @@ export interface KardexEntry {
   quantity?: number;
   stockAfter?: number;
   sku?: string;
+  /** Bloque K: ID del cliente de crédito ligado al movimiento (no forma parte del hash). */
+  customerId?: string;
   previousHash: string; // SHA-256 de la entrada anterior (o 'GENESIS')
   entryHash: string; // SHA-256 del JSON ordenado con previousHash + campos de esta entrada
 }

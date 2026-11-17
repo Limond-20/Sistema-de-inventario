@@ -11,7 +11,157 @@ import { canAccessRoute } from './domain/auth';
   selector: 'app-root',
   imports: [CommonModule, FormsModule, RouterOutlet, NavbarComponent, IconComponent],
   template: `
-    @if (!inv.isHydrated()) {
+    @if (!inv.isHydrated() && inv.storageNeedsUnlock()) {
+      <!-- =====================================================================
+           BLOQUE K: DESBLOQUEO / CONFIGURACIÓN DEL CIFRADO EN REPOSO AL INICIAR
+           ===================================================================== -->
+      <div class="min-h-screen w-screen flex items-center justify-center bg-brand-800 p-6 select-none" data-testid="storage-unlock-screen">
+        <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-7 text-white shadow-2xl space-y-5">
+          <div class="text-center space-y-2">
+            <div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-amber-400 text-slate-900 shadow-xs mb-3">
+              <app-icon [name]="recoveryMode() ? 'shield' : 'lock'" [size]="24" />
+            </div>
+            <h1 class="text-xl font-bold tracking-tight">
+              @if (recoveryMode()) {
+                Recuperar con un respaldo
+              } @else if (inv.storageCryptoStatus() === 'setup-new') {
+                Crea el PIN del administrador
+              } @else if (inv.storageCryptoStatus() === 'setup-migrate') {
+                Protege los datos guardados
+              } @else {
+                Datos de la tienda cifrados
+              }
+            </h1>
+            @if (!recoveryMode()) {
+              <p class="text-xs text-slate-300 leading-relaxed">{{ inv.storageCryptoMessage() }}</p>
+            }
+          </div>
+
+          @if (storageError()) {
+            <div class="rounded-xl border border-rose-400/40 bg-rose-500/15 p-3 text-xs font-bold text-rose-200 text-center" data-testid="storage-unlock-error">
+              {{ storageError() }}
+            </div>
+          }
+          @if (storageInfo()) {
+            <div class="rounded-xl border border-emerald-400/40 bg-emerald-500/15 p-3 text-xs font-semibold text-emerald-100 text-center">
+              {{ storageInfo() }}
+            </div>
+          }
+
+          @if (!recoveryMode()) {
+            <div class="space-y-3">
+              <label class="block space-y-1.5">
+                <span class="block text-xs font-semibold text-slate-300">
+                  {{ inv.storageCryptoStatus() === 'setup-new' ? 'PIN nuevo de administrador (mínimo 6 dígitos; mejor 8 o más)' : 'PIN de administrador' }}
+                </span>
+                <input type="password" inputmode="numeric" autocomplete="off" placeholder="••••••"
+                  [ngModel]="storagePin()" (ngModelChange)="storagePin.set($event)" (keydown.enter)="submitStoragePin()"
+                  data-testid="storage-unlock-pin"
+                  class="h-11 w-full text-center text-xl tracking-widest font-mono rounded-xl border border-slate-700 bg-slate-800 px-3 font-bold text-white focus:border-amber-400 focus:outline-none" />
+              </label>
+              @if (inv.storageCryptoStatus() === 'setup-new') {
+                <label class="block space-y-1.5">
+                  <span class="block text-xs font-semibold text-slate-300">Repite el PIN</span>
+                  <input type="password" inputmode="numeric" autocomplete="off" placeholder="••••••"
+                    [ngModel]="storagePinConfirm()" (ngModelChange)="storagePinConfirm.set($event)" (keydown.enter)="submitStoragePin()"
+                    data-testid="storage-unlock-pin-confirm"
+                    class="h-11 w-full text-center text-xl tracking-widest font-mono rounded-xl border border-slate-700 bg-slate-800 px-3 font-bold text-white focus:border-amber-400 focus:outline-none" />
+                </label>
+              }
+              <button type="button" [disabled]="storageBusy()" (click)="submitStoragePin()" data-testid="btn-storage-unlock"
+                class="h-11 w-full rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-900 font-bold text-sm transition-colors shadow-xs">
+                @if (storageBusy()) {
+                  Verificando…
+                } @else if (inv.storageCryptoStatus() === 'setup-new') {
+                  Crear PIN y cifrar
+                } @else if (inv.storageCryptoStatus() === 'setup-migrate') {
+                  Cifrar datos y continuar
+                } @else {
+                  Abrir datos
+                }
+              </button>
+              @if (inv.storageCryptoStatus() !== 'setup-new') {
+                <button type="button" (click)="openRecovery()" data-testid="btn-storage-forgot-pin"
+                  class="w-full text-xs font-semibold text-amber-300 hover:text-amber-200 underline underline-offset-2">
+                  ¿Olvidaste el PIN? Recuperar desde un respaldo (.bak)
+                </button>
+              }
+              <p class="text-[11px] text-slate-400 leading-relaxed">
+                Los datos se guardan cifrados (AES-256-GCM) con una llave que solo se abre con el PIN de un administrador.
+                Si se olvida el PIN no hay forma de abrirlos: la única recuperación es un respaldo .bak y su frase.
+              </p>
+            </div>
+          } @else {
+            <div class="space-y-3" data-testid="storage-recovery-panel">
+              @if (recoveryAdmins().length === 0) {
+                <p class="text-xs text-slate-300 leading-relaxed">
+                  Elige el respaldo cifrado (.bak) y escribe su frase de respaldo. Se verificará antes de cambiar cualquier cosa.
+                </p>
+                <label class="block space-y-1.5">
+                  <span class="block text-xs font-semibold text-slate-300">Archivo .bak (disco o memoria USB)</span>
+                  <input type="file" accept=".bak" (change)="onRecoveryFile($event)" data-testid="storage-recovery-file"
+                    class="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-xs file:font-bold file:text-white" />
+                </label>
+                @if (inv.backupList().length > 0) {
+                  <label class="block space-y-1.5">
+                    <span class="block text-xs font-semibold text-slate-300">…o un respaldo del servidor local</span>
+                    <select [ngModel]="recoveryServerFile()" (ngModelChange)="recoveryServerFile.set($event)"
+                      class="h-10 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm text-white">
+                      <option value="">— Ninguno —</option>
+                      @for (b of inv.backupList(); track b.nombre) {
+                        <option [value]="b.nombre">{{ b.nombre }}</option>
+                      }
+                    </select>
+                  </label>
+                }
+                <label class="block space-y-1.5">
+                  <span class="block text-xs font-semibold text-slate-300">Frase de respaldo</span>
+                  <input type="password" autocomplete="off" [ngModel]="recoveryPassphrase()" (ngModelChange)="recoveryPassphrase.set($event)"
+                    data-testid="storage-recovery-passphrase"
+                    class="h-10 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm text-white focus:border-amber-400 focus:outline-none" />
+                </label>
+                <button type="button" [disabled]="storageBusy()" (click)="verifyRecoveryBackup()" data-testid="btn-storage-recovery-verify"
+                  class="h-11 w-full rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-900 font-bold text-sm">
+                  {{ storageBusy() ? 'Verificando respaldo…' : 'Verificar respaldo' }}
+                </button>
+              } @else {
+                <div class="rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-xs text-amber-100 leading-relaxed">
+                  Respaldo válido del {{ recoveryBackupDate() }}. Al continuar se <b>borran los datos cifrados con el PIN olvidado</b>
+                  en este equipo y se cargan los del respaldo; los movimientos posteriores al respaldo no se recuperan.
+                </div>
+                <label class="block space-y-1.5">
+                  <span class="block text-xs font-semibold text-slate-300">Administrador</span>
+                  <select [ngModel]="recoveryAdminId()" (ngModelChange)="recoveryAdminId.set($event)"
+                    class="h-10 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm text-white">
+                    @for (a of recoveryAdmins(); track a.id) {
+                      <option [value]="a.id">{{ a.name }}</option>
+                    }
+                  </select>
+                </label>
+                <label class="block space-y-1.5">
+                  <span class="block text-xs font-semibold text-slate-300">PIN nuevo</span>
+                  <input type="password" inputmode="numeric" autocomplete="off" [ngModel]="storagePin()" (ngModelChange)="storagePin.set($event)"
+                    data-testid="storage-recovery-new-pin"
+                    class="h-11 w-full text-center text-xl tracking-widest font-mono rounded-xl border border-slate-700 bg-slate-800 px-3 font-bold text-white" />
+                </label>
+                <label class="block space-y-1.5">
+                  <span class="block text-xs font-semibold text-slate-300">Repite el PIN nuevo</span>
+                  <input type="password" inputmode="numeric" autocomplete="off" [ngModel]="storagePinConfirm()" (ngModelChange)="storagePinConfirm.set($event)"
+                    class="h-11 w-full text-center text-xl tracking-widest font-mono rounded-xl border border-slate-700 bg-slate-800 px-3 font-bold text-white" />
+                </label>
+                <button type="button" [disabled]="storageBusy()" (click)="completeRecovery()" data-testid="btn-storage-recovery-complete"
+                  class="h-11 w-full rounded-xl bg-rose-500 hover:bg-rose-400 disabled:opacity-60 text-white font-bold text-sm">
+                  {{ storageBusy() ? 'Recuperando…' : 'Borrar datos bloqueados y restaurar respaldo' }}
+                </button>
+              }
+              <button type="button" (click)="closeRecovery()" class="w-full text-xs font-semibold text-slate-300 hover:text-white underline underline-offset-2">
+                Volver
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+    } @else if (!inv.isHydrated()) {
       <!-- Pantalla de carga durante la hidratación desde IndexedDB -->
       <div class="h-screen w-screen flex flex-col items-center justify-center bg-brand-800 text-white select-none p-8" data-testid="hydration-loading-screen">
         <div class="h-14 w-14 rounded-2xl bg-amber-400 text-slate-900 grid place-items-center shadow-xs mb-4">
@@ -243,6 +393,119 @@ export class App implements OnInit, OnDestroy {
   protected readonly isSubmittingUnlock = signal<boolean>(false);
 
   protected readonly activeUsersList = () => this.inv.users().filter((u) => u.isActive);
+
+  // ---------- Bloque K: desbloqueo del cifrado en reposo y recuperación por respaldo ----------
+  protected readonly storagePin = signal<string>('');
+  protected readonly storagePinConfirm = signal<string>('');
+  protected readonly storageError = signal<string>('');
+  protected readonly storageInfo = signal<string>('');
+  protected readonly storageBusy = signal<boolean>(false);
+  protected readonly recoveryMode = signal<boolean>(false);
+  protected readonly recoveryPassphrase = signal<string>('');
+  protected readonly recoveryServerFile = signal<string>('');
+  protected readonly recoveryAdmins = signal<Array<{ id: string; name: string }>>([]);
+  protected readonly recoveryAdminId = signal<string>('');
+  protected readonly recoveryBackupDate = signal<string>('');
+  private recoveryFileBytes: Uint8Array | null = null;
+
+  async submitStoragePin(): Promise<void> {
+    if (this.storageBusy()) return;
+    this.storageError.set('');
+    this.storageInfo.set('');
+    const pin = this.storagePin().trim();
+    if (!pin) {
+      this.storageError.set('Ingresa el PIN de administrador.');
+      return;
+    }
+    this.storageBusy.set(true);
+    try {
+      const status = this.inv.storageCryptoStatus();
+      const res =
+        status === 'locked'
+          ? await this.inv.unlockEncryptedStorage(pin)
+          : await this.inv.setupEncryptedStorage(pin, status === 'setup-new' ? this.storagePinConfirm() : undefined);
+      if (!res.ok) {
+        this.storageError.set(res.message);
+      } else {
+        this.storagePin.set('');
+        this.storagePinConfirm.set('');
+      }
+    } finally {
+      this.storageBusy.set(false);
+    }
+  }
+
+  openRecovery(): void {
+    this.storageError.set('');
+    this.storageInfo.set('');
+    this.storagePin.set('');
+    this.storagePinConfirm.set('');
+    this.recoveryMode.set(true);
+  }
+
+  closeRecovery(): void {
+    this.inv.cancelEncryptedStorageRecovery();
+    this.recoveryMode.set(false);
+    this.recoveryAdmins.set([]);
+    this.recoveryPassphrase.set('');
+    this.recoveryServerFile.set('');
+    this.recoveryFileBytes = null;
+    this.storageError.set('');
+  }
+
+  async onRecoveryFile(event: Event): Promise<void> {
+    const file = (event.target as HTMLInputElement)?.files?.[0];
+    this.recoveryFileBytes = file ? new Uint8Array(await file.arrayBuffer()) : null;
+  }
+
+  async verifyRecoveryBackup(): Promise<void> {
+    this.storageError.set('');
+    if (!this.recoveryFileBytes && !this.recoveryServerFile()) {
+      this.storageError.set('Elige un archivo .bak o un respaldo del servidor.');
+      return;
+    }
+    this.storageBusy.set(true);
+    try {
+      const res = await this.inv.beginEncryptedStorageRecovery({
+        passphrase: this.recoveryPassphrase(),
+        bakBytes: this.recoveryFileBytes ?? undefined,
+        serverFilename: this.recoveryFileBytes ? undefined : this.recoveryServerFile(),
+      });
+      if (!res.ok || !res.admins) {
+        this.storageError.set(res.message);
+        return;
+      }
+      this.recoveryAdmins.set(res.admins);
+      this.recoveryAdminId.set(res.admins[0].id);
+      this.recoveryBackupDate.set(res.backupTimestamp ? new Date(res.backupTimestamp).toLocaleString('es-MX') : '');
+      this.storageInfo.set(res.message);
+    } finally {
+      this.storageBusy.set(false);
+    }
+  }
+
+  async completeRecovery(): Promise<void> {
+    this.storageError.set('');
+    this.storageBusy.set(true);
+    try {
+      const res = await this.inv.completeEncryptedStorageRecovery(
+        this.recoveryAdminId(),
+        this.storagePin(),
+        this.storagePinConfirm()
+      );
+      if (!res.ok) {
+        this.storageError.set(res.message);
+        return;
+      }
+      this.storagePin.set('');
+      this.storagePinConfirm.set('');
+      this.recoveryMode.set(false);
+      this.recoveryAdmins.set([]);
+      this.recoveryFileBytes = null;
+    } finally {
+      this.storageBusy.set(false);
+    }
+  }
 
   ngOnInit(): void {
     this.inv.initInactivityListener();

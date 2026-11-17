@@ -142,9 +142,37 @@ import {
   validateAdminSuicideProtection,
   updateUserPin,
   buildDefaultDemoUsers,
+  computePinHash as computeUserPinHash,
+  generateSalt as generateUserPinSalt,
+  validatePinPolicy as validateUserPinPolicy,
+  DEFAULT_PIN_ITERATIONS as USER_PIN_ITERATIONS,
   type UserPinVerifyResult,
   type SupervisorPinVerifyResult,
 } from '../domain/auth';
+import {
+  EncryptedStorageAdapter,
+  findEncryptedLayer,
+} from '../domain/encrypted-storage';
+import {
+  buildDefaultPrivacyNoticeConfig,
+  publishPrivacyNoticeVersion,
+  getCurrentNoticeVersion,
+  createConsentRecord,
+  appendConsentToCustomer,
+  appendArcoRequest,
+  registerOpposition,
+  getConsentStatus,
+  isCustomerAnonymized,
+  buildCustomerDataExport,
+  anonymizeCustomerData,
+  type PrivacyNoticeConfig,
+  type ConsentMethod,
+  type ConsentStatus,
+  type OppositionScope,
+  type AnonymizationReport,
+  type ArcoRight,
+  type CustomerPrivacyRecord,
+} from '../domain/privacy';
 import {
   type BusinessSettings,
   DEFAULT_BUSINESS_SETTINGS,
@@ -367,7 +395,18 @@ export interface CreditCustomer {
   isActive?: boolean;
   debts?: CreditDebtItem[];
   payments?: CreditPaymentRecord[];
+  /** Bloque K: consentimientos, solicitudes ARCO, oposiciones y anonimización. */
+  privacy?: CustomerPrivacyRecord;
 }
+
+/** Bloque K: estado del cifrado en reposo del almacenamiento local. */
+export type StorageCryptoStatus =
+  | 'checking'
+  | 'disabled'
+  | 'setup-migrate'
+  | 'setup-new'
+  | 'locked'
+  | 'unlocked';
 
 export interface InternalConsumptionRecord {
   id: string;
@@ -1715,6 +1754,8 @@ export class MockInventoryService implements OnDestroy {
       this.trackUsageActivity({ user: result.updatedUser.name });
       this.isSessionLocked.set(false);
       this.resetInactivityTimer();
+      // Bloque K: un administrador sin llave de cifrado (p. ej. recién promovido) la obtiene aquí.
+      await this.syncEncryptionKeySlots({ userId: result.updatedUser.id, pin });
 
       await this.enqueueKardexOperation(async () => {
         const lastEntry = this.kardex()[0];
@@ -1778,6 +1819,7 @@ export class MockInventoryService implements OnDestroy {
     }
 
     this.users.update((list) => [...list, created.user!]);
+    await this.syncEncryptionKeySlots({ userId: created.user.id, pin: params.pin });
 
     this.appendSecurityAuditEntry(
       'USER_CREATED',
@@ -1821,6 +1863,7 @@ export class MockInventoryService implements OnDestroy {
     if (this.currentUser()?.id === userId) {
       this.currentUser.set(updatedUser);
     }
+    await this.syncEncryptionKeySlots();
 
     this.appendSecurityAuditEntry(
       'USER_UPDATED',
@@ -1857,6 +1900,7 @@ export class MockInventoryService implements OnDestroy {
     };
 
     this.users.update((list) => list.map((u) => (u.id === userId ? updatedUser : u)));
+    await this.syncEncryptionKeySlots();
 
     this.appendSecurityAuditEntry(
       'USER_DEACTIVATED',
@@ -1887,6 +1931,7 @@ export class MockInventoryService implements OnDestroy {
     }
 
     this.users.update((list) => list.filter((u) => u.id !== userId));
+    await this.syncEncryptionKeySlots();
 
     this.appendSecurityAuditEntry(
       'USER_DEACTIVATED',
@@ -1919,6 +1964,8 @@ export class MockInventoryService implements OnDestroy {
     if (this.currentUser()?.id === userId) {
       this.currentUser.set(result.updatedUser);
     }
+    // Bloque K: el PIN nuevo del administrador re-envuelve su llave de cifrado (no se re-cifran los datos).
+    const slotError = await this.syncEncryptionKeySlots({ userId, pin: newPin });
 
     if (user.role === 'ADMINISTRADOR') {
       try {
@@ -1936,6 +1983,12 @@ export class MockInventoryService implements OnDestroy {
     );
 
     await this.flushSave();
+    if (slotError) {
+      return {
+        ok: true,
+        message: `PIN actualizado, pero no se pudo actualizar la llave de cifrado (${slotError}). Los datos siguen abriendo con el PIN anterior.`,
+      };
+    }
     return { ok: true, message: 'PIN actualizado correctamente.' };
   }
 
@@ -2047,7 +2100,12 @@ export class MockInventoryService implements OnDestroy {
   }
 
   // ---------- Persistencia de Estado en IndexedDB, Bloqueo de Escritura e Hidratación (Bloque D) ----------
-  storageAdapter: StateStorageAdapter = getDefaultStorageAdapter();
+  /** Bloque K: capa de cifrado en reposo que envuelve a IndexedDB (null en Node/CLI). */
+  storageEncryption: EncryptedStorageAdapter | null = null;
+  storageAdapter: StateStorageAdapter = getDefaultStorageAdapter((local) => {
+    this.storageEncryption = new EncryptedStorageAdapter(local);
+    return this.storageEncryption;
+  });
   private readonly storageSaver = new DebouncedStorageSaver(DEFAULT_DEBOUNCE_MS);
 
   readonly isHydrated = signal<boolean>(false);
@@ -2437,6 +2495,7 @@ export class MockInventoryService implements OnDestroy {
       shiftCloseRecords: this.shiftCloseRecords(),
       isShiftOpen: this.isShiftOpen(),
       currentShiftId: this.currentShiftId(),
+      ...(this.privacyNotice() ? { privacyNotice: this.privacyNotice()! } : {}),
     };
   }
 
@@ -2683,6 +2742,9 @@ export class MockInventoryService implements OnDestroy {
         ? structuredClone(stateToValidate.satisfactionSurveys)
         : []
     );
+    this.privacyNotice.set(
+      stateToValidate.privacyNotice ? structuredClone(stateToValidate.privacyNotice) : null
+    );
   }
 
   private async savePreRestoreSnapshot(): Promise<string> {
@@ -2927,11 +2989,33 @@ export class MockInventoryService implements OnDestroy {
   async restorePersistedState(): Promise<{
     success: boolean;
     corrupted?: boolean;
+    locked?: boolean;
     reason?: string;
     backupKey?: string;
     affectedSkus?: string[];
   }> {
     try {
+      // Bloque K: si el almacenamiento local está cifrado, primero hay que desbloquearlo (o
+      // configurarlo y migrar el dato en claro). Mientras tanto la app no se hidrata ni escribe.
+      const adapterAtStart = this.storageAdapter;
+      const encryption = findEncryptedLayer(adapterAtStart);
+      if (encryption) {
+        const gate = await this.evaluateStorageEncryptionGate(encryption);
+        if (this.storageAdapter !== adapterAtStart) {
+          // El adaptador se reemplazó mientras se consultaba (p. ej. en pruebas): esta lectura ya no aplica.
+          return { success: false, reason: 'El adaptador de almacenamiento cambió durante la carga.' };
+        }
+        this.pendingSetupAdmins = gate.setupAdmins;
+        this.storageCryptoStatus.set(gate.status);
+        this.storageCryptoMessage.set(gate.message);
+        if (gate.status !== 'unlocked') {
+          return { success: false, locked: true, reason: gate.message ?? undefined };
+        }
+        this.storageCryptoSlotCount.set((await encryption.listSlots()).length);
+      } else {
+        this.storageCryptoStatus.set('disabled');
+      }
+
       let raw = await this.storageAdapter.load(STATE_STORAGE_KEY);
       let loadedFromLegacy = false;
       let legacyKeyLoaded: string | null = null;
@@ -3091,6 +3175,7 @@ export class MockInventoryService implements OnDestroy {
         ? structuredClone(stateToValidate.satisfactionSurveys)
         : []
     );
+      this.privacyNotice.set(stateToValidate.privacyNotice ? structuredClone(stateToValidate.privacyNotice) : null);
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
@@ -3966,6 +4051,13 @@ export class MockInventoryService implements OnDestroy {
     if (!customer) {
       return { ok: false, message: 'Selecciona un cliente para cargar el fiado.', total };
     }
+    if (isCustomerAnonymized(customer)) {
+      return {
+        ok: false,
+        message: 'Este cliente ejerció su derecho de cancelación (datos anonimizados): solo puede recibir abonos, no nuevas ventas a crédito.',
+        total,
+      };
+    }
 
     const plannedFolio = options?.folio || peekNextSaleFolio(this.salesHistory().length);
     const saleResult = applyCreditSalePure(customer, total, new Date(), {
@@ -4014,17 +4106,21 @@ export class MockInventoryService implements OnDestroy {
             : tier === 'MEDIO_MAYOREO'
               ? ' [MEDIO_MAYOREO]'
               : '';
+        // Bloque K: el Kardex es inmutable, así que solo guarda el ID del cliente (nunca su nombre);
+        // `customerId` no forma parte del hash y permite mostrar el nombre vigente en pantalla.
         const deduction = deductStock(p, soldItem.qty, {
           saleType: 'VENTA_FIADO',
           usuario: currentUser,
-          referencia: `Fiado Cliente ${customer.name}${tierTag}`,
+          referencia: `Fiado Cliente ${customer.id}${tierTag}`,
           amount: soldItem.subtotal,
-          description: `Fiado a ${customer.name}: ${soldItem.qty} ${p.saleUnit} de ${p.name}${tierTag}`,
+          description: `Fiado a cliente ${customer.id}: ${soldItem.qty} ${p.saleUnit} de ${p.name}${tierTag}`,
           previousHash: currentHash,
         });
 
         for (const entry of deduction.kardexEntries) {
-          newKardexEntries.push(entry);
+          const linkedEntry =
+            entry.type === 'VENTA_FIADO' ? ({ ...entry, customerId: customer.id } as KardexEntry) : entry;
+          newKardexEntries.push(linkedEntry);
           currentHash = entry.entryHash;
         }
 
@@ -4420,22 +4516,26 @@ export class MockInventoryService implements OnDestroy {
     }
 
     const previousHash = this.kardex()[0]?.entryHash || 'GENESIS';
-    const entry = createKardexEntry({
-      type: 'ABONO_FIADO',
-      producto: { sku: customer.id, name: customer.name },
-      cantidad: 0,
-      quantity: 0,
-      saldoAnterior: customer.currentBalance,
-      saldoResultante: paymentResult.updatedCustomer.currentBalance,
-      stockAfter: paymentResult.updatedCustomer.currentBalance,
-      usuario: this.activeUser(),
-      referencia: `Abono deudor (${resolvedMethod}): ${customer.name}`,
-      amount: applied,
-      amountCents: Math.round(applied * 100),
-      description: isCash
-        ? `Abono en efectivo recibido de ${customer.name}`
-        : `Abono por ${resolvedMethod.toLowerCase()} recibido de ${customer.name} (no entra al cajón de efectivo)`,
-    }, previousHash);
+    // Bloque K: solo el ID del cliente entra al Kardex inmutable (ver processCreditSale).
+    const entry: KardexEntry = {
+      ...createKardexEntry({
+        type: 'ABONO_FIADO',
+        producto: { sku: customer.id, name: `Cliente ${customer.id}` },
+        cantidad: 0,
+        quantity: 0,
+        saldoAnterior: customer.currentBalance,
+        saldoResultante: paymentResult.updatedCustomer.currentBalance,
+        stockAfter: paymentResult.updatedCustomer.currentBalance,
+        usuario: this.activeUser(),
+        referencia: `Abono deudor (${resolvedMethod}): ${customer.id}`,
+        amount: applied,
+        amountCents: Math.round(applied * 100),
+        description: isCash
+          ? `Abono en efectivo recibido del cliente ${customer.id}`
+          : `Abono por ${resolvedMethod.toLowerCase()} recibido del cliente ${customer.id} (no entra al cajón de efectivo)`,
+      }, previousHash),
+      customerId: customer.id,
+    } as KardexEntry;
 
     this.kardex.update((entries) => [entry, ...entries]);
 
@@ -4763,7 +4863,8 @@ export class MockInventoryService implements OnDestroy {
 
   createCustomer(
     input: CustomerInput,
-    confirmDuplicate = false
+    confirmDuplicate = false,
+    consent?: { accepted: boolean; method?: ConsentMethod; note?: string }
   ): {
     ok: boolean;
     message: string;
@@ -4773,6 +4874,14 @@ export class MockInventoryService implements OnDestroy {
   } {
     if (!this.assertWritable()) {
       return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    // Bloque K: si la pantalla pide el consentimiento, no se registra al cliente sin él.
+    const currentNotice = getCurrentNoticeVersion(this.privacyNotice());
+    if (consent && !consent.accepted) {
+      return { ok: false, message: 'Antes de registrar al cliente, léele el aviso de privacidad y marca que lo aceptó.' };
+    }
+    if (consent?.accepted && !currentNotice) {
+      return { ok: false, message: 'No hay un aviso de privacidad publicado. Configúralo en Ajustes → Privacidad.' };
     }
     const validation = validateCustomerInput(input);
     if (!validation.valid || !validation.normalized) {
@@ -4796,7 +4905,7 @@ export class MockInventoryService implements OnDestroy {
     const todayStr = formatLocalDate(new Date());
     const dueDateStr = calculateCustomerDueDate(todayStr, norm.creditDays);
 
-    const newCustomer: CreditCustomer = {
+    let newCustomer: CreditCustomer = {
       id: newId,
       name: norm.name,
       alias: norm.alias,
@@ -4811,10 +4920,28 @@ export class MockInventoryService implements OnDestroy {
       debts: [],
       payments: [],
     };
+    if (consent?.accepted && currentNotice) {
+      newCustomer = appendConsentToCustomer(
+        newCustomer,
+        createConsentRecord({
+          notice: currentNotice,
+          collectedBy: this.activeUser(),
+          collectedByUserId: this.currentUser()?.id,
+          method: consent.method,
+          note: consent.note,
+        })
+      );
+    }
 
     this.creditCustomers.update((list) => [newCustomer, ...list]);
     void this.flushSave();
-    return { ok: true, message: 'Cliente registrado exitosamente.', customer: newCustomer };
+    return {
+      ok: true,
+      message: consent?.accepted
+        ? `Cliente registrado con consentimiento del aviso de privacidad (versión ${currentNotice!.version}).`
+        : 'Cliente registrado exitosamente.',
+      customer: newCustomer,
+    };
   }
 
   async updateCustomerWithPinCheck(
@@ -4835,6 +4962,9 @@ export class MockInventoryService implements OnDestroy {
     const existing = this.creditCustomers().find((c) => c.id === customerId);
     if (!existing) {
       return { ok: false, message: 'Cliente no encontrado.' };
+    }
+    if (isCustomerAnonymized(existing)) {
+      return { ok: false, message: 'Cliente anonimizado: sus datos de identificación ya no se pueden editar.' };
     }
 
     const needsPin = requiresPinForCreditTermsChange(existing, {
@@ -4915,6 +5045,671 @@ export class MockInventoryService implements OnDestroy {
 
   getCustomerDetail(customerId: string): CreditCustomer | undefined {
     return this.creditCustomers().find((c) => c.id === customerId);
+  }
+
+  // =====================================================================
+  //  BLOQUE K: CIFRADO EN REPOSO Y DATOS PERSONALES (AVISO, CONSENTIMIENTO, ARCO)
+  // =====================================================================
+
+  /** 'checking' mientras se consulta; 'locked' / 'setup-*' detienen la hidratación hasta ingresar el PIN. */
+  readonly storageCryptoStatus = signal<StorageCryptoStatus>('checking');
+  readonly storageCryptoMessage = signal<string | null>(null);
+  readonly storageCryptoSlotCount = signal<number>(0);
+  readonly storageNeedsUnlock = computed(() => {
+    const s = this.storageCryptoStatus();
+    return s === 'locked' || s === 'setup-migrate' || s === 'setup-new';
+  });
+  readonly privacyNotice = signal<PrivacyNoticeConfig | null>(null);
+  readonly currentPrivacyNoticeVersion = computed(() => getCurrentNoticeVersion(this.privacyNotice()));
+  /** IDs de movimientos históricos del Kardex que se ocultan en pantalla por una cancelación ARCO. */
+  readonly redactedKardexEntryOwners = computed(() => {
+    const owners = new Map<string, string>();
+    for (const c of this.creditCustomers()) {
+      for (const id of c.privacy?.retainedKardexEntryIds || []) owners.set(id, c.name);
+    }
+    return owners;
+  });
+  readonly customersPendingConsent = computed(() =>
+    this.creditCustomers().filter((c) => {
+      const status = getConsentStatus(c, this.privacyNotice());
+      return c.isActive !== false && (status === 'SIN_CONSENTIMIENTO' || status === 'VERSION_ANTERIOR');
+    })
+  );
+
+  private pendingSetupAdmins: AppUser[] = [];
+  private pendingRecoveryState: PersistedAppState | null = null;
+  private pendingRecoveryPassphrase: string | null = null;
+  private static readonly STORAGE_UNLOCK_THROTTLE_KEY = 'binnitech_storage_unlock_state_v1';
+  private static readonly STORAGE_UNLOCK_MAX_ATTEMPTS = 5;
+
+  /** Decide qué necesita el almacenamiento cifrado antes de hidratar (no modifica señales). */
+  private async evaluateStorageEncryptionGate(enc: EncryptedStorageAdapter): Promise<{
+    status: StorageCryptoStatus;
+    message: string | null;
+    setupAdmins: AppUser[];
+  }> {
+    const status = await enc.getStatus();
+    if (status === 'unlocked') return { status: 'unlocked', message: null, setupAdmins: [] };
+    if (status === 'locked') {
+      return {
+        status: 'locked',
+        message: 'Los datos de la tienda están cifrados en este equipo. Ingresa el PIN de un administrador para abrirlos.',
+        setupAdmins: [],
+      };
+    }
+    const raw = await this.peekStoredStateForEncryptionSetup();
+    const storedUsers = raw ? ((migrateState(raw).state.users || []) as AppUser[]) : [];
+    const admins = storedUsers.filter((u) => u && u.isActive !== false && u.role === 'ADMINISTRADOR' && u.pinHash);
+    if (raw && admins.length > 0) {
+      return {
+        status: 'setup-migrate',
+        message:
+          'Vamos a cifrar los datos que ya están guardados en este equipo. Ingresa el PIN actual de un administrador: ' +
+          'a partir de ahora se pedirá al abrir la app.',
+        setupAdmins: admins,
+      };
+    }
+    return {
+      status: 'setup-new',
+      message:
+        'Primera vez en este equipo: crea el PIN del administrador. Con él se cifran los datos de la tienda y se ' +
+        'pedirá cada vez que se abra la app.',
+      setupAdmins: [],
+    };
+  }
+
+  private async peekStoredStateForEncryptionSetup(): Promise<any | null> {
+    const keys = [
+      STATE_STORAGE_KEY,
+      LEGACY_STATE_STORAGE_KEY_V5,
+      LEGACY_STATE_STORAGE_KEY_V4,
+      LEGACY_STATE_STORAGE_KEY_V3,
+      LEGACY_STATE_STORAGE_KEY_V2,
+      LEGACY_STATE_STORAGE_KEY_V1,
+    ];
+    for (const key of keys) {
+      try {
+        const raw = await this.storageAdapter.load(key);
+        if (raw) return raw;
+      } catch {
+        // Clave ilegible: se intenta con la siguiente.
+      }
+    }
+    return null;
+  }
+
+  private readStorageUnlockThrottle(): { failures: number; lockedUntil: number; lockouts: number } {
+    try {
+      const raw = globalThis.localStorage?.getItem(MockInventoryService.STORAGE_UNLOCK_THROTTLE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return {
+        failures: Number(parsed?.failures) || 0,
+        lockedUntil: Number(parsed?.lockedUntil) || 0,
+        lockouts: Number(parsed?.lockouts) || 0,
+      };
+    } catch {
+      return { failures: 0, lockedUntil: 0, lockouts: 0 };
+    }
+  }
+
+  private writeStorageUnlockThrottle(state: { failures: number; lockedUntil: number; lockouts: number }): void {
+    try {
+      globalThis.localStorage?.setItem(MockInventoryService.STORAGE_UNLOCK_THROTTLE_KEY, JSON.stringify(state));
+    } catch {
+      // Sin localStorage el límite de intentos solo dura la sesión.
+    }
+  }
+
+  private checkStorageUnlockThrottle(now = Date.now()): { allowed: boolean; message: string } {
+    const state = this.readStorageUnlockThrottle();
+    if (state.lockedUntil > now) {
+      const secs = Math.ceil((state.lockedUntil - now) / 1000);
+      return { allowed: false, message: `Demasiados intentos. Espera ${secs} s antes de volver a intentar.` };
+    }
+    return { allowed: true, message: '' };
+  }
+
+  private registerStorageUnlockFailure(now = Date.now()): string {
+    const state = this.readStorageUnlockThrottle();
+    const failures = state.failures + 1;
+    if (failures >= MockInventoryService.STORAGE_UNLOCK_MAX_ATTEMPTS) {
+      const lockouts = state.lockouts + 1;
+      const durationMs = lockouts === 1 ? 30_000 : 300_000;
+      this.writeStorageUnlockThrottle({ failures: 0, lockedUntil: now + durationMs, lockouts });
+      return `Se bloquearon los intentos por ${lockouts === 1 ? '30 segundos' : '5 minutos'}.`;
+    }
+    this.writeStorageUnlockThrottle({ ...state, failures });
+    return `Intentos restantes: ${MockInventoryService.STORAGE_UNLOCK_MAX_ATTEMPTS - failures}.`;
+  }
+
+  private resetStorageUnlockThrottle(): void {
+    this.writeStorageUnlockThrottle({ failures: 0, lockedUntil: 0, lockouts: 0 });
+  }
+
+  /** Desbloqueo al iniciar: deriva la llave con el PIN de administrador y carga los datos. */
+  async unlockEncryptedStorage(pin: string): Promise<{ ok: boolean; message: string }> {
+    const enc = findEncryptedLayer(this.storageAdapter);
+    if (!enc) return { ok: true, message: 'El almacenamiento actual no está cifrado.' };
+    if (this.storageCryptoStatus() !== 'locked') {
+      return { ok: false, message: 'No hay datos cifrados pendientes de desbloquear.' };
+    }
+    const throttle = this.checkStorageUnlockThrottle();
+    if (!throttle.allowed) return { ok: false, message: throttle.message };
+
+    const res = await enc.unlock(pin);
+    if (!res.ok) {
+      return { ok: false, message: `${res.message} ${this.registerStorageUnlockFailure()}`.trim() };
+    }
+    this.resetStorageUnlockThrottle();
+    // Solo la ventana con permiso de escritura termina de cifrar datos heredados.
+    if (this.assertWritable()) {
+      try {
+        await enc.migratePlaintext();
+      } catch (err) {
+        console.warn('[Bloque K] No se pudo terminar de cifrar datos heredados:', err);
+      }
+    }
+    this.storageCryptoStatus.set('unlocked');
+    this.storageCryptoMessage.set(null);
+    const restored = await this.restorePersistedState();
+    return {
+      ok: true,
+      message: restored.success ? 'Datos desbloqueados.' : restored.reason || 'Datos desbloqueados con advertencias.',
+    };
+  }
+
+  /**
+   * Primera configuración del cifrado.
+   * - 'setup-migrate': verifica el PIN contra los administradores ya guardados y cifra el dato existente.
+   * - 'setup-new': instalación nueva; define el PIN del administrador (reemplaza el PIN de demostración).
+   */
+  async setupEncryptedStorage(pin: string, confirmPin?: string): Promise<{ ok: boolean; message: string }> {
+    const enc = findEncryptedLayer(this.storageAdapter);
+    if (!enc) return { ok: false, message: 'El almacenamiento actual no admite cifrado.' };
+    if (!this.assertWritable()) {
+      return { ok: false, message: 'Configura el cifrado desde la ventana principal de la app (esta está en solo lectura).' };
+    }
+    const mode = this.storageCryptoStatus();
+    const cleanPin = String(pin ?? '').trim();
+
+    if (mode === 'setup-new') {
+      const policy = validateUserPinPolicy(cleanPin);
+      if (!policy.valid) return { ok: false, message: policy.error || 'El PIN no cumple la política de seguridad.' };
+      if (confirmPin !== undefined && cleanPin !== String(confirmPin).trim()) {
+        return { ok: false, message: 'Los dos PIN no coinciden.' };
+      }
+      const admin = this.users().find((u) => u.isActive && u.role === 'ADMINISTRADOR');
+      if (!admin) return { ok: false, message: 'No hay un usuario administrador al cual asignar el PIN.' };
+      const salt = generateUserPinSalt(16);
+      const iterations = admin.iterations || USER_PIN_ITERATIONS;
+      const updatedAdmin: AppUser = {
+        ...admin,
+        salt,
+        iterations,
+        pinHash: await computeUserPinHash(cleanPin, salt, iterations),
+        failedAttempts: 0,
+        lockedUntil: null,
+        updatedAt: new Date().toISOString(),
+      };
+      await enc.initialize(admin.id, cleanPin, salt);
+      this.users.update((list) => list.map((u) => (u.id === admin.id ? updatedAdmin : u)));
+      if (this.currentUser()?.id === admin.id) this.currentUser.set(updatedAdmin);
+      this.storageCryptoStatus.set('unlocked');
+      this.storageCryptoMessage.set(null);
+      await this.restorePersistedState();
+      this.appendSecurityAuditEntry(
+        'STORAGE_ENCRYPTION_CONFIGURED',
+        `Cifrado en reposo activado en este equipo con el PIN nuevo del administrador "${updatedAdmin.name}".`,
+        { slotId: admin.id, mode: 'INSTALACION_NUEVA' },
+        updatedAdmin.name
+      );
+      await this.flushSave();
+      return { ok: true, message: 'PIN de administrador creado. Los datos de la tienda ya se guardan cifrados.' };
+    }
+
+    if (mode === 'setup-migrate') {
+      const throttle = this.checkStorageUnlockThrottle();
+      if (!throttle.allowed) return { ok: false, message: throttle.message };
+      let matched: AppUser | null = null;
+      for (const admin of this.pendingSetupAdmins) {
+        const hash = await computeUserPinHash(cleanPin, admin.salt, admin.iterations || USER_PIN_ITERATIONS);
+        if (hash === admin.pinHash) {
+          matched = admin;
+          break;
+        }
+      }
+      if (!matched) {
+        return {
+          ok: false,
+          message: `El PIN no corresponde a ningún administrador activo. ${this.registerStorageUnlockFailure()}`.trim(),
+        };
+      }
+      this.resetStorageUnlockThrottle();
+      const report = await enc.initialize(matched.id, cleanPin, matched.salt);
+      this.storageCryptoStatus.set('unlocked');
+      this.storageCryptoMessage.set(null);
+      this.pendingSetupAdmins = [];
+      await this.restorePersistedState();
+      this.appendSecurityAuditEntry(
+        'STORAGE_ENCRYPTION_CONFIGURED',
+        `Cifrado en reposo activado: ${report.migratedKeys.length} registro(s) existente(s) migrado(s) a formato cifrado.`,
+        { slotId: matched.id, mode: 'MIGRACION', migratedKeys: report.migratedKeys.length },
+        matched.name
+      );
+      await this.flushSave();
+      return {
+        ok: true,
+        message: `Listo: ${report.migratedKeys.length} registro(s) se cifraron. Desde ahora se pedirá el PIN al abrir la app.`,
+      };
+    }
+
+    return { ok: false, message: 'El cifrado ya está configurado en este equipo.' };
+  }
+
+  /**
+   * Mantiene una llave de cifrado por cada administrador activo: agrega/actualiza la del usuario
+   * indicado (al crear, cambiar PIN o iniciar sesión) y quita las de quienes ya no son administradores.
+   * Devuelve un mensaje de error o null.
+   */
+  private async syncEncryptionKeySlots(credential?: { userId: string; pin: string }): Promise<string | null> {
+    const enc = findEncryptedLayer(this.storageAdapter);
+    if (!enc || !enc.isUnlocked()) return null;
+    try {
+      const admins = this.users().filter((u) => u.isActive && u.role === 'ADMINISTRADOR');
+      let slots = await enc.listSlots();
+      if (credential) {
+        const admin = admins.find((u) => u.id === credential.userId);
+        const slot = slots.find((s) => s.slotId === credential.userId);
+        if (admin && (!slot || slot.userPinSalt !== admin.salt)) {
+          await enc.setSlot(admin.id, credential.pin, admin.salt);
+          slots = await enc.listSlots();
+        }
+      }
+      const adminIds = new Set(admins.map((u) => u.id));
+      if (slots.some((s) => adminIds.has(s.slotId))) {
+        for (const slot of slots) {
+          if (!adminIds.has(slot.slotId)) await enc.removeSlot(slot.slotId);
+        }
+      }
+      this.storageCryptoSlotCount.set((await enc.listSlots()).length);
+      return null;
+    } catch (err: any) {
+      console.warn('[Bloque K] No se pudieron sincronizar las llaves de cifrado:', err);
+      return err?.message || String(err);
+    }
+  }
+
+  /**
+   * Olvido del PIN, paso 1: descifra y valida un respaldo .bak (archivo o servidor local) con la
+   * frase de respaldo. No toca nada todavía.
+   */
+  async beginEncryptedStorageRecovery(input: {
+    passphrase: string;
+    bakBytes?: Uint8Array;
+    serverFilename?: string;
+  }): Promise<{ ok: boolean; message: string; admins?: Array<{ id: string; name: string }>; backupTimestamp?: string }> {
+    const enc = findEncryptedLayer(this.storageAdapter);
+    if (!enc) return { ok: false, message: 'El almacenamiento actual no está cifrado.' };
+    const status = this.storageCryptoStatus();
+    if (status !== 'locked' && status !== 'setup-migrate') {
+      return { ok: false, message: 'La recuperación por respaldo solo aplica cuando los datos están bloqueados.' };
+    }
+    if (!validateBackupPassphrase(input.passphrase).valid) {
+      return { ok: false, message: 'Frase de respaldo inválida (mínimo 8 caracteres).' };
+    }
+    try {
+      let rawState: any;
+      if (input.bakBytes) {
+        const plain = await decryptBackupBytes(input.bakBytes, input.passphrase);
+        rawState = JSON.parse(new TextDecoder().decode(plain));
+      } else if (input.serverFilename) {
+        rawState = await this.backupAdapter.restoreBackup(input.passphrase, input.serverFilename);
+      } else {
+        return { ok: false, message: 'Elige un archivo .bak o un respaldo del servidor local.' };
+      }
+      const state = migrateState(rawState).state;
+      const validation = validateStoredState(
+        state,
+        (k) => verifyKardexChain(k, 'newest-first'),
+        (prods, k) => verifyProductContinuity(prods, k, 'newest-first')
+      );
+      if (!validation.valid) {
+        return { ok: false, message: `El respaldo presenta daño de integridad (${validation.reason}) y no se puede usar.` };
+      }
+      const admins = (state.users || []).filter((u) => u.isActive && u.role === 'ADMINISTRADOR');
+      if (admins.length === 0) {
+        return { ok: false, message: 'El respaldo no contiene ningún administrador activo.' };
+      }
+      this.pendingRecoveryState = state;
+      this.pendingRecoveryPassphrase = input.passphrase;
+      return {
+        ok: true,
+        message: 'Respaldo verificado. Elige al administrador y define su PIN nuevo.',
+        admins: admins.map((a) => ({ id: a.id, name: a.name })),
+        backupTimestamp: state.timestamp,
+      };
+    } catch (err: any) {
+      const forbidden = err instanceof BackupUnauthorizedError || err?.status === 403;
+      return {
+        ok: false,
+        message: forbidden
+          ? 'Frase de respaldo incorrecta o archivo alterado.'
+          : err?.message || 'No se pudo leer el respaldo.',
+      };
+    }
+  }
+
+  cancelEncryptedStorageRecovery(): void {
+    this.pendingRecoveryState = null;
+    this.pendingRecoveryPassphrase = null;
+  }
+
+  /**
+   * Olvido del PIN, paso 2: borra lo cifrado con el PIN perdido (irrecuperable), crea un almacén
+   * de llaves nuevo con el PIN nuevo del administrador elegido y aplica el respaldo verificado.
+   * Los movimientos posteriores al respaldo se pierden en este equipo.
+   */
+  async completeEncryptedStorageRecovery(
+    adminUserId: string,
+    newPin: string,
+    confirmPin: string
+  ): Promise<{ ok: boolean; message: string }> {
+    const enc = findEncryptedLayer(this.storageAdapter);
+    const state = this.pendingRecoveryState;
+    if (!enc || !state) return { ok: false, message: 'Primero verifica un respaldo con su frase.' };
+    if (!this.assertWritable()) {
+      return { ok: false, message: 'Haz la recuperación desde la ventana principal de la app (esta está en solo lectura).' };
+    }
+    const cleanPin = String(newPin ?? '').trim();
+    const policy = validateUserPinPolicy(cleanPin);
+    if (!policy.valid) return { ok: false, message: policy.error || 'El PIN no cumple la política de seguridad.' };
+    if (cleanPin !== String(confirmPin ?? '').trim()) return { ok: false, message: 'Los dos PIN no coinciden.' };
+    const admin = (state.users || []).find((u) => u.id === adminUserId && u.isActive && u.role === 'ADMINISTRADOR');
+    if (!admin) return { ok: false, message: 'Elige un administrador activo del respaldo.' };
+
+    const salt = generateUserPinSalt(16);
+    const iterations = admin.iterations || USER_PIN_ITERATIONS;
+    const updatedAdmin: AppUser = {
+      ...admin,
+      salt,
+      iterations,
+      pinHash: await computeUserPinHash(cleanPin, salt, iterations),
+      failedAttempts: 0,
+      lockedUntil: null,
+      lockoutCount: 0,
+      updatedAt: new Date().toISOString(),
+    };
+    const recovered: PersistedAppState = {
+      ...state,
+      users: (state.users || []).map((u) => (u.id === admin.id ? updatedAdmin : u)),
+      activeUser: updatedAdmin.name,
+    };
+
+    await enc.resetAll();
+    await enc.initialize(updatedAdmin.id, cleanPin, salt);
+    this.resetStorageUnlockThrottle();
+
+    this.storageSaver.cancel();
+    this.autoSaveBlocked.set(false);
+    this.corruptedDataWarning.set(null);
+    this.corruptedRawData.set(null);
+    this.corruptedAffectedSkus.set([]);
+    this.corruptedModalOpen.set(false);
+    this.applyValidatedStateToSignals(recovered);
+    this.currentUser.set(updatedAdmin);
+    this.activeUser.set(updatedAdmin.name);
+    if (this.pendingRecoveryPassphrase) {
+      this.sessionBackupPassphrase = this.pendingRecoveryPassphrase;
+      this.sessionPassphraseActive.set(true);
+    }
+    this.cancelEncryptedStorageRecovery();
+    this.storageCryptoStatus.set('unlocked');
+    this.storageCryptoMessage.set(null);
+    this.storageCryptoSlotCount.set(1);
+    this.isHydrated.set(true);
+    this.drainPendingLanMessages();
+    this.appendSecurityAuditEntry(
+      'STORAGE_RECOVERED_FROM_BACKUP',
+      `PIN olvidado: datos restaurados desde el respaldo del ${recovered.timestamp} y PIN nuevo para "${updatedAdmin.name}".`,
+      { slotId: updatedAdmin.id, backupTimestamp: recovered.timestamp },
+      updatedAdmin.name
+    );
+    await this.flushSave();
+    return {
+      ok: true,
+      message: `Datos recuperados desde el respaldo. Ya puedes entrar como "${updatedAdmin.name}" con tu PIN nuevo.`,
+    };
+  }
+
+  // ---------- Aviso de privacidad ----------
+
+  /** Crea la versión 1 del aviso con la plantilla incluida si todavía no existe ninguno. */
+  async ensurePrivacyNoticeInitialized(): Promise<PrivacyNoticeConfig> {
+    const existing = this.privacyNotice();
+    if (existing) return existing;
+    const config = await buildDefaultPrivacyNoticeConfig(this.businessSettings().storeName);
+    if (!this.privacyNotice()) this.privacyNotice.set(config);
+    return this.privacyNotice()!;
+  }
+
+  async publishPrivacyNotice(input: {
+    template: string;
+    responsibleName: string;
+    contact: string;
+  }): Promise<{ ok: boolean; message: string; errors?: string[] }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    if (!hasPermission(this.currentUser()?.role || 'CAJERO', 'ajustes')) {
+      return { ok: false, message: 'Permiso denegado: solo el Administrador puede cambiar el aviso de privacidad.' };
+    }
+    const base = await this.ensurePrivacyNoticeInitialized();
+    const res = await publishPrivacyNoticeVersion(base, {
+      ...input,
+      storeName: this.businessSettings().storeName,
+      publishedBy: this.activeUser(),
+    });
+    if (!res.ok) return { ok: false, message: res.message, errors: res.errors };
+    const published = res.config.currentVersion !== base.currentVersion;
+    this.privacyNotice.set(res.config);
+    if (published) {
+      const current = getCurrentNoticeVersion(res.config)!;
+      this.appendSecurityAuditEntry(
+        'PRIVACY_NOTICE_PUBLISHED',
+        `Aviso de privacidad versión ${current.version} publicado.`,
+        { version: current.version, textHash: current.textHash }
+      );
+    }
+    await this.flushSave();
+    return { ok: true, message: res.message };
+  }
+
+  getCustomerConsentStatus(customer: CreditCustomer | null | undefined): ConsentStatus {
+    return getConsentStatus(customer, this.privacyNotice());
+  }
+
+  /** Registra (o renueva tras un cambio de aviso) el consentimiento de un cliente existente. */
+  async recordCustomerConsent(
+    customerId: string,
+    params: { method?: ConsentMethod; note?: string } = {}
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const customer = this.creditCustomers().find((c) => c.id === customerId);
+    if (!customer) return { ok: false, message: 'Cliente no encontrado.' };
+    if (isCustomerAnonymized(customer)) return { ok: false, message: 'El cliente fue anonimizado.' };
+    const notice = getCurrentNoticeVersion(await this.ensurePrivacyNoticeInitialized())!;
+    const consent = createConsentRecord({
+      notice,
+      collectedBy: this.activeUser(),
+      collectedByUserId: this.currentUser()?.id,
+      method: params.method,
+      note: params.note,
+    });
+    this.creditCustomers.update((list) =>
+      list.map((c) => (c.id === customerId ? appendConsentToCustomer(c, consent) : c))
+    );
+    // La bitácora de seguridad es inmutable: solo guarda el ID del cliente, nunca su nombre.
+    this.appendSecurityAuditEntry(
+      'CUSTOMER_CONSENT_RECORDED',
+      `Consentimiento del cliente ${customerId} al aviso de privacidad versión ${notice.version}.`,
+      { customerId, noticeVersion: notice.version, method: consent.method }
+    );
+    await this.flushSave();
+    return { ok: true, message: `Consentimiento registrado (aviso versión ${notice.version}).` };
+  }
+
+  // ---------- Derechos ARCO ----------
+
+  /** Acceso: genera el JSON con todos los datos del cliente (requiere PIN de encargado o administrador). */
+  async exportCustomerPersonalData(
+    customerId: string,
+    supervisorPin: string
+  ): Promise<{ ok: boolean; message: string; json?: string; fileName?: string }> {
+    const auth = await this.verifySupervisorPin(supervisorPin, ['ENCARGADO', 'ADMINISTRADOR']);
+    if (!auth.success || !auth.supervisor) {
+      return { ok: false, message: auth.message || 'PIN de encargado o administrador incorrecto.' };
+    }
+    const res = buildCustomerDataExport(this.getPersistedStateSnapshot(), customerId, {
+      exportedBy: auth.supervisor.name,
+      storeName: this.businessSettings().storeName,
+      notice: this.privacyNotice(),
+    });
+    if (!res.ok || !res.data) return { ok: false, message: res.message };
+    const json = JSON.stringify(res.data, null, 2);
+    if (this.assertWritable()) {
+      this.creditCustomers.update((list) =>
+        list.map((c) =>
+          c.id === customerId
+            ? appendArcoRequest(c, {
+                right: 'ACCESO',
+                attendedBy: auth.supervisor!.name,
+                detail: 'Se generó la copia de sus datos personales (JSON).',
+              })
+            : c
+        )
+      );
+      this.appendSecurityAuditEntry(
+        'CUSTOMER_DATA_EXPORTED',
+        `Exportación de datos personales del cliente ${customerId} (derecho de acceso).`,
+        { customerId },
+        auth.supervisor.name
+      );
+      await this.flushSave();
+    }
+    return { ok: true, message: res.message, json, fileName: res.fileName };
+  }
+
+  /**
+   * Cancelación: anonimiza nombre, alias, teléfono y notas sin tocar Kardex, saldo, deudas ni abonos.
+   * Irreversible; requiere PIN de administrador.
+   */
+  async anonymizeCustomer(
+    customerId: string,
+    adminPin: string
+  ): Promise<{ ok: boolean; message: string; report?: AnonymizationReport }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const auth = await this.verifySupervisorPin(adminPin, ['ADMINISTRADOR']);
+    if (!auth.success || !auth.supervisor) {
+      return { ok: false, message: auth.message || 'Se requiere el PIN de un administrador.' };
+    }
+    const before = this.getPersistedStateSnapshot();
+    const original = before.creditCustomers.find((c: any) => c.id === customerId);
+    const res = anonymizeCustomerData(before, customerId, { anonymizedBy: auth.supervisor.name });
+    if (!res.ok || !res.report) return { ok: false, message: res.message };
+
+    // Doble verificación antes de aplicar: Kardex intacto y saldo idéntico.
+    const after = res.scope.creditCustomers.find((c: any) => c.id === customerId);
+    const kardexIntact =
+      res.scope.kardex === before.kardex && verifyKardexChain(res.scope.kardex, 'newest-first').valid;
+    if (!kardexIntact || toCents(after?.currentBalance) !== toCents(original?.currentBalance)) {
+      return { ok: false, message: 'La anonimización no superó la verificación de Kardex/saldo; no se aplicó ningún cambio.' };
+    }
+
+    this.creditCustomers.set(res.scope.creditCustomers);
+    if (res.scope.salesHistory) this.salesHistory.set(res.scope.salesHistory);
+    if (res.scope.saleReturns) this.saleReturns.set(res.scope.saleReturns);
+    if (res.scope.cashMovements) this.cashMovements.set(res.scope.cashMovements);
+    if (res.scope.morningAlerts) this.morningAlerts.set(res.scope.morningAlerts);
+    const last = this.lastCompletedSale();
+    if (last?.customerId === customerId) {
+      this.lastCompletedSale.set({ ...last, customerName: res.report.pseudonym });
+    }
+    this.appendSecurityAuditEntry(
+      'CUSTOMER_ANONYMIZED',
+      `Cancelación ARCO: cliente ${customerId} anonimizado; saldo y ${res.report.kardexEntriesRetained} movimiento(s) del Kardex conservados.`,
+      {
+        customerId,
+        balanceCents: toCents(res.report.balancePreserved),
+        kardexEntriesRetained: res.report.kardexEntriesRetained,
+      },
+      auth.supervisor.name
+    );
+    await this.flushSave();
+    return { ok: true, message: res.message, report: res.report };
+  }
+
+  /** Oposición: deja constancia y marca al cliente como "no contactar". */
+  async registerCustomerOpposition(
+    customerId: string,
+    params: { scope: OppositionScope; note?: string }
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!this.assertWritable()) {
+      return { ok: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
+    }
+    const customer = this.creditCustomers().find((c) => c.id === customerId);
+    if (!customer) return { ok: false, message: 'Cliente no encontrado.' };
+    this.creditCustomers.update((list) =>
+      list.map((c) =>
+        c.id === customerId ? registerOpposition(c, { ...params, registeredBy: this.activeUser() }) : c
+      )
+    );
+    this.appendSecurityAuditEntry(
+      'CUSTOMER_OPPOSITION_RECORDED',
+      `Oposición (${params.scope}) registrada para el cliente ${customerId}.`,
+      { customerId, scope: params.scope }
+    );
+    await this.flushSave();
+    return { ok: true, message: 'Oposición registrada: el cliente quedó marcado como "no contactar".' };
+  }
+
+  /** Deja constancia de una solicitud ARCO atendida (p. ej. rectificación hecha con "Editar"). */
+  async registerCustomerArcoRequest(customerId: string, right: ArcoRight, detail: string): Promise<void> {
+    if (!this.assertWritable()) return;
+    this.creditCustomers.update((list) =>
+      list.map((c) => (c.id === customerId ? appendArcoRequest(c, { right, attendedBy: this.activeUser(), detail }) : c))
+    );
+    await this.flushSave();
+  }
+
+  /** Texto a mostrar de un movimiento del Kardex sin exponer datos de clientes anonimizados. */
+  kardexDisplayText(entry: KardexEntry): string {
+    const owner = this.redactedKardexEntryOwners().get(entry.id);
+    if (owner) return `${entry.type}: movimiento de ${owner} (datos personales ocultos)`;
+    const base = entry.description || entry.referencia;
+    if (entry.customerId) {
+      const customer = this.creditCustomers().find((c) => c.id === entry.customerId);
+      if (customer && !isCustomerAnonymized(customer)) return `${base} · ${customer.name}`;
+    }
+    return base;
+  }
+
+  /** Descarga un archivo de texto en el navegador (la pantalla lo usa para la exportación ARCO). */
+  downloadTextFile(content: string, fileName: string, mime = 'application/json'): void {
+    if (typeof document === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') return;
+    try {
+      const url = URL.createObjectURL(new Blob([content], { type: mime }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Sin DOM (pruebas) el contenido igual se devuelve al llamador.
+    }
   }
 
   // =====================================================================
