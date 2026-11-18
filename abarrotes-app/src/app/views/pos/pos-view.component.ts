@@ -44,34 +44,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   protected readonly saleFeedback = signal<{ ok: boolean; text: string; sale?: SaleRecord } | null>(null);
 
   // ---------- Carrito Activo ----------
-  protected readonly cart = signal<PosSaleItem[]>([
-    {
-      sku: 'LAC-LAL-1L',
-      barcode: '7501020515350',
-      name: 'Leche Lala Entera 1L',
-      emoji: '',
-      saleUnit: 'Pieza',
-      isBulk: false,
-      qty: 2,
-      unitPrice: 26.0,
-      subtotal: 52.0,
-      selectedTier: 'MENUDEO',
-      discountPct: 0,
-    },
-    {
-      sku: 'QUE-FRE-1K',
-      barcode: '2000002000013',
-      name: 'Queso Fresco Local (1 kg)',
-      emoji: '',
-      saleUnit: 'Kg',
-      isBulk: true,
-      qty: 0.263,
-      unitPrice: 95.0,
-      subtotal: 25.0,
-      selectedTier: 'MENUDEO',
-      discountPct: 0,
-    },
-  ]);
+  protected readonly cart = signal<PosSaleItem[]>([]);
 
   // ---------- Descuentos por Ticket y Autorización PIN (Bloque F1.3) ----------
   protected readonly ticketDiscountPct = signal<number>(0);
@@ -93,12 +66,12 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   // ---------- Modal Libreta Digital de Fiado y Abonos ----------
   protected readonly creditModalOpen = signal<boolean>(false);
-  protected readonly selectedCustomerId = signal<string>('CLI-01');
+  protected readonly selectedCustomerId = signal<string>('');
   protected readonly customerSearchQuery = signal<string>('');
   protected readonly filteredCreditCustomers = computed(() =>
     this.inv.searchCustomers(this.customerSearchQuery()),
   );
-  protected readonly abonoCustomerId = signal<string>('CLI-03');
+  protected readonly abonoCustomerId = signal<string>('');
   protected readonly abonoAmount = signal<number>(200);
   protected readonly abonoPaymentMethod = signal<'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA'>('EFECTIVO');
   protected readonly abonoFeedback = signal<string | null>(null);
@@ -113,7 +86,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   // ---------- Modal Consumo Interno ----------
   protected readonly internalConsumptionModalOpen = signal<boolean>(false);
-  protected readonly consumptionResponsible = signal<string>('Dueño (Don Lupe)');
+  protected readonly consumptionResponsible = signal<string>('Administrador');
   protected readonly consumptionPin = signal<string>('');
   protected readonly consumptionReason = signal<string>('');
   protected readonly hasExceedingStockItems = computed(() => {
@@ -124,8 +97,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
     });
   });
   protected readonly responsibleOptions: string[] = [
-    'Dueño (Don Lupe)',
-    'Empleado 1 (Toño)',
+    'Administrador',
+    'Encargado',
     'Personal de Mostrador',
   ];
 

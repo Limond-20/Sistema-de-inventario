@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../services/mock-inventory.service';
+import { formatLocalYyyyMmDd } from '../../domain/reports';
 
 @Component({
   selector: 'app-fefo-view',
@@ -164,7 +165,8 @@ export class FefoViewComponent {
   protected readonly urgentBatches = computed(() => this.inv.getUpcomingFefoExchanges());
 
   onExchangeSuccess(batchId: string): void {
-    const res = this.inv.resolvePhysicalExchange(batchId, 'CAMBIO_EFECTIVO', '2026-11-28');
+    const nextExpiry = formatLocalYyyyMmDd(new Date(Date.now() + 30 * 86_400_000));
+    const res = this.inv.resolvePhysicalExchange(batchId, 'CAMBIO_EFECTIVO', nextExpiry);
     this.actionFeedback.set({ ok: res.ok, msg: res.message });
   }
 

@@ -4,6 +4,11 @@
  */
 import { MockInventoryService } from './mock-inventory.service';
 import {
+  applyTestLicenseOnly,
+  getTestLicensePublicKeyJwk,
+  resetMockServiceToTestFixtures,
+} from './mock-inventory.fixtures.spec';
+import {
   IndexedDbStateStorageAdapter,
   MemoryStateStorageAdapter,
   STATE_STORAGE_KEY,
@@ -108,6 +113,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     expect(svc.storageCryptoStatus()).toBe('unlocked');
     expect(svc.securityAuditLog()[0].action).toBe('STORAGE_ENCRYPTION_CONFIGURED');
 
+    await resetMockServiceToTestFixtures(svc, { skipUsersReset: true });
     const customer = await createConsentedCustomer(svc);
     expect(svc.processCreditSale(cartFor(svc), customer.id).ok).toBeTrue();
     await svc.flushSave();
@@ -128,6 +134,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     const svc = await openService(newEncryptedAdapter());
     await svc.restorePersistedState();
     await svc.setupEncryptedStorage(NEW_ADMIN_PIN, NEW_ADMIN_PIN);
+    await resetMockServiceToTestFixtures(svc, { skipUsersReset: true });
     const customer = await createConsentedCustomer(svc);
     svc.processCreditSale(cartFor(svc), customer.id);
     await svc.flushSave();
@@ -135,6 +142,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     await closeService(svc);
 
     const reopened = await openService(newEncryptedAdapter());
+    reopened.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     const res = await reopened.restorePersistedState();
     expect(res.locked).toBeTrue();
     expect(reopened.storageCryptoStatus()).toBe('locked');
@@ -159,6 +167,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     // Estado guardado por una versión anterior (sin Bloque K) directamente en IndexedDB.
     const plain = await openService(new MemoryStateStorageAdapter());
     await plain.restorePersistedState();
+    await resetMockServiceToTestFixtures(plain);
     const customer = await createConsentedCustomer(plain);
     plain.processCreditSale(cartFor(plain), customer.id);
     const legacySnapshot = structuredClone(plain.getPersistedStateSnapshot());
@@ -169,6 +178,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     expect((await dumpRaw()).includes('Eufrosina')).toBeTrue();
 
     const svc = await openService(newEncryptedAdapter());
+    svc.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     const gate = await svc.restorePersistedState();
     expect(gate.locked).toBeTrue();
     expect(svc.storageCryptoStatus()).toBe('setup-migrate');
@@ -194,12 +204,15 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     const svc = await openService(newEncryptedAdapter());
     await svc.restorePersistedState();
     await svc.setupEncryptedStorage(NEW_ADMIN_PIN, NEW_ADMIN_PIN);
+    await applyTestLicenseOnly(svc);
+    await svc.flushSave();
     const change = await svc.changeUserPin('USR-ADMIN', NEW_ADMIN_PIN, OTHER_PIN);
     expect(change.ok).withContext(change.message).toBeTrue();
     expect(change.message).toBe('PIN actualizado correctamente.');
     await closeService(svc);
 
     const reopened = await openService(newEncryptedAdapter());
+    reopened.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     await reopened.restorePersistedState();
     expect((await reopened.unlockEncryptedStorage(NEW_ADMIN_PIN)).ok).toBeFalse();
     expect((await reopened.unlockEncryptedStorage(OTHER_PIN)).ok).toBeTrue();
@@ -211,6 +224,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     const svc = await openService(newEncryptedAdapter());
     await svc.restorePersistedState();
     await svc.setupEncryptedStorage(NEW_ADMIN_PIN, NEW_ADMIN_PIN);
+    await resetMockServiceToTestFixtures(svc, { skipUsersReset: true });
     const customer = await createConsentedCustomer(svc);
     await svc.flushSave();
     const bak = await encryptBackupBytes(
@@ -221,6 +235,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     await closeService(svc);
 
     const locked = await openService(newEncryptedAdapter());
+    locked.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     await locked.restorePersistedState();
     expect(locked.storageCryptoStatus()).toBe('locked');
 
@@ -241,6 +256,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     await closeService(locked);
 
     const reopened = await openService(newEncryptedAdapter());
+    reopened.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     await reopened.restorePersistedState();
     expect((await reopened.unlockEncryptedStorage(NEW_ADMIN_PIN)).ok).toBeFalse();
     expect((await reopened.unlockEncryptedStorage(OTHER_PIN)).ok).toBeTrue();
@@ -253,6 +269,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
   it('K-I6. Consentimiento, exportación y anonimización sin romper el Kardex ni el saldo', async () => {
     const svc = await openService(new MemoryStateStorageAdapter());
     await svc.restorePersistedState();
+    await resetMockServiceToTestFixtures(svc);
     await svc.ensurePrivacyNoticeInitialized();
 
     const noConsent = svc.createCustomer({ name: CUSTOMER_NAME, creditLimit: 900 }, true, { accepted: false });
@@ -321,6 +338,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     const shared = new MemoryStateStorageAdapter();
     const svc = await openService(shared);
     await svc.restorePersistedState();
+    await resetMockServiceToTestFixtures(svc);
     const customer = await createConsentedCustomer(svc);
     const input = {
       template: svc.privacyNotice()!.template,
@@ -346,6 +364,7 @@ describe('Bloque K: cifrado en reposo y datos personales (integración)', () => 
     await closeService(svc);
 
     const reloaded = await openService(shared);
+    reloaded.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     await reloaded.restorePersistedState();
     expect(reloaded.privacyNotice()!.versions.length).toBe(2);
     expect(reloaded.getCustomerConsentStatus(reloaded.getCustomerDetail(customer.id))).toBe('VIGENTE');

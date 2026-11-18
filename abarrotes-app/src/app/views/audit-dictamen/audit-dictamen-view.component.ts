@@ -114,27 +114,6 @@ export class AuditDictamenViewComponent implements OnInit, OnDestroy {
     this.inv.setAuditStatus(sku, 'pendiente');
   }
 
-  loadBlindMissionSample(): void {
-    const mission = this.inv.generateDailyBlindAuditMission();
-    const testDiffs: Record<string, number> = {
-      'ACE-NUT-850': -3,
-      'FRI-NEG-50K': -1.7,
-      'ARR-SOS-900': 2,
-      'CHI-LAC-220': -3,
-      'PAN-BOL-PZ': -4,
-    };
-    const sampleCounts = mission.map((m) => {
-      const p = this.inv.products().find((x) => x.sku === m.sku);
-      const stock = p ? p.stock : 10;
-      const diff = testDiffs[m.sku] ?? 0;
-      return {
-        sku: m.sku,
-        countedQty: Math.max(0, +(stock + diff).toFixed(2)),
-      };
-    });
-    this.inv.submitBlindAuditResults(sampleCounts);
-  }
-
   unitLabel(r: AuditLine, qty: number): string {
     if (r.saleUnit === 'Kg') return 'kg';
     const base = r.saleUnit === 'Lata' ? 'lata' : r.saleUnit === 'Paquete' ? 'paquete' : 'pieza';

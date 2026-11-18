@@ -364,45 +364,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Botonera rápida de prueba de 5 productos base -->
-        <div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs flex flex-col gap-2">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Botonera Rápida de Prueba (5 Productos Base)
-          </span>
-          <div class="grid grid-cols-2 gap-1.5">
-            <button type="button" onclick="simulateBarcode('7501055301072')"
-              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
-              <span class="truncate">Coca Cola 600ml</span>
-              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$18</span>
-            </button>
-            <button type="button" onclick="simulateBarcode('7501011115682')"
-              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
-              <span class="truncate">Sabritas Sal 45g</span>
-              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$18</span>
-            </button>
-            <button type="button" onclick="simulateBarcode('7501020512111')"
-              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
-              <span class="truncate">Leche Lala 1L</span>
-              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$26</span>
-            </button>
-            <button type="button" onclick="simulateBarcode('7501045401317')"
-              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
-              <span class="truncate">Atún Dolores 140g</span>
-              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$21</span>
-            </button>
-            <button type="button" onclick="simulateBarcode('7501005110011')"
-              class="h-11 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-bold text-slate-800 touch-btn">
-              <span class="truncate">Harina Maseca 1kg</span>
-              <span class="font-mono text-emerald-700 font-black shrink-0 ml-1">$22</span>
-            </button>
-            <button type="button" onclick="simulateBarcode('7509998887776')"
-              class="h-11 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-left flex items-center justify-between text-xs font-bold text-amber-900 touch-btn">
-              <span class="truncate">Código Nuevo (F1)</span>
-              <span class="font-mono text-amber-700 font-black shrink-0 ml-1">+Alta</span>
-            </button>
-          </div>
-        </div>
       </section>
 
       <!-- =====================================================================
@@ -438,19 +399,19 @@
           <!-- Tarjeta blanca del artículo (SIN MOSTRAR STOCK TEÓRICO) -->
           <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-1 text-center">
             <span id="audit-item-location" class="text-xs font-bold uppercase tracking-wider text-amber-800 block">
-              Refrigerador 1 · Puerta 1
+              Sin ubicación asignada
             </span>
             <!-- Nombre del producto en letra grande -->
             <h2 id="audit-item-name" class="text-xl font-black text-slate-900 leading-tight mt-0.5">
-              Leche Lala Entera 1L
+              Sin misión activa
             </h2>
             <div class="flex items-center justify-center gap-2 text-xs font-mono text-slate-500">
-              <span id="audit-item-sku">SKU: LAC-LAL-1L</span>
+              <span id="audit-item-sku">SKU: —</span>
               <span>·</span>
-              <span id="audit-item-barcode">7501020512111</span>
+              <span id="audit-item-barcode">—</span>
             </div>
             <span id="audit-item-category" class="text-xs text-slate-500 font-semibold">
-              Lácteos · Cuenta física en anaquel
+              Conteo físico en anaquel
             </span>
           </div>
 
@@ -536,9 +497,6 @@
         </label>
         <input type="file" id="ocr-file-input" accept="image/*" capture="environment" class="hidden" onchange="onOcrImageSelected(event)" />
 
-        <!-- Botón de Prueba Rápida con Ticket de Ejemplo -->
-        <button type="button" onclick="loadSampleTicketOCR()" class="touch-btn flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">Cargar Ticket de Ejemplo (Sin Foto)</button>
-
         <!-- Barra de progreso con Tesseract.js -->
         <div id="ocr-progress-box" class="hidden bg-white rounded-2xl border border-slate-200 p-4 flex flex-col gap-2 shadow-sm">
           <div class="flex items-center justify-between text-xs font-bold">
@@ -609,18 +567,15 @@
             </div>
           </div>
 
-          <!-- Producto Dañado (Selección rápida) -->
+          <!-- Producto Dañado -->
           <div class="flex flex-col gap-1">
             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">2. Producto Dañado:</span>
             <select id="merma-prod-select" onchange="onMermaProductChange(this.value)"
               class="h-11 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900 outline-none">
-              <option value="LAC-LAL-1L">Leche Lala Entera 1L</option>
-              <option value="HUE-BAC-18">Huevo Blanco Granel (1 kg)</option>
-              <option value="PAN-BIM-680">Pan Blanco Bimbo Grande 680g</option>
-              <option value="ACE-NUT-850">Aceite Nutrioli 850ml</option>
-              <option value="YOG-YOP-1K">Yoghurt Yoplait Fresa 1kg</option>
-              <option value="ATU-DOL-140">Atún Dolores en Agua 140g</option>
+              <option value="">Selecciona un producto...</option>
             </select>
+            <input type="text" id="merma-custom-product" placeholder="O escribe nombre / SKU del producto"
+              class="h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-900 outline-none" />
           </div>
 
           <!-- Cantidad de Unidades a Descontar -->
@@ -638,17 +593,12 @@
           <!-- Disparador de Foto Obligatoria -->
           <div class="flex flex-col gap-1.5">
             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">4. Evidencia Fotográfica (Obligatoria):</span>
-            <div class="grid grid-cols-2 gap-2" id="merma-photo-grid">
+            <div class="grid grid-cols-1 gap-2" id="merma-photo-grid">
               <label for="merma-photo-file" id="merma-photo-label"
-                class="col-span-2 h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center">
+                class="h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm flex items-center justify-center gap-1.5 cursor-pointer touch-btn text-center">
                 <span>Tomar Foto</span>
               </label>
               <input type="file" id="merma-photo-file" accept="image/*" capture="environment" class="hidden" onchange="onMermaPhotoSelected(event)" />
-
-              <button type="button" onclick="simulateMermaPhoto()" id="btn-merma-simular"
-                class="hidden h-11 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm touch-btn">
-                Simular Foto
-              </button>
             </div>
 
             <div id="merma-photo-preview-wrap" class="hidden rounded-xl border border-emerald-300 p-2.5 bg-emerald-50 flex items-center justify-between">
@@ -673,8 +623,8 @@
     <div id="float-toast" class="fixed top-14 left-4 right-4 z-50 transform -translate-y-24 opacity-0 transition-all duration-300 pointer-events-none max-w-sm mx-auto">
       <div class="bg-slate-900 text-white border-2 border-emerald-500 rounded-2xl p-3.5 shadow-2xl flex items-center justify-between gap-3">
         <div class="min-w-0 flex-1">
-          <p id="toast-title" class="text-sm font-black text-white truncate">Leche Lala Entera 1L</p>
-          <p id="toast-sub" class="text-xs text-emerald-400 font-bold">$26.00 · Enviado a PC al instante ✓</p>
+          <p id="toast-title" class="text-sm font-black text-white truncate">Listo</p>
+          <p id="toast-sub" class="text-xs text-emerald-400 font-bold">Enviado a PC</p>
         </div>
         <div class="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-base shrink-0 border border-emerald-500/40">
           ✓
@@ -742,26 +692,16 @@
       window.scrollTo({ top: 0, behavior: 'instant' });
     }
 
-    // =========================== CATÁLOGO COMPLETO DE PRODUCTOS ===========================
-    const CATALOG = [
-      { sku: 'REF-COC-600', barcode: '7501055301072', altBarcode: '7501055300075', name: 'Coca Cola 600ml', category: 'Bebidas', saleUnit: 'Pieza', historicCost: 14.5, salePrice: 18.0, targetMargin: 20 },
-      { sku: 'BOT-SAB-45', barcode: '7501011115682', name: 'Sabritas Sal 45g', category: 'Botanas', saleUnit: 'Pieza', historicCost: 14.0, salePrice: 18.0, targetMargin: 22 },
-      { sku: 'LAC-LAL-1L', barcode: '7501020512111', altBarcode: '7501020515350', name: 'Leche Lala Entera 1L', category: 'Lácteos', saleUnit: 'Pieza', historicCost: 21.0, salePrice: 26.0, targetMargin: 20 },
-      { sku: 'ATU-DOL-140', barcode: '7501045401317', altBarcode: '7501045403014', name: 'Atún Dolores Agua 140g', category: 'Enlatados', saleUnit: 'Lata', historicCost: 16.5, salePrice: 21.0, targetMargin: 20 },
-      { sku: 'HAR-MAS-1K', barcode: '7501005110011', name: 'Harina Maseca 1kg', category: 'Granos', saleUnit: 'Pieza', historicCost: 17.5, salePrice: 22.0, targetMargin: 20 },
-      { sku: 'ACE-NUT-850', barcode: '7501039121122', name: 'Aceite Nutrioli 850ml', category: 'Aceites', saleUnit: 'Pieza', historicCost: 34.0, salePrice: 42.0, targetMargin: 18 },
-      { sku: 'FRI-NEG-50K', barcode: '2000001000014', name: 'Frijol Negro Granel', category: 'Granos', saleUnit: 'Kg', historicCost: 28.0, salePrice: 36.0, targetMargin: 22 },
-      { sku: 'HUE-BAC-18', barcode: '2000003000012', name: 'Huevo Blanco Granel', category: 'Granos', saleUnit: 'Kg', historicCost: 36.0, salePrice: 44.0, targetMargin: 18 },
-      { sku: 'AZU-ZUL-1K', barcode: '2000004000011', name: 'Azúcar Estándar Granel', category: 'Granos', saleUnit: 'Kg', historicCost: 22.0, salePrice: 28.0, targetMargin: 20 },
-      { sku: 'PAN-BIM-680', barcode: '7501000111202', name: 'Pan Blanco Bimbo Grande 680g', category: 'Panadería', saleUnit: 'Pieza', historicCost: 41.0, salePrice: 50.0, targetMargin: 18 },
-      { sku: 'QUE-FRE-1K', barcode: '2000002000013', name: 'Queso Fresco Local (1 kg)', category: 'Lácteos', saleUnit: 'Kg', historicCost: 75.0, salePrice: 95.0, targetMargin: 20 },
-      { sku: 'PAN-BOL-PZ', barcode: '2000005000010', name: 'Bolillo Caliente de Mostrador', category: 'Panadería', saleUnit: 'Pieza', historicCost: 2.5, salePrice: 4.0, targetMargin: 35 },
-      { sku: 'ARR-SOS-900', barcode: '7501018310011', name: 'Arroz SOS Súper Extra 900g', category: 'Granos', saleUnit: 'Pieza', historicCost: 23.5, salePrice: 29.0, targetMargin: 19 },
-      { sku: 'REF-PEI-600', barcode: '7501011112345', name: 'Peñafiel Mineral 600ml', category: 'Bebidas', saleUnit: 'Pieza', historicCost: 11.0, salePrice: 15.0, targetMargin: 25 },
-      { sku: 'YOG-YOP-1K', barcode: '7501032398711', name: 'Yoghurt Yoplait Fresa 1kg', category: 'Lácteos', saleUnit: 'Pieza', historicCost: 35.0, salePrice: 44.0, targetMargin: 20 },
-      { sku: 'GAL-MAR-170', barcode: '7501000123456', name: 'Galletas Marías Gamesa 170g', category: 'Abarrotes', saleUnit: 'Pieza', historicCost: 14.0, salePrice: 18.0, targetMargin: 22 },
-      { sku: 'CHI-LAC-220', barcode: '7501017004200', name: 'Chiles Jalapeños La Costeña 220g', category: 'Enlatados', saleUnit: 'Lata', historicCost: 14.2, salePrice: 19.0, targetMargin: 20 }
-    ];
+    // =========================== CATÁLOGO DE PRODUCTOS (CARGADO DESDE PC/ESTADO) ===========================
+    const CATALOG = (() => {
+      try {
+        const raw = localStorage.getItem('binnitech_pos_state_v5') || localStorage.getItem('binnitech_pos_state_v4');
+        const parsed = raw ? JSON.parse(raw) : null;
+        return Array.isArray(parsed?.products) ? parsed.products : [];
+      } catch {
+        return [];
+      }
+    })();
 
     function findProduct(codeOrSku) {
       const clean = String(codeOrSku || '').trim();
@@ -1057,41 +997,40 @@
       }
     }
 
-    function simulateBarcode(code) {
-      handleBarcodeScanned(code);
-    }
-
     // =========================================================================
-    //  MODO 2: CONTEO CIEGO DE PASILLO (AUDITORÍA EXPRÉS 15 PRODUCTOS)
+    //  MODO 2: CONTEO CIEGO DE PASILLO
     // =========================================================================
-    const AUDIT_15_ITEMS = [
-      // 10 Clase A (Alta Rotación)
-      { sku: 'LAC-LAL-1L', barcode: '7501020512111', name: 'Leche Lala Entera 1L', cls: 'A', loc: 'Refrigerador 1 · Puerta 1', unit: 'pzas', allowDecimal: false },
-      { sku: 'ACE-NUT-850', barcode: '7501039121122', name: 'Aceite Nutrioli 850ml', cls: 'A', loc: 'Anaquel B · Repisa 2', unit: 'pzas', allowDecimal: false },
-      { sku: 'FRI-NEG-50K', barcode: '2000001000014', name: 'Frijol Negro Granel', cls: 'A', loc: 'Piso · Junto a Báscula', unit: 'kg', allowDecimal: true },
-      { sku: 'HUE-BAC-18', barcode: '2000003000012', name: 'Huevo Blanco Granel', cls: 'A', loc: 'Anaquel A · Reja Central', unit: 'kg', allowDecimal: true },
-      { sku: 'REF-COC-600', barcode: '7501055301072', name: 'Coca-Cola Original 600ml', cls: 'A', loc: 'Refrigerador 2 · Charola 1', unit: 'pzas', allowDecimal: false },
-      { sku: 'AZU-ZUL-1K', barcode: '2000004000011', name: 'Azúcar Estándar Granel', cls: 'A', loc: 'Piso · Contenedor', unit: 'kg', allowDecimal: true },
-      { sku: 'PAN-BIM-680', barcode: '7501000111202', name: 'Pan Blanco Bimbo Grande 680g', cls: 'A', loc: 'Isla Central Panadería', unit: 'pzas', allowDecimal: false },
-      { sku: 'ATU-DOL-140', barcode: '7501045401317', name: 'Atún Dolores en Agua 140g', cls: 'A', loc: 'Anaquel B · Repisa 3', unit: 'latas', allowDecimal: false },
-      { sku: 'QUE-FRE-1K', barcode: '2000002000013', name: 'Queso Fresco Local (1 kg)', cls: 'A', loc: 'Vitrina Lácteos', unit: 'kg', allowDecimal: true },
-      { sku: 'PAN-BOL-PZ', barcode: '2000005000010', name: 'Bolillo Caliente de Mostrador', cls: 'A', loc: 'Canasto de Mostrador', unit: 'pzas', allowDecimal: false },
-      // 4 Clase B (Rotación Media)
-      { sku: 'ARR-SOS-900', barcode: '7501018310011', name: 'Arroz SOS Súper Extra 900g', cls: 'B', loc: 'Anaquel C · Repisa 1', unit: 'pzas', allowDecimal: false },
-      { sku: 'REF-PEI-600', barcode: '7501011112345', name: 'Peñafiel Mineral 600ml', cls: 'B', loc: 'Refrigerador 2 · Charola 3', unit: 'pzas', allowDecimal: false },
-      { sku: 'YOG-YOP-1K', barcode: '7501032398711', name: 'Yoghurt Yoplait Fresa 1kg', cls: 'B', loc: 'Refrigerador 1 · Puerta 2', unit: 'pzas', allowDecimal: false },
-      { sku: 'GAL-MAR-170', barcode: '7501000123456', name: 'Galletas Marías Gamesa 170g', cls: 'B', loc: 'Anaquel C · Repisa 3', unit: 'pzas', allowDecimal: false },
-      // 1 Clase C (Baja Rotación)
-      { sku: 'CHI-LAC-220', barcode: '7501017004200', name: 'Chiles Jalapeños La Costeña 220g', cls: 'C', loc: 'Anaquel C · Repisa 2', unit: 'latas', allowDecimal: false }
-    ];
+    const AUDIT_15_ITEMS = CATALOG.filter(p => p.approvalStatus !== 'PENDIENTE_APROBACION')
+      .slice(0, 15)
+      .map(p => ({
+        sku: p.sku,
+        barcode: p.barcode,
+        name: p.name,
+        cls: p.abcClass || 'A',
+        loc: p.location || 'Pasillo General',
+        unit: (p.saleUnit || 'Pieza').toLowerCase(),
+        allowDecimal: p.saleUnit === 'Kg' || p.isBulk === true
+      }));
 
     let auditCurrentIndex = 0;
     let auditCounts = new Array(AUDIT_15_ITEMS.length).fill(null);
     let auditCurrentInputStr = '';
 
     function renderAuditCurrentItem() {
-      const it = AUDIT_15_ITEMS[auditCurrentIndex];
       const total = AUDIT_15_ITEMS.length;
+      if (total === 0) {
+        document.getElementById('audit-class-chip').textContent = 'SIN MISIÓN';
+        document.getElementById('audit-step-label').textContent = '0 de 0';
+        document.getElementById('audit-progress-fill').style.width = '0%';
+        document.getElementById('audit-item-location').textContent = 'Sin catálogo cargado';
+        document.getElementById('audit-item-name').textContent = 'Agrega productos en la PC para iniciar conteos';
+        document.getElementById('audit-item-sku').textContent = 'SKU: —';
+        document.getElementById('audit-item-barcode').textContent = '—';
+        document.getElementById('audit-item-category').textContent = 'Conteo físico en anaquel';
+        document.getElementById('audit-display-unit').textContent = '';
+        return;
+      }
+      const it = AUDIT_15_ITEMS[auditCurrentIndex];
 
       document.getElementById('audit-class-chip').textContent = `CLASE ${it.cls}`;
       document.getElementById('audit-step-label').textContent = `Producto ${auditCurrentIndex + 1} de ${total}`;
@@ -1117,6 +1056,7 @@
     function auditKeyPress(key) {
       triggerVibrate(25);
       const it = AUDIT_15_ITEMS[auditCurrentIndex];
+      if (!it) return;
       if (key === 'CLEAR') {
         auditCurrentInputStr = '';
       } else if (key === 'BACK') {
@@ -1133,6 +1073,7 @@
     }
 
     function auditSkipCurrentItem() {
+      if (!AUDIT_15_ITEMS.length) return;
       triggerVibrate(30);
       if (auditCounts[auditCurrentIndex] === null) {
         auditCounts[auditCurrentIndex] = 0;
@@ -1146,6 +1087,7 @@
     }
 
     function auditConfirmCurrentItem() {
+      if (!AUDIT_15_ITEMS.length) return;
       triggerVibrate(50);
       const val = auditCurrentInputStr === '' ? 0 : parseFloat(auditCurrentInputStr);
       auditCounts[auditCurrentIndex] = isNaN(val) ? 0 : val;
@@ -1226,16 +1168,7 @@
     // =========================================================================
     //  MODO 3: ESCÁNER OCR DE NOTAS DE PROVEEDORES
     // =========================================================================
-    const SAMPLE_TICKET_TEXT = [
-      'DISTRIBUIDORA DEL BAJIO S.A. DE C.V.',
-      'FOLIO: DB-20931  FECHA: 22/10/2026',
-      '1O Leche Lala Entera 1L $24.5O',
-      '12 Aceite Nutrioli 850ml $39.OO',
-      '24 Atun Dolores en Agua 140g $16.50',
-      '15 Frijol Negro Granel 1 kg $32.OO',
-      '5 Queso Fresco Local 1 kg $75.00'
-    ].join('\n');
-
+    let lastOcrRawText = '';
     let currentOcrLines = [];
 
     async function onOcrImageSelected(event) {
@@ -1274,47 +1207,32 @@
       } catch (err) {
         console.error(err);
         statusMsg.textContent = 'Error al procesar imagen con OCR.';
-        alert('Hubo un problema al procesar la foto con OCR. Intenta con mejor iluminación o usa el ticket de ejemplo.');
+        alert('Hubo un problema al procesar la foto con OCR. Intenta con mejor iluminación.');
       }
     }
 
-    function loadSampleTicketOCR() {
-      triggerVibrate(50);
-      const progressBox = document.getElementById('ocr-progress-box');
-      const progressBar = document.getElementById('ocr-progress-bar');
-      const progressPct = document.getElementById('ocr-progress-pct');
-      const statusMsg = document.getElementById('ocr-status-msg');
-
-      progressBox.classList.remove('hidden');
-      progressBar.style.width = '100%';
-      progressPct.textContent = '100%';
-      statusMsg.textContent = 'Ticket de ejemplo cargado (Distribuidora del Bajío)';
-
-      parseOcrText(SAMPLE_TICKET_TEXT);
-    }
-
     function parseOcrText(raw) {
-      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      lastOcrRawText = String(raw || '');
+      const lines = lastOcrRawText.split('\n').map(l => l.trim()).filter(Boolean);
       const parsed = [];
 
       for (const line of lines) {
         const norm = line.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        let found = null;
-        if (norm.includes('lala')) found = findProduct('LAC-LAL-1L');
-        else if (norm.includes('nutrioli') || norm.includes('aceite')) found = findProduct('ACE-NUT-850');
-        else if (norm.includes('dolores') || norm.includes('atun')) found = findProduct('ATU-DOL-140');
-        else if (norm.includes('frijol')) found = findProduct('FRI-NEG-50K');
-        else if (norm.includes('queso')) found = findProduct('QUE-FRE-1K');
+        const found = CATALOG.find(p => {
+          const pNorm = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const firstWord = pNorm.split(/\s+/)[0] || '';
+          return firstWord.length >= 3 && norm.includes(firstWord);
+        }) || null;
 
         if (found) {
           const numMatch = line.match(/(\d+[.,]?\d*)/g);
           let cost = found.historicCost;
-          let qty = 10;
+          let qty = 1;
           if (numMatch && numMatch.length >= 2) {
-            qty = parseFloat(numMatch[0].replace('O', '0')) || 10;
+            qty = parseFloat(numMatch[0].replace('O', '0')) || 1;
             cost = parseFloat(numMatch[numMatch.length - 1].replace(',', '.').replace('O', '0')) || found.historicCost;
           }
-          const margin = ((found.salePrice - cost) / found.salePrice) * 100;
+          const margin = found.salePrice > 0 ? ((found.salePrice - cost) / found.salePrice) * 100 : 0;
           parsed.push({
             sku: found.sku,
             barcode: found.barcode,
@@ -1334,11 +1252,10 @@
         }
       }
 
-      currentOcrLines = parsed.length ? parsed : [
-        { sku: 'LAC-LAL-1L', barcode: '7501020512111', name: 'Leche Lala Entera 1L', qtyPurchase: 10, purchaseUnit: 'Pieza', unitsPerPurchase: 1, saleUnit: 'Pieza', lineTotal: 245.0, historicCost: 21.0, newCost: 24.5, salePrice: 26.0, targetMargin: 20, margin: 5.7, broken: true },
-        { sku: 'ACE-NUT-850', barcode: '7501039121122', name: 'Aceite Nutrioli 850ml', qtyPurchase: 12, purchaseUnit: 'Pieza', unitsPerPurchase: 1, saleUnit: 'Pieza', lineTotal: 468.0, historicCost: 34.0, newCost: 39.0, salePrice: 42.0, targetMargin: 18, margin: 7.1, broken: true },
-        { sku: 'ATU-DOL-140', barcode: '7501045401317', name: 'Atún Dolores en Agua 140g', qtyPurchase: 24, purchaseUnit: 'Lata', unitsPerPurchase: 1, saleUnit: 'Lata', lineTotal: 396.0, historicCost: 16.5, newCost: 16.5, salePrice: 21.0, targetMargin: 20, margin: 21.4, broken: false }
-      ];
+      currentOcrLines = parsed;
+      if (currentOcrLines.length === 0) {
+        document.getElementById('ocr-status-msg').textContent = 'No se identificaron productos del catálogo en la imagen.';
+      }
 
       renderOcrResults();
     }
@@ -1376,20 +1293,20 @@
     function sendOcrNoteToPC() {
       if (!currentOcrLines.length) return;
       triggerVibrate(80);
-      const folio = 'REM-48291';
-      const supplier = 'Distribuidora del Bajío S.A. de C.V.';
+      const folio = 'OCR-' + String(Date.now()).slice(-5);
+      const supplier = 'Nota capturada por OCR';
       const ticketData = {
         folio,
         supplier,
         lines: currentOcrLines,
-        rawText: SAMPLE_TICKET_TEXT
+        rawText: lastOcrRawText
       };
       const sent = broadcastToPC({
         type: 'OCR_TICKET_PARSED',
         folio,
         supplier,
         lines: currentOcrLines,
-        rawText: SAMPLE_TICKET_TEXT,
+        rawText: lastOcrRawText,
         ticketData
       });
 
@@ -1406,28 +1323,30 @@
     //  MODO 4: REPORTE DE MERMA CON EVIDENCIA
     // =========================================================================
     let selectedMermaReason = 'Envase Roto en Piso';
-    let selectedMermaSku = 'LAC-LAL-1L';
+    let selectedMermaSku = '';
     let selectedMermaQty = 1;
     let mermaPhotoAttached = false;
     let currentMermaFile = null;
 
-    function isSimulateAllowed() {
-      const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
-      const isUnavailable = window.LanSync && window.LanSync.status === 'unavailable';
-      return isDemo || isUnavailable;
-    }
-
-    function updateSimulatePhotoUI() {
-      const btn = document.getElementById('btn-merma-simular');
-      const label = document.getElementById('merma-photo-label');
-      if (!btn || !label) return;
-      if (isSimulateAllowed()) {
-        btn.classList.remove('hidden');
-        label.classList.remove('col-span-2');
-      } else {
-        btn.classList.add('hidden');
-        label.classList.add('col-span-2');
+    function populateMermaProductSelect() {
+      const sel = document.getElementById('merma-prod-select');
+      if (!sel) return;
+      sel.innerHTML = '';
+      if (CATALOG.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Sin catálogo local sincronizado';
+        sel.appendChild(opt);
+        selectedMermaSku = '';
+        return;
       }
+      CATALOG.filter(p => p.approvalStatus !== 'PENDIENTE_APROBACION').forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = p.sku;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+        if (idx === 0) selectedMermaSku = p.sku;
+      });
     }
 
     function setMermaReason(reason) {
@@ -1466,23 +1385,6 @@
         mermaPhotoAttached = true;
         document.getElementById('merma-photo-preview-wrap').classList.remove('hidden');
       }
-    }
-
-    function simulateMermaPhoto() {
-      if (!isSimulateAllowed()) return;
-      const canvas = document.createElement('canvas');
-      canvas.width = 300; canvas.height = 300;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#fee2e2';
-      ctx.fillRect(0, 0, 300, 300);
-      ctx.fillStyle = '#be123c';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText('EVIDENCIA SIMULADA', 24, 150);
-      canvas.toBlob((blob) => {
-        currentMermaFile = blob;
-        mermaPhotoAttached = true;
-        document.getElementById('merma-photo-preview-wrap').classList.remove('hidden');
-      }, 'image/jpeg', 0.8);
     }
 
     function clearMermaPhoto() {
@@ -1527,7 +1429,14 @@
       }
 
       triggerVibrate(80);
-      const prod = findProduct(selectedMermaSku) || { name: 'Producto', saleUnit: 'Pieza', historicCost: 20 };
+      const customEl = document.getElementById('merma-custom-product');
+      const customName = customEl ? customEl.value.trim() : '';
+      const prod = findProduct(selectedMermaSku) || {
+        sku: selectedMermaSku || customName || 'SIN-SKU',
+        name: customName || 'Producto',
+        saleUnit: 'Pieza',
+        historicCost: 0
+      };
       const record = {
         id: 'M-' + String(Date.now()).slice(-4),
         date: new Date().toLocaleDateString('es-MX'),
@@ -1574,12 +1483,11 @@
     // Inicializar estado por defecto y conexión LAN real
     window.addEventListener('DOMContentLoaded', () => {
       setMermaReason('Envase Roto en Piso');
+      populateMermaProductSelect();
       renderAuditCurrentItem();
       goTo('screen-menu');
-      updateSimulatePhotoUI();
 
       function updateLanStatusBadge(status) {
-        updateSimulatePhotoUI();
         const textEl = document.getElementById('lan-status-text');
         const dotEl = document.getElementById('lan-status-dot');
         if (!textEl || !dotEl) return;
@@ -1596,7 +1504,7 @@
           textEl.className = 'text-xs font-semibold text-rose-200';
           dotEl.className = 'h-2 w-2 animate-pulse rounded-full bg-rose-400';
         } else if (status === 'unavailable') {
-          textEl.textContent = 'Modo demostración';
+          textEl.textContent = 'Sin enlace con la PC';
           textEl.className = 'text-xs font-semibold text-brand-200';
           dotEl.className = 'h-2 w-2 rounded-full bg-slate-400';
         } else {

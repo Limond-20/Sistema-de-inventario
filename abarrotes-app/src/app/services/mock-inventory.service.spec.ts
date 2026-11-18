@@ -6,6 +6,10 @@ import { authGuard } from '../guards/auth.guard';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { MockInventoryService, ShrinkRecord, ReceptionLine, PosSaleItem } from './mock-inventory.service';
+import {
+  getTestLicensePublicKeyJwk,
+  resetMockServiceToTestFixtures,
+} from './mock-inventory.fixtures.spec';
 import { PosViewComponent } from '../views/pos/pos-view.component';
 import { ReportsViewComponent } from '../views/reports/reports-view.component';
 import { LicenseViewComponent } from '../views/license/license-view.component';
@@ -37,6 +41,59 @@ import {
   encryptBackupBytes,
 } from '../domain/backup';
 
+describe('Cliente final — arranque sin datos de prueba', () => {
+  let cleanService: MockInventoryService;
+
+  beforeEach(async () => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+    }
+    try {
+      await new IndexedDbStateStorageAdapter().clear();
+    } catch {
+      // ignore if IndexedDB is unavailable
+    }
+    TestBed.configureTestingModule({
+      providers: [MockInventoryService, provideRouter([])],
+    });
+    cleanService = TestBed.inject(MockInventoryService);
+    cleanService.storageAdapter = new MemoryStateStorageAdapter();
+    cleanService.backupAdapter = new InMemoryEncryptedBackupAdapter();
+    await cleanService.acquireWriterLock();
+    await cleanService.restorePersistedState();
+  });
+
+  afterEach(async () => {
+    if (cleanService) {
+      await cleanService.releaseWriterLock();
+      cleanService.ngOnDestroy();
+    }
+  });
+
+  it('0. Inicia completamente en blanco, solo con Administrador y sin licencia ni catálogo demo', () => {
+    expect(cleanService.products().length).toBe(0);
+    expect(cleanService.creditCustomers().length).toBe(0);
+    expect(cleanService.kardex().length).toBe(0);
+    expect(cleanService.morningAlerts().length).toBe(0);
+    expect(cleanService.auditLines().length).toBe(0);
+    expect(cleanService.shrinkRecords().length).toBe(0);
+    expect(cleanService.suppliers().length).toBe(0);
+    expect(cleanService.supplierRoutes().length).toBe(0);
+    expect(cleanService.perishableBatches().length).toBe(0);
+    expect(cleanService.ocrNote()).toBeNull();
+    expect(cleanService.pinnedQuickAccessSkus().length).toBe(0);
+    expect(cleanService.cashShift().openingCash).toBe(0);
+    expect(cleanService.users().length).toBe(1);
+    expect(cleanService.users()[0].role).toBe('ADMINISTRADOR');
+    expect(cleanService.users()[0].name).toBe('Administrador');
+    expect(cleanService.licenseCode()).toBeNull();
+    expect(cleanService.installationId()).toMatch(/^BT-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect(cleanService.installationId()).not.toBe('BT-DEMO-TIENDA-0001');
+    expect(cleanService.licenseEvaluation().status).toBe('SIN_LICENCIA');
+    expect(cleanService.isReadOnlyMode()).toBeTrue();
+  });
+});
+
 describe('MockInventoryService Integración (Bloques C y D)', () => {
   let service: MockInventoryService;
 
@@ -57,6 +114,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     service.backupAdapter = new InMemoryEncryptedBackupAdapter();
     await service.acquireWriterLock();
     await service.restorePersistedState();
+    await resetMockServiceToTestFixtures(service);
   });
 
   afterEach(async () => {
@@ -396,15 +454,16 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(JSON.parse(downloadedJson)).toEqual(rawCorruptedPayload);
     expect(await memoryAdapter.load(STATE_STORAGE_KEY)).toEqual(rawCorruptedPayload);
 
-    // Opción 2: "Empezar con datos de demostración" con confirmación -> ÚNICA opción que sobrescribe
-    service.requestStartWithDemoDataConfirmation();
+    // Opción 2: "Reiniciar tienda en blanco" con confirmación -> ÚNICA opción que sobrescribe
+    service.requestStartCleanStoreConfirmation();
     expect(service.corruptedConfirmOverwrite()).toBeTrue();
-    await service.confirmStartWithDemoData();
+    await service.confirmStartCleanStore();
 
     expect(service.autoSaveBlocked()).toBeFalse();
     expect(service.corruptedModalOpen()).toBeFalse();
     const overwrittenState = await memoryAdapter.load(STATE_STORAGE_KEY);
     expect(Array.isArray(overwrittenState.products)).toBeTrue();
+    expect(overwrittenState.products.length).toBe(0);
     // Y la copia del dato dañado sigue intacta en su clave de respaldo
     expect(await memoryAdapter.load(restoreResult.backupKey!)).toEqual(rawCorruptedPayload);
   });
@@ -455,7 +514,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(service.products()[0].stock).toBe(25);
   });
 
-  it('9. Persistencia (Bloque D): Botón "Restablecer datos de demostración" limpia almacenamiento y restaura valores de fábrica', async () => {
+  it('9. Persistencia (Bloque D): resetToCleanStoreData limpia almacenamiento y deja tienda en blanco', async () => {
     const memoryAdapter = new MemoryStateStorageAdapter();
     service.storageAdapter = memoryAdapter;
     await service.restorePersistedState();
@@ -466,12 +525,14 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
 
     await service.flushSave();
 
-    // Ejecutamos resetToDemoData
-    await service.resetToDemoData();
+    // Ejecutamos resetToCleanStoreData
+    await service.resetToCleanStoreData();
 
-    // Verificamos que se restauraron los 5+ productos base de catálogo
-    expect(service.products().length).toBeGreaterThan(3);
-    expect(service.creditCustomers().length).toBeGreaterThan(1);
+    // Verificamos que la tienda queda limpia (sin productos/clientes demo)
+    expect(service.products().length).toBe(0);
+    expect(service.creditCustomers().length).toBe(0);
+    expect(service.kardex().length).toBe(0);
+    expect(service.users().length).toBe(1);
     expect(service.corruptedDataWarning()).toBeNull();
   });
 
@@ -725,8 +786,9 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(service.backupSaveLabel()).toBe('Guardado');
     expect(service.getRelativeLastBackupLabel()).toBe('hace unos segundos');
 
-    // 3. Restablecemos a datos de demostración (perdiendo la venta de 3 unidades)
-    await service.resetToDemoData();
+    // 3. Reiniciamos con fixtures iniciales (perdiendo la venta de 3 unidades)
+    await resetMockServiceToTestFixtures(service, { issueFreshLicense: false });
+    await service.flushSave();
     expect(service.products().find((p) => p.sku === 'LAC-LAL-1L')!.stock).toBe(initialStock);
 
     // 4. Restauramos desde el respaldo cifrado .bak
@@ -904,10 +966,10 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     ];
 
     const mutatorInvocations: Array<{ name: string; run: () => Promise<any> | any }> = [
-      { name: 'resetToDemoData', run: () => service.resetToDemoData() },
-      { name: 'confirmStartWithDemoData', run: () => service.confirmStartWithDemoData() },
-      { name: 'requestStartWithDemoDataConfirmation', run: () => service.requestStartWithDemoDataConfirmation() },
-      { name: 'cancelStartWithDemoDataConfirmation', run: () => service.cancelStartWithDemoDataConfirmation() },
+      { name: 'resetToCleanStoreData', run: () => service.resetToCleanStoreData() },
+      { name: 'confirmStartCleanStore', run: () => service.confirmStartCleanStore() },
+      { name: 'requestStartCleanStoreConfirmation', run: () => service.requestStartCleanStoreConfirmation() },
+      { name: 'cancelStartCleanStoreConfirmation', run: () => service.cancelStartCleanStoreConfirmation() },
       { name: 'toggleTrafficDriver', run: () => service.toggleTrafficDriver(targetSku) },
       { name: 'pinAbc', run: () => service.pinAbc(targetSku, 'C') },
       {
@@ -964,7 +1026,6 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
         run: () => service.resolveShortageAlertWithPin('A1', targetSku, 50, '984312'),
       },
       { name: 'registerCreditPayment', run: () => service.registerCreditPayment('CLI-01', 50) },
-      { name: 'reloadOcrNote', run: () => service.reloadOcrNote() },
       { name: 'setCustomOcrNote', run: () => service.setCustomOcrNote([], 'FOLIO-RO') },
       {
         name: 'saveReception',
@@ -1264,7 +1325,8 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const usbBakBytes = await encryptBackupBytes(plainBytes, 'frase-usb-otra-pc', 2_000);
 
     // Simulamos PC 2 (con datos iniciales limpios) que importa el archivo .bak desde USB
-    await service.resetToDemoData();
+    await resetMockServiceToTestFixtures(service, { issueFreshLicense: false });
+    await service.flushSave();
     expect(service.products().find((p) => p.sku === 'FRI-NEG-50K')!.stock).toBe(initialStock);
 
     // Frase incorrecta al importar desde USB -> 403 y no altera estado
@@ -1440,6 +1502,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     // 5. Simulamos recargar la aplicación desde IndexedDB / storageAdapter
     const reloadedService = new MockInventoryService();
     reloadedService.storageAdapter = service.storageAdapter;
+    reloadedService.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     const restoreRes = await reloadedService.restorePersistedState();
     expect(restoreRes.success).toBeTrue();
 
@@ -2576,6 +2639,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     await service.flushSave();
     const reloadedService = new MockInventoryService();
     reloadedService.storageAdapter = service.storageAdapter;
+    reloadedService.setLicensePublicKeyForTesting(await getTestLicensePublicKeyJwk());
     const restoreRes = await reloadedService.restorePersistedState();
     expect(restoreRes.success).toBeTrue();
 
@@ -3624,10 +3688,11 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const restoreRes = await service.restorePersistedState();
     expect(restoreRes.success).toBeTrue();
 
-    // Verificar que se hidrataron settings y usuarios por defecto
+    // Verificar que se hidrataron settings y usuario administrador por defecto
     expect(service.businessSettings()).toBeDefined();
     expect(service.businessSettings().storeName).toBe('Mi Tiendita');
-    expect(service.users().length).toBeGreaterThanOrEqual(4);
+    expect(service.users().length).toBe(1);
+    expect(service.users()[0].role).toBe('ADMINISTRADOR');
 
     // Verificar que el estado guardado ahora está en v4
     const v4Saved = await adapter.load(STATE_STORAGE_KEY);

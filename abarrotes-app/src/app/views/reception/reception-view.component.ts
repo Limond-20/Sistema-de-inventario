@@ -36,33 +36,6 @@ declare const Tesseract: {
   ) => Promise<{ data: { text: string } }>;
 };
 
-const PRESET_TICKETS: Record<string, string> = {
-  inflacion: [
-    'DISTRIBUIDORA DEL BAJIO S.A. DE C.V.',
-    'FOLIO: DB-20931',
-    '1O Leche Lala Entera 1L $24.5O',
-    '12 Aceite Nutrioli 850ml $39.OO',
-    '24 Atun Dolores en Agua 140g $16.50',
-    '15 Frijol Negro Granel 1 kg $32.OO',
-    '5 Queso Fresco Local 1 kg $75.00',
-  ].join('\n'),
-  queso_atun: [
-    'LACTEOS Y ABARROTES DEL CENTRO',
-    'FOLIO: LC-8841',
-    '10 Leche Lala Entera 1L $21.00',
-    '2O Atun Dolores en Agua 140g $19.5O',
-    '8 Queso Fresco Local 1 kg $86.OO',
-  ].join('\n'),
-  estable: [
-    'NOTA DE PROVEEDOR SIN ALZAS',
-    '10 Leche Lala Entera 1L $21.00',
-    '12 Aceite Nutrioli 850ml $34.00',
-    '24 Atun Dolores en Agua 140g $16.50',
-    '10 Frijol Negro Granel 1 kg $28.00',
-    '5 Queso Fresco Local 1 kg $75.00',
-  ].join('\n'),
-};
-
 @Component({
   selector: 'app-reception-view',
   imports: [CurrencyPipe, DecimalPipe, FormsModule, RouterLink],
@@ -86,9 +59,8 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   protected readonly quickMargin = signal<number>(20);
   protected readonly quickQty = signal<number>(1);
 
-  // ---------- Laboratorio / Simulador OCR y Lector ----------
-  protected readonly labOpen = signal<boolean>(true);
-  protected readonly rawTicketText = signal<string>(PRESET_TICKETS['inflacion']);
+  // ---------- Lectura OCR y Lector LAN ----------
+  protected readonly rawTicketText = signal<string>('');
   protected readonly ocrRunning = signal<boolean>(false);
   protected readonly ocrProgress = signal<number>(0);
   protected readonly ocrStatusText = signal<string>('');
@@ -142,9 +114,6 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   protected readonly selectedProduct = computed(() => this.inv.products().find((p) => p.sku === this.manualSkuSig()));
   private readonly manualSkuSig = signal('');
 
-  /** Los 5 productos base con sus códigos EAN-13 exactos para pruebas rápidas */
-  protected readonly baseFiveProducts = computed(() => this.inv.products().slice(0, 5));
-
   ngOnInit(): void {
     if (typeof BroadcastChannel !== 'undefined') {
       this.syncChannel = new BroadcastChannel('abarrotes_lan_sync');
@@ -167,35 +136,26 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  toggleLab(): void {
-    this.labOpen.update((v) => !v);
-  }
-
   setMode(m: Mode): void {
     this.mode.set(m);
     this.savedSummary.set(null);
-  }
-
-  loadPresetTicket(key: 'inflacion' | 'queso_atun' | 'estable'): void {
-    this.rawTicketText.set(PRESET_TICKETS[key]);
-    this.runOcrParserFromText();
   }
 
   runOcrParserFromText(): void {
     const parsed = parseTicketOCR(this.rawTicketText(), this.inv.products());
     if (parsed.length === 0) {
       this.lastSyncBanner.set(
-        '⚠️ No se encontraron líneas con el patrón [Cantidad] [Descripción] [Costo]. Verifica el texto de prueba.',
+        'No se encontraron líneas con el patrón [Cantidad] [Descripción] [Costo].',
       );
       return;
     }
     const folio = 'OCR-' + String(Date.now()).slice(-4);
-    this.inv.setCustomOcrNote(parsed, folio, 'Simulador OCR en PC');
+    this.inv.setCustomOcrNote(parsed, folio, 'Lectura OCR en PC');
     this.ocrLines.set(structuredClone(parsed));
     this.mode.set('ocr');
     this.savedSummary.set(null);
     this.lastSyncBanner.set(
-      `🧪 Parser OCR ejecutado: se cargaron ${parsed.length} productos en la tabla de recepción (Folio #${folio}).`,
+      `Se cargaron ${parsed.length} productos en la tabla de recepción (Folio #${folio}).`,
     );
   }
 
@@ -244,16 +204,6 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
         input.value = '';
       });
     }
-  }
-
-  simulateBarcodeScanOnPC(barcode: string): void {
-    const p = this.inv.findProductByBarcode(barcode);
-    if (!p) return;
-    this.handleIncomingSyncEvent({
-      type: 'BARCODE_SCANNED',
-      barcode: p.barcode,
-      product: p,
-    });
   }
 
   private handleIncomingSyncEvent(data: Record<string, unknown>): void {
@@ -418,12 +368,6 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     this.closeQuickProductModal();
   }
 
-  reloadNote(): void {
-    this.inv.reloadOcrNote();
-    this.ocrLines.set(structuredClone(this.inv.ocrNote()!.lines));
-    this.savedSummary.set(null);
-  }
-
   save(): void {
     if (!this.canSave()) return;
     const isOcr = this.mode() === 'ocr';
@@ -447,7 +391,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   // ---------- Sub-secciones y Gestión de Proveedores (Bloque F2) ----------
   protected readonly activeSection = signal<'recepcion' | 'proveedores' | 'cxp'>('recepcion');
 
-  protected readonly selectedSupplierId = signal<string>('SUP-01');
+  protected readonly selectedSupplierId = signal<string>('');
   protected readonly receptionPaymentType = signal<'CONTADO' | 'CREDITO'>('CONTADO');
   protected readonly receptionCreditDays = signal<number>(15);
 

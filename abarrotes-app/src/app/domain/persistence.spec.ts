@@ -175,7 +175,7 @@ test('Persistencia: Migración simple de versión 0/antigua a versión actual', 
   assert.ok(Array.isArray(result.state.shrinkRecords));
   assert.ok(Array.isArray(result.state.auditLines));
   assert.ok(result.state.cashShift);
-  assert.equal(result.state.activeUser, 'Don Lupe (Encargado)');
+  assert.equal(result.state.activeUser, 'Administrador');
 
   // Un estado que ya está en la versión actual no sufre cambios
   const noMigration = migrateState(result.state);

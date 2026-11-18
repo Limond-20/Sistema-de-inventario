@@ -82,7 +82,6 @@ export class SettingsViewComponent implements OnInit {
     { permission: 'Gestión de usuarios y credenciales', cajero: false, encargado: false, admin: true },
     { permission: 'Modificación de precios en catálogo', cajero: false, encargado: false, admin: true },
     { permission: 'Respaldos cifrados (.bak)', cajero: false, encargado: false, admin: true },
-    { permission: 'Restablecer datos de fábrica', cajero: false, encargado: false, admin: true },
   ];
 
   ngOnInit(): void {
@@ -298,25 +297,5 @@ export class SettingsViewComponent implements OnInit {
     this.pinNew.set('');
     this.pinConfirm.set('');
     setTimeout(() => this.pinFeedback.set(''), 3500);
-  }
-
-  // ---------- Restablecimiento Demo ----------
-  protected readonly resetDemoConfirm = signal<boolean>(false);
-  protected readonly resetDemoDone = signal<boolean>(false);
-
-  requestResetDemo(): void {
-    this.resetDemoDone.set(false);
-    this.resetDemoConfirm.set(true);
-  }
-
-  cancelResetDemo(): void {
-    this.resetDemoConfirm.set(false);
-  }
-
-  async confirmResetDemoData(): Promise<void> {
-    await this.inv.resetToDemoData();
-    this.resetDemoConfirm.set(false);
-    this.resetDemoDone.set(true);
-    setTimeout(() => this.resetDemoDone.set(false), 3500);
   }
 }

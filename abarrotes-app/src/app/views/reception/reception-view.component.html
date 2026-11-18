@@ -141,12 +141,8 @@
       <section class="rounded-2xl border border-slate-200 bg-white p-8 text-center flex flex-col items-center gap-3 shadow-2xs">
         <p class="text-lg font-bold text-slate-900">No hay notas pendientes del celular</p>
         <p class="text-xs text-slate-500 max-w-md">
-          Usa la opción de fotografiar nota desde el celular o carga una nota de prueba para continuar:
+          Fotografía una nota de proveedor desde el celular enlazado o cambia a Captura Manual de Factura / Nota.
         </p>
-        <button type="button" (click)="reloadNote()"
-          class="h-11 px-6 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors">
-          Cargar Nota de Prueba (#DB-20931)
-        </button>
       </section>
     }
   }
@@ -317,6 +313,7 @@
           <span>Proveedor:</span>
           <select [value]="selectedSupplierId()" (change)="onSupplierSelectionChange($any($event.target).value)"
             class="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-900">
+            <option value="">— Sin proveedor asignado —</option>
             @for (sup of inv.suppliers(); track sup.id) {
               <option [value]="sup.id">{{ sup.name }}</option>
             }
@@ -926,7 +923,7 @@
         <label class="flex flex-col gap-1">
           <span class="text-xs font-bold text-slate-700">Nota / Referencia de pago:</span>
           <input type="text" [ngModel]="paymentNotes()" (ngModelChange)="paymentNotes.set($event)"
-            placeholder="Ej. Liquidación Nota DB-20931" class="h-10 rounded-lg border border-slate-300 px-3 text-xs" />
+            placeholder="Ej. Liquidación Nota REM-104" class="h-10 rounded-lg border border-slate-300 px-3 text-xs" />
         </label>
 
         @if (paymentError()) {

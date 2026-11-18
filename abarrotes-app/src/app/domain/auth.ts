@@ -507,21 +507,31 @@ export async function verifySupervisorPinAttempt(
 }
 
 /**
+ * Genera el usuario Administrador inicial para un arranque limpio de tienda cliente.
+ */
+export function buildInitialAdminUser(): AppUser {
+  return {
+    id: 'USR-ADMIN',
+    name: 'Administrador',
+    role: 'ADMINISTRADOR',
+    salt: 'bc818b371e58ad34c5f2527938452548',
+    pinHash: 'ac7f3d51c091ee3c3905982363322765e3f322e800c9769208f4bcb1bd028ec0',
+    iterations: DEFAULT_PIN_ITERATIONS,
+    isActive: true,
+    failedAttempts: 0,
+    lockedUntil: null,
+    lockoutCount: 0,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/**
  * Genera el listado inicial de usuarios demostrativos con credenciales PBKDF2 precalculadas.
  */
 export function buildDefaultDemoUsers(): AppUser[] {
   return [
     {
-      id: 'USR-ADMIN',
-      name: 'Administrador',
-      role: 'ADMINISTRADOR',
-      salt: 'bc818b371e58ad34c5f2527938452548',
-      pinHash: 'ac7f3d51c091ee3c3905982363322765e3f322e800c9769208f4bcb1bd028ec0', // PIN: 984312
-      iterations: DEFAULT_PIN_ITERATIONS,
-      isActive: true,
-      failedAttempts: 0,
-      lockedUntil: null,
-      lockoutCount: 0,
+      ...buildInitialAdminUser(),
       createdAt: '2026-10-20T08:00:00.000Z',
     },
     {

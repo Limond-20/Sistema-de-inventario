@@ -92,7 +92,7 @@ export function validateBusinessSettings(input: Partial<BusinessSettings>): {
   };
 }
 
-export function buildDefaultDemoUsers(): AppUser[] {
+function buildInitialAdminUsers(): AppUser[] {
   return [
     {
       id: 'USR-ADMIN-01',
@@ -100,45 +100,6 @@ export function buildDefaultDemoUsers(): AppUser[] {
       role: 'ADMINISTRADOR',
       salt: 'c4ca4238a0b923820dcc509a6f75849b',
       pinHash: 'b5d84871032321ef80a525f20f1fb2a1d2e1329bf33783a0026e64c125dfef11',
-      iterations: 600000,
-      isActive: true,
-      failedAttempts: 0,
-      lockedUntil: null,
-      lockoutCount: 0,
-      createdAt: '2026-11-01T00:00:00.000Z',
-    },
-    {
-      id: 'USR-LUPE-01',
-      name: 'Don Lupe (Encargado)',
-      role: 'ENCARGADO',
-      salt: 'c81e728d9d4c2f636f067f89cc14862c',
-      pinHash: 'f454f738f6d89efd95e0c52bb1b415a99577747e44e99f5b2b2b2b2b2b2b2b2b',
-      iterations: 600000,
-      isActive: true,
-      failedAttempts: 0,
-      lockedUntil: null,
-      lockoutCount: 0,
-      createdAt: '2026-11-01T00:00:00.000Z',
-    },
-    {
-      id: 'USR-MARIA-01',
-      name: 'María (Cajera)',
-      role: 'CAJERO',
-      salt: 'eccbc87e4b5ce2fe28308fd9f2a7baf3',
-      pinHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0',
-      iterations: 600000,
-      isActive: true,
-      failedAttempts: 0,
-      lockedUntil: null,
-      lockoutCount: 0,
-      createdAt: '2026-11-01T00:00:00.000Z',
-    },
-    {
-      id: 'USR-PEDRO-01',
-      name: 'Pedro (Cajero)',
-      role: 'CAJERO',
-      salt: 'a87ff679a2f3e71d9181a67b7542122c',
-      pinHash: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
       iterations: 600000,
       isActive: true,
       failedAttempts: 0,
@@ -496,13 +457,13 @@ export function migrateState(data: any): MigrationResult {
       ...working,
       schemaVersion: CURRENT_SCHEMA_VERSION,
       timestamp: working.timestamp || new Date().toISOString(),
-      activeUser: working.activeUser || 'Don Lupe (Encargado)',
+      activeUser: working.activeUser || 'Administrador',
       products: migratedProducts,
       creditCustomers: Array.isArray(working.creditCustomers)
         ? working.creditCustomers.map(migrateCustomerDefaults)
         : [],
       cashShift: working.cashShift || {
-        openingCash: 500,
+        openingCash: 0,
         cashSalesTotal: 0,
         creditPaymentsReceived: 0,
         creditSalesTotal: 0,
@@ -510,7 +471,7 @@ export function migrateState(data: any): MigrationResult {
         shrinkTotalCost: 0,
       },
       cashRegister: working.cashRegister || {
-        openingFloat: 500,
+        openingFloat: 0,
         cashSalesTotal: 0,
         creditSalesTotal: 0,
         creditPaymentsReceived: 0,
@@ -551,7 +512,7 @@ export function migrateState(data: any): MigrationResult {
                 ? working.maxDiscountPctWithoutPin
                 : 10,
           },
-      users: Array.isArray(working.users) && working.users.length > 0 ? working.users : buildDefaultDemoUsers(),
+      users: Array.isArray(working.users) && working.users.length > 0 ? working.users : buildInitialAdminUsers(),
       securityAuditLog: Array.isArray(working.securityAuditLog) ? working.securityAuditLog : [],
       salesHistory: Array.isArray(working.salesHistory) ? working.salesHistory : [],
       saleReturns: Array.isArray(working.saleReturns)
@@ -570,7 +531,7 @@ export function migrateState(data: any): MigrationResult {
       installationId:
         typeof working.installationId === 'string' && working.installationId.trim()
           ? working.installationId.trim().toUpperCase()
-          : 'BT-DEMO-TIENDA-0001',
+          : undefined,
       licenseCode:
         typeof working.licenseCode === 'string' && working.licenseCode.trim()
           ? working.licenseCode.trim()

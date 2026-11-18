@@ -17,7 +17,6 @@ import {
   normalizePriceTiers,
 } from '../../domain/catalog';
 
-const TODAY = new Date('2026-10-22T12:00:00');
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 export type AbcFilter = 'ALL' | AbcClass;
@@ -162,7 +161,7 @@ export class CatalogViewComponent {
 
   private daysLeft(p: Product): number {
     return Math.round(
-      (new Date(p.fefoExpiryDate + 'T12:00:00').getTime() - TODAY.getTime()) / 86_400_000,
+      (new Date(p.fefoExpiryDate + 'T12:00:00').getTime() - Date.now()) / 86_400_000,
     );
   }
 

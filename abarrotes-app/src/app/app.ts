@@ -361,33 +361,33 @@ import { canAccessRoute } from './domain/auth';
                   </button>
                   <button
                     type="button"
-                    (click)="inv.requestStartWithDemoDataConfirmation()"
+                    (click)="inv.requestStartCleanStoreConfirmation()"
                     class="h-11 rounded-xl bg-brand-700 px-5 text-sm font-semibold text-white hover:bg-brand-800"
-                    data-testid="btn-start-demo-request">
-                    Empezar con datos de demostración
+                    data-testid="btn-start-clean-request">
+                    Reiniciar tienda en blanco
                   </button>
                 </div>
               } @else {
                 <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3" data-testid="confirm-overwrite-box">
                   <p class="text-sm font-bold text-slate-900">
-                    ¿Confirmas sobrescribir el estado principal con los datos de demostración?
+                    ¿Confirmas reiniciar el estado de la tienda en blanco?
                   </p>
                   <p class="text-xs text-slate-700">
-                    La copia del dato dañado seguirá resguardada en <b>{{ inv.corruptedBackupKey() }}</b>, pero el estado activo de la tienda se reiniciará a los valores de demostración.
+                    La copia del dato dañado seguirá resguardada en <b>{{ inv.corruptedBackupKey() }}</b>, pero el catálogo y registros activos iniciarán vacíos.
                   </p>
                   <div class="flex justify-end gap-3">
                     <button
                       type="button"
-                      (click)="inv.cancelStartWithDemoDataConfirmation()"
+                      (click)="inv.cancelStartCleanStoreConfirmation()"
                       class="h-10 rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                       Cancelar
                     </button>
                     <button
                       type="button"
-                      (click)="inv.confirmStartWithDemoData()"
+                      (click)="inv.confirmStartCleanStore()"
                       class="h-10 rounded-xl bg-[#a33f3f] px-5 text-xs font-semibold text-white hover:bg-[#8c3434]"
-                      data-testid="btn-confirm-demo-overwrite">
-                      Confirmar y empezar con datos de demostración
+                      data-testid="btn-confirm-clean-overwrite">
+                      Confirmar y reiniciar en blanco
                     </button>
                   </div>
                 </div>
