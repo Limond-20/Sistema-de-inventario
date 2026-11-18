@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterModule } from '@angular/router';
@@ -61,7 +61,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
 
   protected readonly phoneButtonLabel = computed(() => {
     if (this.lanSync.isUnavailable()) {
-      return this.inv.phoneLinked() ? 'Móvil Conectado (Demo)' : 'Móvil (QR) · Modo demostración';
+      return this.inv.phoneLinked() ? 'Móvil Conectado' : 'Móvil (QR)';
     }
     if (this.lanSync.hasPhones()) {
       const c = this.lanSync.phones();
@@ -70,12 +70,40 @@ export class NavbarComponent implements OnInit, OnDestroy {
     return 'Móvil (QR)';
   });
 
+  protected readonly canCloseShiftGlobal = computed(() => {
+    const role = this.inv.currentUser()?.role;
+    return role !== 'CAJERO';
+  });
+
+  protected readonly canBackupGlobal = computed(() => {
+    const role = this.inv.currentUser()?.role;
+    return role !== 'CAJERO';
+  });
+
+  constructor() {
+    effect(() => {
+      if (this.inv.openBackupModalRequested()) {
+        this.inv.openBackupModalRequested.set(false);
+        this.openBackupModal();
+      }
+    });
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.qrOpen()) this.closeQr();
+    if (this.closeShiftModalOpen()) this.closeCloseShiftModal();
+    if (this.backupModalOpen()) this.closeBackupModal();
+    if (this.resetDemoModalOpen()) this.closeResetDemoModal();
+  }
+
   protected readonly availableIps = signal<string[]>([]);
   protected readonly selectedIp = signal<string>('');
   protected readonly forbiddenAccess = signal<boolean>(false);
   protected readonly realPairingUrl = signal<string>('');
   protected readonly qrCacheBust = signal<number>(Date.now());
   protected readonly rotatingCode = signal<boolean>(false);
+  protected readonly confirmingRotateCode = signal<boolean>(false);
 
   protected readonly qrImageUrl = computed(() => {
     const ipParam = this.selectedIp() ? `&ip=${encodeURIComponent(this.selectedIp())}` : '';
@@ -176,6 +204,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
   }
 
   openQr(): void {
+    this.confirmingRotateCode.set(false);
     this.qrOpen.set(true);
     if (!this.lanSync.isUnavailable()) {
       this.initPairingModal();
@@ -211,10 +240,16 @@ export class NavbarComponent implements OnInit, OnDestroy {
     this.refreshPairingInfo();
   }
 
+  requestRotateCode(): void {
+    this.confirmingRotateCode.set(true);
+  }
+
+  cancelRotateCode(): void {
+    this.confirmingRotateCode.set(false);
+  }
+
   async handleRotateCode(): Promise<void> {
-    if (!window.confirm('Se desvincularán los celulares actuales y se generará un código nuevo. ¿Deseas continuar?')) {
-      return;
-    }
+    this.confirmingRotateCode.set(false);
     this.rotatingCode.set(true);
     try {
       const info = await this.lanSync.rotatePairing();
@@ -227,6 +262,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
     }
   }
   closeQr(): void {
+    this.confirmingRotateCode.set(false);
     this.qrOpen.set(false);
   }
  
@@ -253,34 +289,79 @@ export class NavbarComponent implements OnInit, OnDestroy {
   openCloseShift(): void {
     this.shiftClosedSuccess.set(false);
     this.shiftBackupMessage.set(null);
+    this.closeShiftError.set(null);
+    this.lastSatisfactionSaved.set(false);
+    this.closedShiftSummary.set(null);
     this.closeShiftSatisfactionRating.set(null);
     this.closeShiftSatisfactionComment.set('');
+    this.physicalCashCounted.set(this.inv.getExpectedDrawerCash());
+    this.shiftClosePin.set('');
+    this.shiftCloseNotes.set('');
     this.closeShiftModalOpen.set(true);
   }
   closeCloseShiftModal(): void {
     this.closeShiftModalOpen.set(false);
   }
   async confirmCloseShift(): Promise<void> {
+    this.closeShiftError.set(null);
+    this.shiftBackupMessage.set(null);
+
     const phrase = this.closeShiftPassphrase().trim();
     if (!this.inv.hasSessionBackupPassphrase() && phrase.length < MIN_BACKUP_PASSPHRASE_LENGTH) {
-      this.shiftBackupMessage.set('Ingresa tu frase de respaldo (mínimo 8 caracteres) antes de cerrar el turno.');
+      const msg = 'Ingresa tu frase de respaldo (mínimo 8 caracteres) antes de cerrar el turno.';
+      this.closeShiftError.set(msg);
+      this.shiftBackupMessage.set(msg);
       return;
     }
+
+    if (this.inv.isShiftOpen()) {
+      const pin = this.shiftClosePin().trim();
+      if (!pin) {
+        const msg = 'Ingresa el PIN de Encargado o Administrador para cerrar el turno.';
+        this.closeShiftError.set(msg);
+        this.shiftBackupMessage.set(msg);
+        return;
+      }
+
+      const satRating = this.closeShiftSatisfactionRating();
+      const counted = Number(this.physicalCashCounted()) || 0;
+      const previewStatusLabel = this.shiftCutSummary().statusLabel;
+      const cutRes = await this.inv.closeShift({
+        physicalCash: counted,
+        pin,
+        notes: this.shiftCloseNotes().trim() || undefined,
+        satisfactionRating: satRating ?? undefined,
+        satisfactionComment: this.closeShiftSatisfactionComment().trim() || undefined,
+      });
+
+      if (!cutRes.ok) {
+        this.closeShiftError.set(cutRes.message);
+        this.shiftBackupMessage.set(cutRes.message);
+        return;
+      }
+
+      this.lastSatisfactionSaved.set(!!cutRes.satisfactionSaved);
+      if (cutRes.record) {
+        this.closedShiftSummary.set({
+          physicalCash: cutRes.record.physicalCash,
+          theoreticalCash: cutRes.record.theoreticalCash,
+          statusLabel: previewStatusLabel,
+        });
+      }
+    }
+
     const backupRes = await this.inv.closeShiftWithAutoBackup(phrase || undefined);
     if (!backupRes.ok) {
+      this.closeShiftError.set(backupRes.message);
       this.shiftBackupMessage.set(backupRes.message);
       return;
     }
+
     this.closeShiftPassphrase.set('');
+    this.shiftClosePin.set('');
+    this.shiftCloseNotes.set('');
     if (backupRes.entry) {
       this.shiftBackupMessage.set(`Respaldo cifrado automático generado: ${backupRes.entry.nombre}`);
-    }
-    const satRating = this.closeShiftSatisfactionRating();
-    if (satRating !== null && this.inv.satisfactionDueStatus().due) {
-      this.inv.submitSatisfactionSurvey({
-        rating: satRating,
-        comment: this.closeShiftSatisfactionComment(),
-      });
     }
     this.closeShiftSatisfactionRating.set(null);
     this.closeShiftSatisfactionComment.set('');
@@ -295,6 +376,19 @@ export class NavbarComponent implements OnInit, OnDestroy {
   protected readonly pendingRestoreFilename = signal<string | null>(null);
   protected readonly restorePassphraseInput = signal<string>('');
   protected readonly closeShiftPassphrase = signal<string>('');
+  protected readonly physicalCashCounted = signal<number>(0);
+  protected readonly shiftClosePin = signal<string>('');
+  protected readonly shiftCloseNotes = signal<string>('');
+  protected readonly closeShiftError = signal<string | null>(null);
+  protected readonly lastSatisfactionSaved = signal<boolean>(false);
+  protected readonly closedShiftSummary = signal<{
+    physicalCash: number;
+    theoreticalCash: number;
+    statusLabel: string;
+  } | null>(null);
+  protected readonly shiftCutSummary = computed(() =>
+    this.inv.getShiftCutSummary(Number(this.physicalCashCounted()) || 0),
+  );
   protected readonly shiftBackupMessage = signal<string | null>(null);
   protected readonly closeShiftSatisfactionRating = signal<number | null>(null);
   protected readonly closeShiftSatisfactionComment = signal<string>('');

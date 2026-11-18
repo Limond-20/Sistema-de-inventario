@@ -1,11 +1,23 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../services/mock-inventory.service';
 
+const WEEKDAY_NAMES_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function getDefaultExchangeExpiryIso(daysAhead = 30): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 @Component({
   selector: 'app-fefo-view',
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="content-card flex flex-col gap-5 select-none">
       <!-- ===================== ENCABEZADO ===================== -->
@@ -45,9 +57,9 @@ import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../serv
             <span class="text-xs font-bold uppercase tracking-wider text-slate-500 block">Agenda de Ruta</span>
             <h2 class="text-base font-bold text-slate-900 mt-0.5">Proveedores en Ruta (Próximas 48 Horas)</h2>
           </div>
-          <!-- Se eliminó el fondo y borde azul de la fecha, dejándolo limpio -->
-          <span class="text-sm font-medium text-slate-500">
-            Día de hoy: Jueves · Visita mañana: Viernes
+          <!-- Fecha dinámica real del sistema -->
+          <span class="text-sm font-medium text-slate-600" data-testid="fefo-dynamic-day-label">
+            Día de hoy: {{ todayDayName() }} · Visita mañana: {{ tomorrowDayName() }}
           </span>
         </div>
 
@@ -58,9 +70,9 @@ import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../serv
               <div>
                 <div class="flex items-center justify-between mb-1">
                   <span class="text-sm font-bold text-slate-900">{{ route.name }}</span>
-                  @if (route.visitDays.includes('Viernes')) {
+                  @if (route.visitDays.includes(tomorrowDayName())) {
                     <!-- Se ajustó el color de la etiqueta para que no resalte de forma agresiva -->
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 uppercase tracking-wide">
+                    <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700">
                       Llega Mañana
                     </span>
                   }
@@ -129,18 +141,24 @@ import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../serv
                 <span class="block text-[10px] text-red-600 mt-0.5 font-semibold">Crítica</span>
               </div>
 
-              <!-- 3. Botones de Acción ajustados al diseño limpio -->
-              <div class="flex gap-2">
+              <!-- 3. Selector de nueva caducidad + Botones de Acción -->
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="flex flex-col gap-0.5 text-[11px] font-semibold text-slate-600">
+                  <span>Nueva caducidad</span>
+                  <input type="date" [ngModel]="exchangeNewExpiry()" (ngModelChange)="exchangeNewExpiry.set($event)"
+                    data-testid="input-fefo-new-expiry"
+                    class="h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-mono font-bold text-slate-900" />
+                </label>
                 <button
                   type="button"
                   (click)="onExchangeSuccess(item.batch.batchId)"
-                  class="h-10 px-4 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors">
+                  class="h-10 px-4 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors self-end">
                   Registrar Cambio Exitoso
                 </button>
                 <button
                   type="button"
                   (click)="onExchangeRejected(item.batch.batchId)"
-                  class="h-10 px-4 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-700 text-xs font-bold transition-colors">
+                  class="h-10 px-4 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-700 text-xs font-bold transition-colors self-end">
                   Rechazado / Mandar a Merma
                 </button>
               </div>
@@ -160,16 +178,23 @@ import { MockInventoryService, PerishableBatch, SupplierRoute } from '../../serv
 export class FefoViewComponent {
   protected readonly inv = inject(MockInventoryService);
   protected readonly actionFeedback = signal<{ ok: boolean; msg: string } | null>(null);
+  protected readonly exchangeNewExpiry = signal<string>(getDefaultExchangeExpiryIso(30));
+
+  protected readonly todayDayName = computed(() => WEEKDAY_NAMES_ES[new Date().getDay()] ?? 'Hoy');
+  protected readonly tomorrowDayName = computed(
+    () => WEEKDAY_NAMES_ES[(new Date().getDay() + 1) % 7] ?? 'Mañana',
+  );
 
   protected readonly urgentBatches = computed(() => this.inv.getUpcomingFefoExchanges());
 
   onExchangeSuccess(batchId: string): void {
-    const res = this.inv.resolvePhysicalExchange(batchId, 'CAMBIO_EFECTIVO', '2026-11-28');
+    const expiry = this.exchangeNewExpiry().trim() || getDefaultExchangeExpiryIso(30);
+    const res = this.inv.resolvePhysicalExchange(batchId, 'CAMBIO_EFECTIVO', expiry);
     this.actionFeedback.set({ ok: res.ok, msg: res.message });
   }
 
   onExchangeRejected(batchId: string): void {
     const res = this.inv.resolvePhysicalExchange(batchId, 'MERMA_RECHAZADA');
-    this.actionFeedback.set({ ok: false, msg: res.message });
+    this.actionFeedback.set({ ok: res.ok, msg: res.message });
   }
 }

@@ -166,6 +166,17 @@ async def _usb_poll_loop(copier: UsbBackupCopier, seconds: float) -> None:
         await asyncio.sleep(seconds)
 
 
+def _ignore_benign_connection_reset(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    """Suprime el ConnectionResetError (WinError 10054) que ProactorEventLoop lanza en Windows
+    en _call_connection_lost cuando el navegador corta abruptamente un socket TLS/TCP."""
+    exc = context.get("exception")
+    if isinstance(exc, ConnectionResetError) or (
+        isinstance(exc, OSError) and getattr(exc, "winerror", None) == 10054
+    ):
+        return
+    loop.default_exception_handler(context)
+
+
 def create_app(
     static_dir: Path | None = None,
     *,
@@ -182,6 +193,8 @@ def create_app(
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app_: FastAPI):
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(_ignore_benign_connection_reset)
         task = None
         usb_copier = app_.state.usb
         if usb_copier.enabled and usb_poll_seconds:

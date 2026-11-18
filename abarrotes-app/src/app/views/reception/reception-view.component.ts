@@ -1,4 +1,4 @@
-import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -346,8 +346,12 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   }
 
   addManualLine(): void {
-    if (!this.manualSku || !this.manualCost || this.manualCost <= 0) return;
-    const line = this.inv.createManualLine(this.manualSku, this.manualQty, this.manualCost);
+    if (!this.manualSku) return;
+    if (!this.manualCost || this.manualCost <= 0) {
+      this.lastSyncBanner.set('El costo unitario debe ser mayor a $0.00 para agregar la línea.');
+      return;
+    }
+    const line = this.inv.createManualLine(this.manualSku, Math.max(1, Number(this.manualQty) || 1), this.manualCost);
     this.manualLines.update((list) => [...list.filter((l) => l.sku !== line.sku), line]);
     this.manualSku = '';
     this.manualSkuSig.set('');
@@ -383,8 +387,8 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   confirmQuickProduct(): void {
     const name = this.quickName().trim();
     if (!name) return;
-    const cost = Number(this.quickCost()) || 0;
-    const margin = Number(this.quickMargin()) || 20;
+    const cost = Math.max(0.01, Number(this.quickCost()) || 0);
+    const margin = Math.min(95, Math.max(0, Number(this.quickMargin()) || 20));
     const isBulk = this.quickIsBulk();
     const newProd = this.inv.registerNewQuickProduct(
       name,
@@ -446,6 +450,23 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
 
   // ---------- Sub-secciones y Gestión de Proveedores (Bloque F2) ----------
   protected readonly activeSection = signal<'recepcion' | 'proveedores' | 'cxp'>('recepcion');
+  protected readonly activeSuppliers = computed(() =>
+    this.inv.suppliers().filter((s) => s.isActive !== false),
+  );
+  protected readonly safeQuickPreviewPrice = computed(() => {
+    const cost = Math.max(0, Number(this.quickCost()) || 0);
+    const rawMargin = Number(this.quickMargin());
+    const margin = Number.isFinite(rawMargin) ? Math.min(95, Math.max(0, rawMargin || 20)) : 20;
+    return cost / (1 - margin / 100);
+  });
+
+  @HostListener('document:keydown.escape')
+  protected onEscapeKey(): void {
+    if (this.paymentModalOpen()) { this.closePaymentModal(); return; }
+    if (this.supplierModalOpen()) { this.closeSupplierModal(); return; }
+    if (this.supplierFichaModalOpen()) { this.closeSupplierFicha(); return; }
+    if (this.quickProductModalOpen()) { this.closeQuickProductModal(); }
+  }
 
   protected readonly selectedSupplierId = signal<string>('SUP-01');
   protected readonly receptionPaymentType = signal<'CONTADO' | 'CREDITO'>('CONTADO');
@@ -464,6 +485,8 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
   protected readonly supplierError = signal<string>('');
   protected readonly supplierFeedback = signal<string>('');
   protected readonly supplierDuplicateWarning = signal<boolean>(false);
+  protected readonly supplierPendingDeactivateId = signal<string | null>(null);
+  protected readonly supplierDirectoryError = signal<string>('');
 
   protected readonly supplierFichaModalOpen = signal<boolean>(false);
   protected readonly selectedSupplier = signal<any | null>(null);
@@ -571,13 +594,23 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     }
   }
 
+  requestDeactivateSupplier(s: any, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.supplierDirectoryError.set('');
+    this.supplierPendingDeactivateId.set(s.id);
+  }
+
+  cancelDeactivateSupplier(ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.supplierPendingDeactivateId.set(null);
+  }
+
   deleteSupplier(s: any, ev?: Event): void {
     if (ev) ev.stopPropagation();
-    const ok = confirm(`¿Dar de baja lógica al proveedor ${s.name}?`);
-    if (!ok) return;
+    this.supplierPendingDeactivateId.set(null);
     const res = this.inv.deleteSupplierLogical(s.id);
     if (!res.ok) {
-      alert(res.message);
+      this.supplierDirectoryError.set(res.message);
     }
   }
 

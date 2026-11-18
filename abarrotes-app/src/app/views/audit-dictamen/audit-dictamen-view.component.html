@@ -7,7 +7,7 @@
   <div class="flex items-center gap-2">
     <button type="button" (click)="loadBlindMissionSample()"
       class="h-9 px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs shadow-2xs transition-colors">
-      Misión 15 Artículos (ABC)
+      Cargar Muestra Demo (15 Artículos ABC)
     </button>
     <div class="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-1.5 shadow-2xs text-xs font-semibold text-slate-600">
       <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -19,9 +19,9 @@
 <!-- ===================== INDICADORES (4 TARJETAS KPI) ===================== -->
 <section class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
   <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Productos Contados</span>
+    <span class="text-xs font-bold text-slate-600">Productos Contados</span>
     <p class="text-2xl font-black text-slate-900 mt-0.5 font-mono">{{ rows().length }}</p>
-    <p class="text-xs text-slate-500 mt-0.5">Muestra de Pasillo 3</p>
+    <p class="text-xs text-slate-500 mt-0.5">{{ sampleLocationLabel() }}</p>
   </div>
 
   <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
@@ -176,13 +176,18 @@
         }
       </div>
     </article>
+  } @empty {
+    <div class="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-xs text-slate-600 shadow-2xs" data-testid="audit-empty-state">
+      <p class="text-sm font-bold text-slate-900">No hay productos contados en esta sesión de auditoría</p>
+      <p class="mt-1">Envía un conteo desde la app móvil o usa el botón de muestra para iniciar la revisión.</p>
+    </div>
   }
 </section>
 
 @if (allDone()) {
   <section class="rounded-xl border border-emerald-300 bg-emerald-50/80 p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
     <div>
-      <p class="text-base font-bold text-emerald-950">Dictamen de Pasillo 3 concluido</p>
+      <p class="text-base font-bold text-emerald-950">Dictamen de auditoría concluido</p>
       <p class="text-xs text-slate-600">Los ajustes autorizados ya actualizaron el stock y el Kardex en el sistema.</p>
     </div>
     <a routerLink="/"

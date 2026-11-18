@@ -392,7 +392,9 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(afterBlockedFlush).toEqual(rawCorruptedPayload);
 
     // Opción 1: Descargar datos dañados (JSON) -> devuelve JSON y NO sobrescribe
+    const clickSpy = spyOn(HTMLAnchorElement.prototype, 'click').and.stub();
     const downloadedJson = service.downloadCorruptedDataJson();
+    expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(JSON.parse(downloadedJson)).toEqual(rawCorruptedPayload);
     expect(await memoryAdapter.load(STATE_STORAGE_KEY)).toEqual(rawCorruptedPayload);
 

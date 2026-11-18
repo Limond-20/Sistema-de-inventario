@@ -156,15 +156,15 @@
 
         <div class="mt-2 space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
           <div class="flex items-center justify-between gap-2">
-            <span class="text-slate-500 font-semibold">Fecha máx. vista (Kardex):</span>
+            <span class="text-slate-500 font-semibold">Fecha máx. registrada:</span>
             <span class="font-mono font-bold text-slate-800 truncate" data-testid="max-observed-timestamp">
-              {{ evalState().maxObservedTimestampIso | slice:0:19 }}Z
+              {{ evalState().maxObservedTimestampIso | date:'dd/MM/yyyy HH:mm' }}
             </span>
           </div>
           <div class="flex items-center justify-between gap-2">
             <span class="text-slate-500 font-semibold">Última verificación:</span>
             <span class="font-mono font-bold text-slate-800 truncate">
-              {{ evalState().evaluatedAtIso | slice:0:19 }}Z
+              {{ evalState().evaluatedAtIso | date:'dd/MM/yyyy HH:mm' }}
             </span>
           </div>
         </div>
@@ -182,7 +182,7 @@
     <div>
       <h2 class="text-base font-black text-slate-900">Ingresar o Renovar Código de Licencia</h2>
       <p class="text-xs text-slate-600 mt-0.5">
-        Pega aquí el código corto (<code class="font-mono bg-slate-100 px-1.5 py-0.5 rounded">BT1...</code>) o el mensaje completo recibido por WhatsApp. Se validará localmente con la clave pública ECDSA P-256 incrustada.
+        Pega aquí el código corto (<code class="font-mono bg-slate-100 px-1.5 py-0.5 rounded">BT1...</code>) o el mensaje completo recibido por WhatsApp. Se validará de forma local y segura.
       </p>
     </div>
 
@@ -214,7 +214,7 @@
           data-testid="btn-activate-license"
           class="h-11 px-6 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 shadow-2xs transition-colors">
           <app-icon name="check" [size]="16" />
-          <span>{{ isSubmitting() ? 'Verificando firma ECDSA P-256…' : 'Validar y Activar Licencia' }}</span>
+          <span>{{ isSubmitting() ? 'Verificando firma digital…' : 'Validar y Activar Licencia' }}</span>
         </button>
       </div>
     </div>

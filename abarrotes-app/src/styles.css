@@ -27,8 +27,8 @@
   --color-slate-100: #eceff0;
   --color-slate-200: #dde3e4;
   --color-slate-300: #c5cfd1;
-  --color-slate-400: #93a4a7;
-  --color-slate-500: #667a7e;
+  --color-slate-400: #5c7075;
+  --color-slate-500: #4c6064;
   --color-slate-600: #4c6064;
   --color-slate-700: #344a4f;
   --color-slate-800: #1e343a;
@@ -77,9 +77,21 @@ table th {
 .tracking-widest {
   letter-spacing: 0;
 }
+input.tracking-widest,
+[data-pin-input] {
+  letter-spacing: 0.25em;
+}
 .font-black,
 .font-extrabold {
   font-weight: 700;
+}
+
+/* Tamaño mínimo legible en pantalla (12px); los tickets impresos conservan su escala en @media print */
+.text-\[9px\],
+.text-\[10px\],
+.text-\[11px\] {
+  font-size: 0.75rem;
+  line-height: 1rem;
 }
 
 button:not(:disabled),
@@ -98,7 +110,7 @@ a.btn:active {
 }
 
 /* Botones deshabilitados: se ven apagados, pero el texto sigue legible */
-button:disabled {
+button:disabled:not([class*="bg-amber-"]):not([class*="bg-rose-"]) {
   cursor: not-allowed;
   opacity: 1;
   background-color: var(--color-slate-200);
@@ -106,15 +118,25 @@ button:disabled {
   border-color: var(--color-slate-300);
   box-shadow: none;
 }
+button:disabled[class*="bg-amber-"],
+button:disabled[class*="bg-rose-"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
 
-/* Un solo color para los botones de acción (antes verde brillante) */
+/* Un solo color para los botones de acción principales */
 button[class*="bg-emerald-600"]:not(:disabled),
-a[class*="bg-emerald-600"] {
+button[class*="bg-emerald-700"]:not(:disabled),
+a[class*="bg-emerald-600"],
+a[class*="bg-emerald-700"] {
   background-color: var(--color-brand-700);
   color: #ffffff;
 }
 button[class*="bg-emerald-600"]:not(:disabled):hover,
-a[class*="bg-emerald-600"]:hover {
+button[class*="bg-emerald-700"]:not(:disabled):hover,
+a[class*="bg-emerald-600"]:hover,
+a[class*="bg-emerald-700"]:hover {
   background-color: var(--color-brand-800);
 }
 

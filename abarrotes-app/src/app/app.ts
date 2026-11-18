@@ -15,7 +15,7 @@ import { canAccessRoute } from './domain/auth';
       <!-- =====================================================================
            BLOQUE K: DESBLOQUEO / CONFIGURACIÓN DEL CIFRADO EN REPOSO AL INICIAR
            ===================================================================== -->
-      <div class="min-h-screen w-screen flex items-center justify-center bg-brand-800 p-6 select-none" data-testid="storage-unlock-screen">
+      <div class="h-screen w-screen overflow-y-auto flex items-center justify-center bg-brand-800 p-6 select-none" data-testid="storage-unlock-screen">
         <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-7 text-white shadow-2xl space-y-5">
           <div class="text-center space-y-2">
             <div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-amber-400 text-slate-900 shadow-xs mb-3">
@@ -178,7 +178,7 @@ import { canAccessRoute } from './domain/auth';
         <!-- Área de trabajo con todo el ancho disponible -->
         <main class="flex-1 min-w-0 overflow-y-auto flex flex-col print:overflow-visible print:h-auto print:block">
           @if (inv.isReadOnlyMode()) {
-            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-3 text-sm font-semibold flex items-center justify-between gap-4 shrink-0 print:hidden no-print" role="alert" data-testid="readonly-warning-banner">
+            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-6 py-3 text-sm font-semibold flex items-center justify-between gap-4 shrink-0 print:hidden no-print" role="alert" data-testid="readonly-warning-banner">
               <div class="flex items-center gap-2.5 text-amber-900">
                 <app-icon name="lock" [size]="18" />
                 <span>{{ inv.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' }} · Modo solo lectura</span>
@@ -193,7 +193,7 @@ import { canAccessRoute } from './domain/auth';
               </div>
             </div>
           } @else if (inv.licenseWarningBanner()) {
-            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-10 py-2.5 text-xs font-semibold flex items-center justify-between gap-4 shrink-0 print:hidden no-print" role="status" data-testid="license-expiry-warning-banner">
+            <div class="border-b border-amber-300 bg-amber-50 text-slate-900 px-6 py-2.5 text-xs font-semibold flex items-center justify-between gap-4 shrink-0 print:hidden no-print" role="status" data-testid="license-expiry-warning-banner">
               <div class="flex items-center gap-2 text-amber-950">
                 <app-icon name="shield" [size]="16" />
                 <span>{{ inv.licenseWarningBanner() }}</span>
@@ -205,16 +205,34 @@ import { canAccessRoute } from './domain/auth';
           }
 
           @if (inv.isBackupOlderThan24h()) {
-            <div class="border-b border-amber-200 bg-amber-50/80 text-slate-900 px-10 py-2.5 text-xs font-semibold flex items-center justify-between shrink-0 print:hidden no-print" role="status" data-testid="stale-backup-banner">
+            <div class="border-b border-amber-200 bg-amber-50/80 text-slate-900 px-6 py-2.5 text-xs font-semibold flex items-center justify-between gap-3 shrink-0 print:hidden no-print" role="status" data-testid="stale-backup-banner">
               <div class="flex items-center gap-2 text-amber-900">
                 <app-icon name="alert" [size]="16" />
                 <span>El último respaldo cifrado tiene más de 24 horas (o aún no se ha realizado). Ingresa tu frase de respaldo para proteger la tienda.</span>
               </div>
-              <span class="text-amber-800 tabular-nums">{{ inv.getRelativeLastBackupLabel() }}</span>
+              <div class="flex items-center gap-3 shrink-0">
+                <span class="text-amber-800 tabular-nums">{{ inv.getRelativeLastBackupLabel() }}</span>
+                <button type="button" (click)="inv.openBackupModalRequested.set(true)" data-testid="btn-backup-from-stale-banner"
+                  class="rounded-lg border border-amber-400 bg-white px-3 py-1 text-xs font-bold text-amber-950 hover:bg-amber-100">
+                  Respaldar ahora
+                </button>
+              </div>
             </div>
           }
 
-          <div class="px-6 py-5 max-w-[1440px] w-full mx-auto flex-1 print:p-0 print:max-w-none">
+          @if (inv.accessDeniedBanner(); as deniedMsg) {
+            <div class="border-b border-rose-200 bg-rose-50 text-rose-950 px-6 py-2.5 text-xs font-bold flex items-center justify-between gap-3 shrink-0 print:hidden no-print" role="alert" data-testid="access-denied-banner">
+              <div class="flex items-center gap-2">
+                <app-icon name="lock" [size]="15" />
+                <span>{{ deniedMsg }}</span>
+              </div>
+              <button type="button" (click)="inv.clearAccessDenied()" class="text-xs underline font-semibold shrink-0 hover:text-rose-700">
+                Cerrar aviso
+              </button>
+            </div>
+          }
+
+          <div class="px-6 py-5 max-w-[1600px] w-full mx-auto flex-1 print:p-0 print:max-w-none">
             <router-outlet />
           </div>
         </main>
@@ -257,20 +275,27 @@ import { canAccessRoute } from './domain/auth';
                   data-testid="lock-select-user"
                   class="h-10 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-semibold text-white focus:border-amber-400 focus:outline-none">
                   @for (user of activeUsersList(); track user.id) {
-                    <option [value]="user.id">{{ user.name }} ({{ user.role }})</option>
+                    <option [value]="user.id">{{ user.name }}{{ user.lockedUntil ? ' (Bloqueado temporalmente)' : '' }}</option>
                   }
                 </select>
               </div>
 
               <!-- Entrada de PIN -->
               <div class="space-y-1.5">
-                <label for="lock-input-pin" class="block text-xs font-semibold text-slate-300">
-                  PIN de Acceso
-                </label>
+                <div class="flex items-center justify-between">
+                  <label for="lock-input-pin" class="block text-xs font-semibold text-slate-300">
+                    PIN de Acceso
+                  </label>
+                  <button type="button" (click)="showUnlockPin.set(!showUnlockPin())"
+                    class="text-xs font-semibold text-amber-300 hover:text-amber-200 underline">
+                    {{ showUnlockPin() ? 'Ocultar PIN' : 'Mostrar PIN' }}
+                  </button>
+                </div>
                 <input
                   id="lock-input-pin"
-                  type="password"
-                  maxlength="8"
+                  [type]="showUnlockPin() ? 'text' : 'password'"
+                  autofocus
+                  maxlength="32"
                   pattern="[0-9]*"
                   inputmode="numeric"
                   placeholder="••••••"
@@ -301,7 +326,7 @@ import { canAccessRoute } from './domain/auth';
       <!-- Modal de Datos Dañados o Discrepancia de Continuidad (NO sobrescribe automáticamente) -->
       @if (inv.corruptedModalOpen()) {
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true" data-testid="corrupted-data-modal">
-          <div class="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+          <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
             <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5">
               <div class="flex items-center gap-3">
                 <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-rose-50 text-[#a33f3f]">
@@ -406,6 +431,7 @@ export class App implements OnInit, OnDestroy {
   // ---------- Control de Desbloqueo / Login ----------
   protected readonly selectedUserId = signal<string>('');
   protected readonly unlockPin = signal<string>('');
+  protected readonly showUnlockPin = signal<boolean>(false);
   protected readonly unlockError = signal<string>('');
   protected readonly isSubmittingUnlock = signal<boolean>(false);
 

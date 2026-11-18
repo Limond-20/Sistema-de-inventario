@@ -1971,13 +1971,39 @@ export class MockInventoryService implements OnDestroy {
     if (!user) return { ok: false, message: 'Usuario no encontrado.' };
 
     const result = await updateUserPin(user, currentPin, newPin);
-    if (!result.success || !result.updatedUser) {
-      return { ok: false, message: result.message };
+    let updatedUser = result.updatedUser;
+    if (!result.success || !updatedUser) {
+      // Si el administrador autenticado ingresa su propio PIN de administrador para restablecer el PIN de otro usuario
+      const isResettingOtherUser = this.currentUser()?.role === 'ADMINISTRADOR' && this.currentUser()?.id !== userId;
+      if (isResettingOtherUser) {
+        const adminCheck = await this.verifySupervisorPin(currentPin, ['ADMINISTRADOR']);
+        if (adminCheck.success) {
+          const policy = validateUserPinPolicy(newPin);
+          if (!policy.valid) {
+            return { ok: false, message: policy.error || 'El nuevo PIN no cumple con las políticas de seguridad.' };
+          }
+          const newSalt = generateUserPinSalt(16);
+          const iterations = user.iterations || USER_PIN_ITERATIONS;
+          const newHash = await computeUserPinHash(newPin, newSalt, iterations);
+          updatedUser = {
+            ...user,
+            salt: newSalt,
+            pinHash: newHash,
+            failedAttempts: 0,
+            lockedUntil: null,
+            updatedAt: new Date().toISOString(),
+          };
+        } else {
+          return { ok: false, message: result.message };
+        }
+      } else {
+        return { ok: false, message: result.message };
+      }
     }
 
-    this.users.update((list) => list.map((u) => (u.id === userId ? result.updatedUser! : u)));
+    this.users.update((list) => list.map((u) => (u.id === userId ? updatedUser! : u)));
     if (this.currentUser()?.id === userId) {
-      this.currentUser.set(result.updatedUser);
+      this.currentUser.set(updatedUser);
     }
     // Bloque K: el PIN nuevo del administrador re-envuelve su llave de cifrado (no se re-cifran los datos).
     const slotError = await this.syncEncryptionKeySlots({ userId, pin: newPin });
@@ -3532,6 +3558,16 @@ export class MockInventoryService implements OnDestroy {
 
   readonly licenseWarningBanner = computed<string | null>(() => this.licenseEvaluation().warningBanner);
   readonly isLicenseReadOnly = computed<boolean>(() => this.licenseEvaluation().isReadOnly);
+  readonly accessDeniedBanner = signal<string | null>(null);
+  readonly openBackupModalRequested = signal<boolean>(false);
+
+  notifyAccessDenied(message: string): void {
+    this.accessDeniedBanner.set(message);
+  }
+
+  clearAccessDenied(): void {
+    this.accessDeniedBanner.set(null);
+  }
   readonly usage30DaysMetric = computed(() => computeUsage30DaysMetric(this.usageActivityLog()));
   readonly satisfactionDueStatus = computed(() =>
     isSatisfactionSurveyDue(this.satisfactionSurveys())
@@ -3601,6 +3637,16 @@ export class MockInventoryService implements OnDestroy {
           lockedRemainingSeconds: 0,
           authorizedBy: (authorizer && authorizer !== 'Administrador') ? authorizer : supCheck.supervisor.name,
           nextState: { failedAttempts: 0, lockedUntil: null, lockoutCount: 0 },
+        };
+      }
+      if (!isPinConfigured()) {
+        return {
+          success: false,
+          message: supCheck.message || 'PIN de autorización incorrecto o no autorizado.',
+          remainingAttempts: 0,
+          isLocked: false,
+          lockedRemainingSeconds: 0,
+          nextState: this.pinState(),
         };
       }
     }
