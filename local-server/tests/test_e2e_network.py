@@ -73,7 +73,7 @@ def test_http_desde_la_pc_y_desde_la_red(server):
     assert data["url"].startswith(f"https://{LAN}:{p}/movil-prototipo.html?t=")
     # el "celular" (IP de la red) NO puede pedir el código de vinculación
     assert httpx.get(f"https://{LAN}:{p}/api/pairing", verify=False).status_code == 403
-    assert httpx.get(f"https://{LAN}:{p}/vincular", verify=False).status_code == 403
+    assert httpx.get(f"https://{LAN}:{p}/api/pairing/qr.svg", verify=False).status_code == 403
     # pero sí puede cargar la app y la página móvil
     assert "INDEX" in httpx.get(f"https://{LAN}:{p}/recepcion", verify=False).text
     assert "MOVIL" in httpx.get(f"https://{LAN}:{p}/movil-prototipo.html", verify=False).text

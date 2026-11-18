@@ -22,7 +22,7 @@ cd ../local-server && pip install -r requirements.txt
 python -m lansync            # o doble clic en iniciar-servidor.bat (Windows) / iniciar-servidor.sh
 ```
 
-Luego, en la PC, abre `https://localhost:8443/vincular`: aparece un **código QR**. En el celular
+Luego, en la PC, abre `https://localhost:8443/` y toca el botón **Móvil (QR)** en la barra superior: aparece un **código QR**. En el celular
 (conectado al mismo Wi-Fi; no necesita internet) escanéalo con la cámara.
 
 * La primera vez el navegador avisa que el certificado no es de confianza: toca **Avanzado → Continuar**.
@@ -40,7 +40,7 @@ Luego, en la PC, abre `https://localhost:8443/vincular`: aparece un **código QR
   usar el WebSocket de la tienda).
 * Límite de 8 MB por mensaje y 60 mensajes por segundo por conexión.
 * El código dura 30 días y **sobrevive reinicios** de la PC (se guarda en `data/pairing.json`) para no
-  reescanear el QR cada mañana. El botón *Generar código nuevo* de `/vincular` lo invalida y
+  reescanear el QR cada mañana. El botón *Generar código nuevo* dentro del modal **Móvil (QR)** lo invalida y
   desconecta a todos los celulares.
 * `certs/` y `data/` son secretos de cada tienda: están en `.gitignore`. No se suben a GitHub.
 * **Evidencias fotográficas (`/api/evidencia`):** las fotos de merma se guardan en `data/evidencias/` con identificador aleatorio (UUID4 hex de 32 caracteres). **Las fotos solo se ven si la PC abre la app por localhost (`https://localhost:8443` o `127.0.0.1`)**, ya que el acceso sin token está restringido exclusivamente a loopback. Si la PC abre la app usando la IP de la red local, el servidor la tratará como un dispositivo externo y denegará la visualización (401) al no enviar token de vinculación.
@@ -87,8 +87,7 @@ dirección para ver una etiqueta con el estado.
 
 Pendiente en la interfaz (no lo toqué para no pisar cambios del equipo):
 * La etiqueta **"En Línea"** de la página móvil es fija y siempre verde: debería leer `LanSync.status`.
-* La ventana de "Vincular celular" de la PC sigue siendo simulada: puede abrir `/vincular` o mostrar
-  el mismo QR con `GET /api/pairing` (solo responde desde la PC).
+* El modal **Móvil (QR)** de la PC consume `GET /api/pairing`, `GET /api/pairing/qr.svg` y `POST /api/pairing/rotate` (solo responde desde la PC).
 
 ## Copia automática a USB (Bloque L)
 
