@@ -21,7 +21,7 @@ import { MockInventoryService, ShrinkRecord } from '../../services/mock-inventor
         </div>
         <a routerLink="/fefo"
           class="flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 shadow-2xs transition-colors hover:bg-slate-50">
-          Cambios Físicos FEFO@if (inv.getUrgentFefoCount() > 0) { ({{ inv.getUrgentFefoCount() }}) }
+          Caducidades y Cambios con Proveedor@if (inv.getUrgentFefoCount() > 0) { ({{ inv.getUrgentFefoCount() }}) }
         </a>
       </div>
     </section>

@@ -759,7 +759,7 @@
                         Cancelar
                       </button>
                     } @else {
-                      <button type="button" (click)="requestDeactivateCustomer(c, $event)" title="Baja Lógica"
+                      <button type="button" (click)="requestDeactivateCustomer(c, $event)" title="Desactivar cliente"
                         class="px-2 py-1 text-xs font-bold rounded-md bg-rose-100 hover:bg-rose-200 text-rose-800">
                         Baja
                       </button>
@@ -1134,7 +1134,32 @@
           @let latestConsent = f.privacy?.consents?.at(-1);
           <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col gap-3" data-testid="customer-privacy-panel">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <h4 class="text-xs font-bold text-slate-700 uppercase">Privacidad y derechos ARCO</h4>
+              <div class="flex items-center gap-1.5">
+                <h4 class="text-xs font-bold text-slate-700 uppercase">Privacidad y derechos ARCO</h4>
+                <button
+                  #btnTipArco
+                  type="button"
+                  class="help-tip-btn"
+                  popovertarget="help-tip-arco"
+                  popovertargetaction="show"
+                  aria-expanded="false"
+                  aria-label="Qué son los derechos ARCO"
+                  (mouseenter)="showHelpPopover(tipArco, btnTipArco)"
+                  (mouseleave)="hideHelpPopover(tipArco)">
+                  ?
+                </button>
+                <div
+                  #tipArco
+                  id="help-tip-arco"
+                  popover="auto"
+                  role="tooltip"
+                  (toggle)="onHelpPopoverToggle($event, btnTipArco)"
+                  (mouseenter)="showHelpPopover(tipArco, btnTipArco)"
+                  (mouseleave)="hideHelpPopover(tipArco)"
+                  class="help-tip-popover">
+                  Derechos por ley del cliente sobre sus datos personales: Acceso (entregarle qué datos tienes), Rectificación (corregir su nombre o teléfono), Cancelación (borrar sus datos personales conservando su deuda) y Oposición (no enviarle avisos).
+                </div>
+              </div>
               <span class="rounded-md px-2 py-0.5 text-xs font-bold"
                 [class]="consentStatus === 'VIGENTE' ? 'bg-emerald-100 text-emerald-800' : (consentStatus === 'ANONIMIZADO' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-900')"
                 data-testid="ficha-consent-status">
@@ -1155,7 +1180,7 @@
             @if (f.privacy?.anonymizedAt) {
               <p class="text-xs text-slate-600">
                 Datos anonimizados el {{ f.privacy?.anonymizedAt | date:'dd/MM/yyyy HH:mm' }} por {{ f.privacy?.anonymizedBy }}.
-                El saldo y los movimientos del Kardex se conservaron sin cambios.
+                El saldo y el historial de movimientos se conservaron sin cambios.
               </p>
             }
 
@@ -1203,7 +1228,7 @@
                 <p class="text-xs text-rose-900">
                   Se borrarán para siempre el nombre, alias, teléfono y notas de este cliente. Su número de cliente, su saldo
                   @if (f.currentBalance > 0) { (<b>{{ f.currentBalance | currency:'MXN':'symbol-narrow' }} pendiente</b>) }
-                  y los movimientos del Kardex se conservan. Requiere el PIN de un <b>administrador</b>.
+                  y el historial de movimientos se conservan. Requiere el PIN de un <b>administrador</b>.
                 </p>
                 <div class="flex justify-end gap-2">
                   <button type="button" (click)="arcoConfirmAnonymize.set(false)"
@@ -1938,7 +1963,7 @@
         <!-- Cabecera -->
         <div class="bg-rose-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
           <div>
-            <p class="text-xs text-rose-300 uppercase tracking-wider font-semibold">Contra-Asiento de Kardex</p>
+            <p class="text-xs text-rose-300 uppercase tracking-wider font-semibold">Registro de devolución en inventario</p>
             <h3 class="text-lg font-bold leading-tight">Devolver Mercancía · Ticket #{{ sale.folio }}</h3>
           </div>
           <button type="button" (click)="closeReturnModal()" class="text-xs text-rose-300 hover:text-white">
@@ -2010,7 +2035,7 @@
               <span class="font-bold block">Total a Reembolsar / Revertir:</span>
               <span class="text-[11px] text-rose-800">
                 @if (sale.paymentType === 'EFECTIVO') {
-                  Se entregará efectivo al cliente del cajón y repondrá stock en Kardex.
+                  Se entregará efectivo del cajón al cliente y se devolverá el producto a las existencias.
                 } @else {
                   Se descontará de la deuda en libreta de crédito de {{ sale.customerName }}.
                 }

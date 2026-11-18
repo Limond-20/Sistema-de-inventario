@@ -168,7 +168,7 @@ function getDefaultExchangeExpiryIso(daysAhead = 30): string {
         } @empty {
           <div class="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500 text-xs shadow-2xs">
             <p class="text-base font-bold text-slate-800">No hay lotes con caducidad crítica hoy</p>
-            <p class="mt-0.5">Todos los productos perecederos se encuentran en rango óptimo de rotación FEFO.</p>
+            <p class="mt-0.5">Todos los productos perecederos se encuentran con buena fecha de caducidad.</p>
           </div>
         }
       </section>

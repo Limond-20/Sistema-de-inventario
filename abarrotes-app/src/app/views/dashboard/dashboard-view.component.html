@@ -154,7 +154,7 @@
     <a routerLink="/mermas" class="module-card btn justify-center gap-4 min-h-[160px]">
       @if (urgentFefoCount() > 0) {
         <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md"
-          title="Caducidades FEFO próximas">
+          title="Productos próximos a caducar">
           {{ urgentFefoCount() }}
         </span>
       }
@@ -162,7 +162,7 @@
         <span class="module-icon bg-rose-100 text-rose-700"><app-icon name="trash" [size]="28" /></span>
         @if (urgentFefoCount() > 0 || inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
           <span class="module-tag bg-red-100 text-red-800">
-            @if (urgentFefoCount() > 0) { {{ urgentFefoCount() }} FEFO · }{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos
+            @if (urgentFefoCount() > 0) { {{ urgentFefoCount() }} Por caducar · }{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos
           </span>
         }
       </div>
@@ -195,7 +195,7 @@
     @if (pendingAbcCount() > 0) {
       <button type="button" (click)="openAbcModal()"
         class="h-11 rounded-xl bg-brand-700 px-5 text-sm font-semibold text-white hover:bg-brand-800">
-        Revisar actualización ABC del mes ({{ pendingAbcCount() }})
+        Revisar clasificación mensual de productos ({{ pendingAbcCount() }})
       </button>
     }
   </footer>
@@ -214,8 +214,8 @@
             ABC
           </div>
           <div>
-            <h2 class="text-base font-bold leading-tight">Propuesta de Reclasificación ABC Mensual</h2>
-            <p class="text-xs text-slate-400">Basada en la Utilidad Neta real: VU = (Precio − Costo) × Unidades Mensuales</p>
+            <h2 class="text-base font-bold leading-tight">Clasificación Mensual de Productos por Ganancia (A, B y C)</h2>
+            <p class="text-xs text-slate-400">Calculada según la ganancia real que dejó cada producto en el mes</p>
           </div>
         </div>
         <button type="button" (click)="closeAbcModal()" class="text-xs font-bold text-slate-400 hover:text-white">
@@ -240,7 +240,7 @@
               <th class="p-3 text-center">Clase Actual</th>
               <th class="p-3 text-center">Clase Propuesta</th>
               <th class="p-3 text-right">Ganancia Neta / Mes</th>
-              <th class="p-3 text-right rounded-r-xl">Aporte Pareto</th>
+              <th class="p-3 text-right rounded-r-xl">% de Ganancia</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">

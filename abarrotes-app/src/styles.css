@@ -173,6 +173,31 @@ a[class*="bg-emerald-700"]:hover {
   .module-tag {
     @apply rounded-full px-2.5 py-1 text-xs font-semibold;
   }
+  .help-tip-btn {
+    @apply inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-slate-100 text-xs font-bold text-slate-700 align-middle hover:border-brand-700 hover:bg-brand-700 hover:text-white;
+  }
+}
+
+[popover].help-tip-popover {
+  max-width: 18rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-slate-700);
+  background-color: var(--color-slate-900);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(11, 29, 34, 0.28);
+}
+
+@supports (position-area: block-start) {
+  [popover].help-tip-popover {
+    inset: auto;
+    margin: 0;
+    position-area: block-start;
+    position-try-fallbacks: flip-block, flip-inline;
+  }
 }
 
 @media print {

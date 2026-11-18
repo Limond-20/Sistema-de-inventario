@@ -25,7 +25,7 @@
       data-testid="btn-print-internal-sheet"
       (click)="openBulkSheetModal()"
       class="h-11 px-5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold shadow-2xs flex items-center gap-2 transition-all">
-      <span>Hoja Imprimible de Códigos Internos / Granel</span>
+      <span>Imprimir Códigos para Granel y Mostrador</span>
     </button>
   </div>
 </section>
@@ -51,7 +51,7 @@
           {{ pendingApprovalList().length }}
         </span>
       </div>
-      <p class="text-xs text-amber-800 font-medium">Bloqueados para venta en POS hasta que sean aprobados con PIN.</p>
+      <p class="text-xs text-amber-800 font-medium">No se pueden cobrar en caja hasta que un encargado o administrador los apruebe con su PIN.</p>
     </div>
 
     <div class="mt-3 overflow-x-auto">
@@ -129,7 +129,7 @@
         ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
         : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
       <div>
-        <span class="block font-bold text-xs">Clase A (Críticos · 80% Utilidad)</span>
+        <span class="block font-bold text-xs">Clase A (Más vendidos · 80% ganancia)</span>
         <span class="block text-xs" [class]="abcFilter() === 'A' ? 'text-slate-200' : 'text-slate-600'">Máxima prioridad</span>
       </div>
       <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold"
@@ -146,7 +146,7 @@
         ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
         : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
       <div>
-        <span class="block font-bold text-xs">Clase B (Rotación Media)</span>
+        <span class="block font-bold text-xs">Clase B (Venta regular)</span>
         <span class="block text-xs" [class]="abcFilter() === 'B' ? 'text-slate-200' : 'text-slate-600'">Complementarios</span>
       </div>
       <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold"
@@ -163,8 +163,8 @@
         ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
         : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
       <div>
-        <span class="block font-bold text-xs">Clase C (Baja Rotación)</span>
-        <span class="block text-xs" [class]="abcFilter() === 'C' ? 'text-slate-200' : 'text-slate-600'">Capital dormido</span>
+        <span class="block font-bold text-xs">Clase C (Venta lenta)</span>
+        <span class="block text-xs" [class]="abcFilter() === 'C' ? 'text-slate-200' : 'text-slate-600'">Dinero detenido</span>
       </div>
       <span class="px-2 py-0.5 rounded-full text-xs font-mono font-bold"
         [class]="abcFilter() === 'C' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700'">
@@ -185,7 +185,7 @@
         type="text"
         [value]="search()"
         (input)="onSearch($event)"
-        placeholder="Buscar por nombre, SKU, ubicación o cualquiera de sus códigos de barras..."
+        placeholder="Buscar por nombre, clave, ubicación o código de barras..."
         class="flex-1 text-xs font-medium outline-none bg-transparent placeholder:text-slate-400"
       />
       @if (search()) {
@@ -202,7 +202,7 @@
         (ngModelChange)="showInactive.set($event)"
         class="rounded border-slate-300"
       />
-      <span>Mostrar bajas lógicas (inactivos)</span>
+      <span>Mostrar productos desactivados</span>
     </label>
   </div>
 
@@ -233,7 +233,7 @@
         <th class="px-4 py-3.5 text-right">Costo Promedio vs Último Costo</th>
         <th class="px-4 py-3.5 text-right">Precios Escalonados e Impuestos</th>
         <th class="px-4 py-3.5">Margen Real</th>
-        <th class="px-4 py-3.5">Caducidad FEFO / Acciones</th>
+        <th class="px-4 py-3.5">Caducidad / Acciones</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-slate-100">
@@ -249,16 +249,16 @@
                 Clase {{ p.abcClass }}
               </span>
               <span class="rounded bg-slate-100 px-2 py-0.5 text-xs font-mono font-semibold text-slate-700">
-                SKU: {{ p.sku }}
+                Clave: {{ p.sku }}
               </span>
               @if (p.isBulk) {
                 <span class="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Granel</span>
               }
               @if (p.hasInternalBarcode || p.barcode.startsWith('200')) {
-                <span class="rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Código Interno</span>
+                <span class="rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Código Propio</span>
               }
               @if (p.isActive === false) {
-                <span class="rounded bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">Baja Lógica (Inactivo)</span>
+                <span class="rounded bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">Desactivado</span>
               }
             </div>
             <p class="text-base font-bold text-slate-900 leading-snug">{{ p.name }}</p>
@@ -270,24 +270,24 @@
             </p>
           </td>
 
-          <!-- 2. Stock vs Punto de Reorden (ROP) + Conversión + Tolerancia Merma Natural -->
+          <!-- 2. Existencia vs Avisar para surtir + Conversión + Merma normal -->
           <td class="px-4 py-4">
             <p class="text-base font-bold text-slate-900 tabular-nums">
-              Stock: <span [class]="p.belowRop ? 'text-amber-700' : 'text-slate-900'">{{ p.stock | number:'1.0-2' }}</span>
+              Existencia: <span [class]="p.belowRop ? 'text-amber-700' : 'text-slate-900'">{{ p.stock | number:'1.0-2' }}</span>
               <span class="mx-1 text-slate-400">/</span>
-              ROP: <span class="text-slate-600">{{ p.rop | number:'1.0-1' }}</span> {{ p.saleUnit }}
+              Surtir al llegar a: <span class="text-slate-600">{{ p.rop | number:'1.0-1' }}</span> {{ p.saleUnit }}
             </p>
             <p class="mt-1 text-xs text-slate-600">
               Compra: <b>{{ p.purchaseUnit }}</b> ({{ p.unitsPerPurchase }} {{ p.saleUnit }}/{{ p.purchaseUnit }}) · Mín: {{ p.minStock }}
             </p>
             @if (p.isBulk || (p.naturalShrinkTolerancePct ?? 0) > 0) {
               <p class="mt-0.5 text-xs font-semibold text-slate-700">
-                Tolerancia merma natural: <b>{{ p.naturalShrinkTolerancePct ?? 3 }}%</b>
+                Merma normal permitida: <b>{{ p.naturalShrinkTolerancePct ?? 3 }}%</b>
               </p>
             }
             @if (p.belowRop) {
               <p class="mt-1.5 flex items-center gap-2 text-xs font-semibold text-amber-800">
-                <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>Reabastecer (Bajo ROP)
+                <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>Falta surtir (pocas unidades)
               </p>
             } @else {
               <p class="mt-1.5 flex items-center gap-2 text-xs font-semibold text-emerald-700">
@@ -347,7 +347,7 @@
             @if (p.daysLeft <= 4) {
               <p class="flex items-start gap-2 text-xs font-bold text-amber-800">
                 <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>
-                <span>FEFO: {{ fmtDate(p.fefoExpiryDate) }} ({{ p.daysLeft <= 1 ? 'Mañana' : 'En ' + p.daysLeft + ' días' }})</span>
+                <span>Por vencer: {{ fmtDate(p.fefoExpiryDate) }} ({{ p.daysLeft <= 1 ? 'Mañana' : 'En ' + p.daysLeft + ' días' }})</span>
               </p>
             } @else {
               <span class="text-xs font-semibold text-slate-800 tabular-nums">Cad: {{ fmtDate(p.fefoExpiryDate) }}</span>
@@ -367,7 +367,7 @@
                     type="button"
                     (click)="assignInternalCode(p)"
                     class="h-8 px-2.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors">
-                    + Cód. Interno
+                    + Cód. Propio
                   </button>
                 }
 
@@ -377,7 +377,7 @@
                     (click)="requestDeactivateProduct(p)"
                     data-testid="btn-deactivate-product"
                     class="h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition-colors">
-                    {{ p.hasMovements ? 'Baja Lógica' : 'Eliminar' }}
+                    {{ p.hasMovements ? 'Desactivar' : 'Eliminar' }}
                   </button>
                 } @else {
                   <button
@@ -412,7 +412,7 @@
     <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
       <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between sticky top-0 z-10">
         <div>
-          <span class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Catálogo Maestro · Bloque F1</span>
+          <span class="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Datos del producto y precios</span>
           <h2 class="text-lg font-bold">
             {{ editingOriginalSku() ? 'Editar Producto (' + editingOriginalSku() + ')' : 'Alta de Nuevo Producto' }}
           </h2>
@@ -447,13 +447,39 @@
           </div>
 
           <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="text-xs font-bold text-slate-700">SKU Interno (Editable)</label>
-              <button type="button" (click)="regenerateSuggestedSku()" class="text-[11px] font-bold text-slate-600 underline">
+            <div class="flex items-center justify-between gap-1 mb-1">
+              <div class="flex items-center gap-1.5">
+                <label for="catalog-form-sku" class="text-xs font-bold text-slate-700">Clave corta del producto</label>
+                <button
+                  #btnTipSku
+                  type="button"
+                  class="help-tip-btn"
+                  popovertarget="help-tip-sku"
+                  popovertargetaction="show"
+                  aria-expanded="false"
+                  aria-label="Qué es la clave corta del producto"
+                  (mouseenter)="showHelpPopover(tipSku, btnTipSku)"
+                  (mouseleave)="hideHelpPopover(tipSku)">
+                  ?
+                </button>
+                <div
+                  #tipSku
+                  id="help-tip-sku"
+                  popover="auto"
+                  role="tooltip"
+                  (toggle)="onHelpPopoverToggle($event, btnTipSku)"
+                  (mouseenter)="showHelpPopover(tipSku, btnTipSku)"
+                  (mouseleave)="hideHelpPopover(tipSku)"
+                  class="help-tip-popover">
+                  Clave corta para identificar rápido el producto en reportes y etiquetas (ej. ABR-PRO-001). Puedes dejar la que sugiere el sistema.
+                </div>
+              </div>
+              <button type="button" (click)="regenerateSuggestedSku()" class="text-[11px] font-bold text-slate-600 underline shrink-0">
                 Autogenerar
               </button>
             </div>
             <input
+              id="catalog-form-sku"
               type="text"
               data-testid="input-product-sku"
               [ngModel]="formSku()"
@@ -547,8 +573,34 @@
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Factor Conversión (Ej. 24 o 50)</label>
+              <div class="flex items-center gap-1.5 mb-1">
+                <label for="catalog-form-factor" class="text-xs font-bold text-slate-700">Unidades por empaque (Ej. 24)</label>
+                <button
+                  #btnTipFactor
+                  type="button"
+                  class="help-tip-btn"
+                  popovertarget="help-tip-factor"
+                  popovertargetaction="show"
+                  aria-expanded="false"
+                  aria-label="Qué es Unidades por empaque"
+                  (mouseenter)="showHelpPopover(tipFactor, btnTipFactor)"
+                  (mouseleave)="hideHelpPopover(tipFactor)">
+                  ?
+                </button>
+                <div
+                  #tipFactor
+                  id="help-tip-factor"
+                  popover="auto"
+                  role="tooltip"
+                  (toggle)="onHelpPopoverToggle($event, btnTipFactor)"
+                  (mouseenter)="showHelpPopover(tipFactor, btnTipFactor)"
+                  (mouseleave)="hideHelpPopover(tipFactor)"
+                  class="help-tip-popover">
+                  Cuántas piezas o kilos individuales trae la caja, bulto o paquete que le compras al proveedor.
+                </div>
+              </div>
               <input
+                id="catalog-form-factor"
                 type="number"
                 min="0.001"
                 step="any"
@@ -613,8 +665,34 @@
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">IEPS (%)</label>
+              <div class="flex items-center gap-1.5 mb-1">
+                <label for="catalog-form-ieps" class="text-xs font-bold text-slate-700">IEPS (%)</label>
+                <button
+                  #btnTipIeps
+                  type="button"
+                  class="help-tip-btn"
+                  popovertarget="help-tip-ieps"
+                  popovertargetaction="show"
+                  aria-expanded="false"
+                  aria-label="Qué es IEPS"
+                  (mouseenter)="showHelpPopover(tipIeps, btnTipIeps)"
+                  (mouseleave)="hideHelpPopover(tipIeps)">
+                  ?
+                </button>
+                <div
+                  #tipIeps
+                  id="help-tip-ieps"
+                  popover="auto"
+                  role="tooltip"
+                  (toggle)="onHelpPopoverToggle($event, btnTipIeps)"
+                  (mouseenter)="showHelpPopover(tipIeps, btnTipIeps)"
+                  (mouseleave)="hideHelpPopover(tipIeps)"
+                  class="help-tip-popover">
+                  Impuesto especial que traen algunos refrescos, botanas o dulces. Si tu nota de compra no lo marca por separado, déjalo en 0%.
+                </div>
+              </div>
               <input
+                id="catalog-form-ieps"
                 type="number"
                 min="0"
                 max="100"
@@ -625,8 +703,34 @@
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Tolerancia Merma Natural (%)</label>
+              <div class="flex items-center gap-1.5 mb-1">
+                <label for="catalog-form-merma-nat" class="text-xs font-bold text-slate-700">Merma normal por pesaje (%)</label>
+                <button
+                  #btnTipMermaNat
+                  type="button"
+                  class="help-tip-btn"
+                  popovertarget="help-tip-merma-nat"
+                  popovertargetaction="show"
+                  aria-expanded="false"
+                  aria-label="Qué es Merma normal por pesaje"
+                  (mouseenter)="showHelpPopover(tipMermaNat, btnTipMermaNat)"
+                  (mouseleave)="hideHelpPopover(tipMermaNat)">
+                  ?
+                </button>
+                <div
+                  #tipMermaNat
+                  id="help-tip-merma-nat"
+                  popover="auto"
+                  role="tooltip"
+                  (toggle)="onHelpPopoverToggle($event, btnTipMermaNat)"
+                  (mouseenter)="showHelpPopover(tipMermaNat, btnTipMermaNat)"
+                  (mouseleave)="hideHelpPopover(tipMermaNat)"
+                  class="help-tip-popover">
+                  En productos a granel (queso, frijol, jamón) es normal perder unos gramos al despachar. Las diferencias dentro de este porcentaje no se marcan como faltante.
+                </div>
+              </div>
               <input
+                id="catalog-form-merma-nat"
                 type="number"
                 min="0"
                 max="50"
@@ -691,17 +795,17 @@
           </div>
         </div>
 
-        <!-- 4. Múltiples Códigos de Barras y Código Interno -->
+        <!-- 4. Múltiples Códigos de Barras y Código Propio -->
         <div class="rounded-xl border border-slate-200 p-4 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">
-              Códigos de Barras del Producto (Validación de Duplicados)
+              Códigos de Barras del Producto
             </h3>
             <button
               type="button"
               (click)="generateAndAddInternalBarcode()"
               class="h-9 px-3 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold">
-              Generar Código Interno EAN-13 (200...)
+              Crear código propio de la tienda
             </button>
           </div>
 
@@ -711,7 +815,7 @@
               data-testid="input-product-barcode"
               [ngModel]="formNewBarcodeInput()"
               (ngModelChange)="formNewBarcodeInput.set($event)"
-              placeholder="Escanea o escribe un código EAN-13 y presiona Agregar..."
+              placeholder="Escanea o escribe el código de barras del empaque y presiona Agregar..."
               class="flex-1 h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
             />
             <button
@@ -738,16 +842,17 @@
             </div>
           } @else {
             <p class="text-xs text-slate-500">
-              Si el producto no tiene código de fábrica, al guardar se le asignará automáticamente un código interno 200... e irá a la hoja imprimible.
+              Si el producto no trae código de barras en su empaque, al guardar se le creará uno propio automáticamente para que puedas imprimirlo.
             </p>
           }
         </div>
 
-        <!-- 5. Caducidad, Mínimo/ROP y Stock Inicial con PIN (AJUSTE_INICIAL) -->
+        <!-- 5. Caducidad, Reserva Mínima, Aviso para Surtir y Existencia Inicial -->
         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Fecha de Caducidad</label>
+            <label for="catalog-form-expiry" class="block text-xs font-bold text-slate-700 mb-1">Fecha de Caducidad</label>
             <input
+              id="catalog-form-expiry"
               type="date"
               [ngModel]="formExpiry()"
               (ngModelChange)="formExpiry.set($event)"
@@ -756,8 +861,34 @@
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Stock Mínimo</label>
+            <div class="flex items-center gap-1.5 mb-1">
+              <label for="catalog-form-min-stock" class="text-xs font-bold text-slate-700">Reserva mínima</label>
+              <button
+                #btnTipMinStock
+                type="button"
+                class="help-tip-btn"
+                popovertarget="help-tip-min-stock"
+                popovertargetaction="show"
+                aria-expanded="false"
+                aria-label="Qué es Reserva mínima"
+                (mouseenter)="showHelpPopover(tipMinStock, btnTipMinStock)"
+                (mouseleave)="hideHelpPopover(tipMinStock)">
+                ?
+              </button>
+              <div
+                #tipMinStock
+                id="help-tip-min-stock"
+                popover="auto"
+                role="tooltip"
+                (toggle)="onHelpPopoverToggle($event, btnTipMinStock)"
+                (mouseenter)="showHelpPopover(tipMinStock, btnTipMinStock)"
+                (mouseleave)="hideHelpPopover(tipMinStock)"
+                class="help-tip-popover">
+                Cantidad mínima de emergencia que siempre debería quedar en el estante antes de que el producto se agote.
+              </div>
+            </div>
             <input
+              id="catalog-form-min-stock"
               type="number"
               min="0"
               [ngModel]="formMinStock()"
@@ -767,8 +898,34 @@
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Punto de Reorden (ROP)</label>
+            <div class="flex items-center gap-1.5 mb-1">
+              <label for="catalog-form-rop" class="text-xs font-bold text-slate-700">Avisar para surtir</label>
+              <button
+                #btnTipRop
+                type="button"
+                class="help-tip-btn"
+                popovertarget="help-tip-rop"
+                popovertargetaction="show"
+                aria-expanded="false"
+                aria-label="Qué es Avisar para surtir"
+                (mouseenter)="showHelpPopover(tipRop, btnTipRop)"
+                (mouseleave)="hideHelpPopover(tipRop)">
+                ?
+              </button>
+              <div
+                #tipRop
+                id="help-tip-rop"
+                popover="auto"
+                role="tooltip"
+                (toggle)="onHelpPopoverToggle($event, btnTipRop)"
+                (mouseenter)="showHelpPopover(tipRop, btnTipRop)"
+                (mouseleave)="hideHelpPopover(tipRop)"
+                class="help-tip-popover">
+                Cuando tus existencias bajen a esta cantidad o menos, el sistema te avisará en amarillo que ya toca pedir más al proveedor.
+              </div>
+            </div>
             <input
+              id="catalog-form-rop"
               type="number"
               min="0"
               [ngModel]="formRop()"
@@ -793,10 +950,36 @@
         @if (!editingOriginalSku()) {
           <div class="rounded-xl border border-amber-200 bg-amber-50/70 p-4 grid sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-bold text-slate-800 mb-1">
-                Stock Inicial ({{ formSaleUnit() }}) — Genera AJUSTE_INICIAL en Kardex
-              </label>
+              <div class="flex items-center gap-1.5 mb-1">
+                <label for="catalog-form-initial-stock" class="text-xs font-bold text-slate-800">
+                  Existencia actual en tienda ({{ formSaleUnit() }})
+                </label>
+                <button
+                  #btnTipInitialStock
+                  type="button"
+                  class="help-tip-btn"
+                  popovertarget="help-tip-initial-stock"
+                  popovertargetaction="show"
+                  aria-expanded="false"
+                  aria-label="Qué es Existencia actual en tienda"
+                  (mouseenter)="showHelpPopover(tipInitialStock, btnTipInitialStock)"
+                  (mouseleave)="hideHelpPopover(tipInitialStock)">
+                  ?
+                </button>
+                <div
+                  #tipInitialStock
+                  id="help-tip-initial-stock"
+                  popover="auto"
+                  role="tooltip"
+                  (toggle)="onHelpPopoverToggle($event, btnTipInitialStock)"
+                  (mouseenter)="showHelpPopover(tipInitialStock, btnTipInitialStock)"
+                  (mouseleave)="hideHelpPopover(tipInitialStock)"
+                  class="help-tip-popover">
+                  Cuántas piezas o kilos tienes físicamente hoy en el estante al registrar este producto por primera vez.
+                </div>
+              </div>
               <input
+                id="catalog-form-initial-stock"
                 type="number"
                 min="0"
                 step="any"
@@ -808,10 +991,11 @@
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-800 mb-1">
-                PIN de Administrador / Encargado (Obligatorio para AJUSTE_INICIAL) *
+              <label for="catalog-form-admin-pin" class="block text-xs font-bold text-slate-800 mb-1">
+                PIN de encargado o administrador (para autorizar existencia inicial) *
               </label>
               <input
+                id="catalog-form-admin-pin"
                 type="password"
                 data-testid="input-catalog-pin"
                 [ngModel]="formAdminPin()"
@@ -843,7 +1027,7 @@
             data-testid="btn-save-product"
             (click)="saveProductForm()"
             class="h-11 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold">
-            {{ editingOriginalSku() ? 'Guardar Cambios' : 'Crear Producto y Registrar Kardex' }}
+            {{ editingOriginalSku() ? 'Guardar Cambios' : 'Guardar Nuevo Producto' }}
           </button>
         </div>
       </div>
@@ -860,8 +1044,8 @@
       <!-- Barra superior (se oculta al imprimir) -->
       <div class="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 print:hidden no-print">
         <div>
-          <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estándar GS1 Prefijo 200 · Uso en Mostrador</span>
-          <h2 class="text-base font-bold">Hoja Imprimible de Códigos Internos y Productos a Granel</h2>
+          <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Etiquetas listas para escanear en mostrador</span>
+          <h2 class="text-base font-bold">Hoja Imprimible de Códigos Propios y Granel</h2>
         </div>
         <div class="flex items-center gap-2">
           <button type="button" (click)="printBulkSheet()"
@@ -884,7 +1068,7 @@
           </div>
           <div class="text-right text-[11px] font-semibold text-slate-500 font-mono">
             Actualizado: {{ inv.today }}<br />
-            Prefijo EAN: 200 ({{ bulkProducts().length }} productos)
+            Códigos propios de la tienda ({{ bulkProducts().length }} productos)
           </div>
         </div>
 
@@ -892,9 +1076,9 @@
           @for (item of bulkProducts(); track item.sku) {
             <div class="print-label-card break-inside-avoid rounded-xl border border-slate-300 p-3 flex flex-col items-center text-center bg-white">
               <div class="w-full flex items-center justify-between text-[10px] font-bold text-slate-500 mb-1">
-                <span>SKU: {{ item.sku }}</span>
+                <span>Clave: {{ item.sku }}</span>
                 <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 uppercase">
-                  {{ item.isBulk ? 'Granel' : 'Código Interno' }}
+                  {{ item.isBulk ? 'Granel' : 'Código Propio' }}
                 </span>
               </div>
 
@@ -1028,7 +1212,7 @@
       <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
         <div>
           <h2 class="text-base font-bold">
-            {{ prod.hasMovements ? 'Confirmar Baja Lógica de Producto' : 'Confirmar Eliminación de Producto' }}
+            {{ prod.hasMovements ? 'Confirmar Desactivación de Producto' : 'Confirmar Eliminación de Producto' }}
           </h2>
           <p class="text-xs text-slate-300 mt-0.5">{{ prod.name }} ({{ prod.sku }})</p>
         </div>
@@ -1040,7 +1224,7 @@
       <div class="p-5 space-y-4 overflow-y-auto flex-1">
         <p class="text-xs text-slate-700 leading-relaxed">
           @if (prod.hasMovements) {
-            Este producto tiene historial de movimientos; se marcará como inactivo (baja lógica) para no romper la auditoría ni el Kardex.
+            Este producto ya tiene ventas o entradas registradas; se guardará como desactivado para conservar intacto tu historial de cuentas.
           } @else {
             Este producto no tiene movimientos previos y será eliminado del catálogo de forma definitiva.
           }
@@ -1080,7 +1264,7 @@
           data-testid="btn-confirm-deactivate-product"
           (click)="confirmDeactivateProduct()"
           class="h-10 px-5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-xs">
-          {{ prod.hasMovements ? 'Confirmar Baja Lógica' : 'Confirmar Eliminación' }}
+          {{ prod.hasMovements ? 'Confirmar Desactivación' : 'Confirmar Eliminación' }}
         </button>
       </div>
     </div>
