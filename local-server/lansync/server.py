@@ -370,6 +370,8 @@ def create_app(
         token, _ = st.pairing.current()
         url = pairing_url(token, valid_ip)
         svg = segno.make(url, error="m").svg_inline(scale=7, border=2, dark="#0f172a")
+        if "xmlns=" not in svg:
+            svg = svg.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" ', 1)
         return Response(
             content=svg,
             media_type="image/svg+xml",

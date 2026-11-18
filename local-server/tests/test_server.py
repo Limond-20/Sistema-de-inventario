@@ -70,6 +70,7 @@ def test_pairing_qr_svg_desde_la_pc(local_app, local_client):
     assert "image/svg+xml" in res.headers["content-type"]
     assert "no-store" in res.headers.get("cache-control", "")
     assert "<svg" in res.text and "</svg>" in res.text
+    assert 'xmlns="http://www.w3.org/2000/svg"' in res.text
 
 
 def test_pairing_qr_svg_cambia_al_rotar(local_app, local_client):
