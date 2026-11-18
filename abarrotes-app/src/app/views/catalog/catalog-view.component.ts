@@ -246,6 +246,41 @@ export class CatalogViewComponent {
     this.bulkSheetModalOpen.set(false);
   }
 
+  private helpHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+  protected showHelpPopover(el: HTMLElement | null, source?: HTMLElement | null): void {
+    if (this.helpHideTimer) {
+      clearTimeout(this.helpHideTimer);
+      this.helpHideTimer = null;
+    }
+    try {
+      (el as any)?.showPopover?.(source ? { source } : undefined);
+    } catch {
+      try {
+        el?.showPopover?.();
+      } catch {
+        // ignore if unsupported or already open
+      }
+    }
+  }
+
+  protected hideHelpPopover(el: HTMLElement | null): void {
+    if (this.helpHideTimer) clearTimeout(this.helpHideTimer);
+    this.helpHideTimer = setTimeout(() => {
+      try {
+        el?.hidePopover?.();
+      } catch {
+        // ignore
+      }
+    }, 120);
+  }
+
+  protected onHelpPopoverToggle(ev: Event, trigger: HTMLElement | null): void {
+    if (!trigger) return;
+    const isOpen = (ev as ToggleEvent).newState === 'open';
+    trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+
   protected printBulkSheet(): void {
     if (typeof window !== 'undefined') {
       window.print();

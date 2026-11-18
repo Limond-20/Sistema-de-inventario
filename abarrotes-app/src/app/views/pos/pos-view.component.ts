@@ -111,6 +111,35 @@ export class PosViewComponent implements OnInit, OnDestroy {
     return Array.from(new Set([...base, 'Personal de Mostrador']));
   });
 
+  private arcoHelpTimer: ReturnType<typeof setTimeout> | null = null;
+
+  protected showHelpPopover(el: HTMLElement | null, source?: HTMLElement | null): void {
+    if (this.arcoHelpTimer) {
+      clearTimeout(this.arcoHelpTimer);
+      this.arcoHelpTimer = null;
+    }
+    try {
+      (el as any)?.showPopover?.(source ? { source } : undefined);
+    } catch {
+      // ignore if unsupported or already open
+    }
+  }
+
+  protected hideHelpPopover(el: HTMLElement | null): void {
+    if (this.arcoHelpTimer) clearTimeout(this.arcoHelpTimer);
+    this.arcoHelpTimer = setTimeout(() => {
+      try {
+        el?.hidePopover?.();
+      } catch {
+        // ignore
+      }
+    }, 120);
+  }
+
+  protected onHelpPopoverToggle(ev: Event, trigger: HTMLElement | null): void {
+    trigger?.setAttribute('aria-expanded', (ev as ToggleEvent).newState === 'open' ? 'true' : 'false');
+  }
+
   private syncChannel: BroadcastChannel | null = null;
   private readonly storageListener = (ev: StorageEvent) => {
     if (ev.key === 'abarrotes_lan_last_event' && ev.newValue) {

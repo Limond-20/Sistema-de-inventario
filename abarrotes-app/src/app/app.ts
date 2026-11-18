@@ -87,7 +87,7 @@ import { canAccessRoute } from './domain/auth';
                 </button>
               }
               <p class="text-[11px] text-slate-400 leading-relaxed">
-                Los datos se guardan cifrados (AES-256-GCM) con una llave que solo se abre con el PIN de un administrador.
+                Los datos se guardan protegidos bajo llave en esta computadora y solo se abren con el PIN de un administrador.
                 Si se olvida el PIN no hay forma de abrirlos: la única recuperación es un respaldo .bak y su frase.
               </p>
             </div>
@@ -168,7 +168,7 @@ import { canAccessRoute } from './domain/auth';
           <app-icon name="logo" [size]="28" />
         </div>
         <h1 class="font-display text-2xl font-bold">Cargando datos de la tienda…</h1>
-        <p class="text-sm text-brand-200 mt-1.5">Verificando integridad del Kardex y existencias por producto</p>
+        <p class="text-sm text-brand-200 mt-1.5">Verificando historial de movimientos y existencias por producto</p>
       </div>
     } @else {
       <div class="h-screen w-screen flex flex-col bg-slate-100 overflow-hidden select-none print-shell print:h-auto print:w-full print:overflow-visible print:bg-white print:block">
@@ -355,7 +355,7 @@ import { canAccessRoute } from './domain/auth';
               @if (inv.corruptedAffectedSkus().length > 0) {
                 <div class="rounded-xl border border-rose-200 bg-rose-50/70 p-4">
                   <p class="text-xs font-bold text-slate-800 mb-2">
-                    SKUs afectados por discrepancia de continuidad (Stock vs. Kardex):
+                    Productos con diferencia entre existencias e historial:
                   </p>
                   <div class="flex flex-wrap gap-2">
                     @for (sku of inv.corruptedAffectedSkus(); track sku) {

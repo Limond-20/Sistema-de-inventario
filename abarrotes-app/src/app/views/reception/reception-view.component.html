@@ -230,7 +230,7 @@
               [class]="l.broken ? 'bg-red-50/50' : (l.resolved ? 'bg-emerald-50/40' : '')">
               <td class="px-4 py-4">
                 <p class="text-base font-bold text-slate-900 leading-snug">{{ l.name }}</p>
-                <p class="mt-1 text-sm text-slate-500">SKU: {{ l.sku }} @if (l.barcode) { · EAN: {{ l.barcode }} }</p>
+                <p class="mt-1 text-sm text-slate-500">Clave: {{ l.sku }} @if (l.barcode) { · Código: {{ l.barcode }} }</p>
               </td>
 
               <td class="px-4 py-4">
@@ -582,7 +582,7 @@
             <div class="flex items-center gap-3 h-10">
               <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
                 <input type="radio" name="quickSaleType" [checked]="!quickIsBulk()" (change)="quickIsBulk.set(false)" />
-                <span>Pieza (EAN-13)</span>
+                <span>Por pieza (con código)</span>
               </label>
               <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
                 <input type="radio" name="quickSaleType" [checked]="quickIsBulk()" (change)="quickIsBulk.set(true)" />
@@ -688,7 +688,7 @@
                 <tr>
                   <th class="p-2.5">Fecha</th>
                   <th class="p-2.5">Folio</th>
-                  <th class="p-2.5">SKU / Producto</th>
+                  <th class="p-2.5">Producto</th>
                   <th class="p-2.5 text-right">Costo Anterior</th>
                   <th class="p-2.5 text-right">Costo Nuevo</th>
                   <th class="p-2.5 text-center">Variación</th>
@@ -905,7 +905,7 @@
         @if (paymentTargetDebtId(); as debtId) {
           <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-lg text-xs text-blue-900 flex justify-between items-center">
             <span>Amortizando nota específica: <b>{{ paymentTargetDebtFolio() || debtId }}</b></span>
-            <button type="button" (click)="paymentTargetDebtId.set(null); paymentTargetDebtFolio.set(null)" class="text-blue-700 underline text-[11px] font-semibold cursor-pointer">Cambiar a FIFO general</button>
+            <button type="button" (click)="paymentTargetDebtId.set(null); paymentTargetDebtFolio.set(null)" class="text-blue-700 underline text-[11px] font-semibold cursor-pointer">Abonar primero a las notas más antiguas</button>
           </div>
         }
 
@@ -926,7 +926,7 @@
 
         @if (paymentSource() === 'CAJA') {
           <div class="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs text-amber-900">
-            <b>Coordinación con caja:</b> Este pago descuenta físicamente el efectivo del cajón activo y queda asentado en el Kardex como <code>PAGO_PROVEEDOR</code>.
+            <b>Coordinación con caja:</b> Este pago descuenta el efectivo del cajón actual y queda guardado en el historial de movimientos de la tienda.
           </div>
         } @else {
           <div class="bg-indigo-50 border border-indigo-200 p-2.5 rounded-lg text-xs text-indigo-900">

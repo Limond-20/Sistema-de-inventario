@@ -651,19 +651,19 @@
     @if (activeTab() === 'DIFERENCIAS_CONTEO') {
       <div class="grid sm:grid-cols-4 gap-3">
         <div class="rounded-xl border border-slate-200 bg-white p-4">
-          <span class="text-[11px] font-bold uppercase text-slate-500">SKUs Auditados</span>
+          <span class="text-[11px] font-bold uppercase text-slate-500">Productos Contados</span>
           <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ bundle().auditDifferences.totalAuditedSkus }}</p>
           <p class="text-xs text-slate-500">{{ bundle().auditDifferences.exactMatchCount }} cuadran exacto</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4">
           <span class="text-[11px] font-bold uppercase text-slate-500">Faltantes</span>
           <p class="text-xl font-black font-mono text-rose-700 mt-1">-{{ formatCents(bundle().auditDifferences.shortageValueCents) }}</p>
-          <p class="text-xs text-slate-500">{{ bundle().auditDifferences.shortageSkuCount }} SKU(s)</p>
+          <p class="text-xs text-slate-500">{{ bundle().auditDifferences.shortageSkuCount }} producto(s)</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4">
           <span class="text-[11px] font-bold uppercase text-slate-500">Merma Natural Tolerada</span>
           <p class="text-xl font-black font-mono text-amber-700 mt-1">-{{ formatCents(bundle().auditDifferences.naturalToleranceLossCents) }}</p>
-          <p class="text-xs text-slate-500">{{ bundle().auditDifferences.naturalToleranceCount }} SKU(s)</p>
+          <p class="text-xs text-slate-500">{{ bundle().auditDifferences.naturalToleranceCount }} producto(s)</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4">
           <span class="text-[11px] font-bold uppercase text-slate-500">Sobrantes / Variación Neta</span>
@@ -785,7 +785,7 @@
 
         <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
           <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
-            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Tickets Cronometrados (Inicio y Fin POS)</h3>
+            <h3 class="text-xs font-black uppercase tracking-wider text-slate-700">Tickets Cronometrados en Caja</h3>
           </div>
           <div class="overflow-x-auto max-h-96">
             <table class="w-full text-xs text-left">
@@ -821,7 +821,7 @@
     @if (activeTab() === 'VALUACION_INVENTARIO') {
       <div class="grid sm:grid-cols-4 gap-3">
         <div class="rounded-xl border border-slate-200 bg-white p-4">
-          <span class="text-[11px] font-bold uppercase text-slate-500">Valor a Costo (CPP / Hist.)</span>
+          <span class="text-[11px] font-bold uppercase text-slate-500">Valor a Costo de Compra</span>
           <p class="text-xl font-black font-mono text-slate-900 mt-1">{{ formatCents(bundle().inventoryValuation.totalCostCents) }}</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4">
@@ -833,9 +833,9 @@
           <p class="text-xl font-black font-mono text-brand-700 mt-1">{{ formatCents(bundle().inventoryValuation.potentialProfitCents) }}</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4">
-          <span class="text-[11px] font-bold uppercase text-slate-500">Margen Potencial / SKUs</span>
+          <span class="text-[11px] font-bold uppercase text-slate-500">Margen Potencial / Productos</span>
           <p class="text-xl font-black font-mono text-slate-900 mt-1">
-            {{ bundle().inventoryValuation.overallMarginPct | number:'1.1-2' }}% · {{ bundle().inventoryValuation.skuCount }} SKUs
+            {{ bundle().inventoryValuation.overallMarginPct | number:'1.1-2' }}% · {{ bundle().inventoryValuation.skuCount }} productos
           </p>
         </div>
       </div>

@@ -100,7 +100,7 @@
       </div>
 
       <div class="rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 text-xs text-slate-600 flex items-center justify-between">
-        <span>Permiso de ventas POS:</span>
+        <span>Permiso para cobrar en caja:</span>
         <span class="font-bold" [class]="evalState().canSell ? 'text-emerald-700' : 'text-rose-700'" data-testid="license-can-sell">
           {{ evalState().canSell ? 'Habilitado' : 'Bloqueado (Solo lectura)' }}
         </span>
@@ -151,7 +151,7 @@
           </span>
         </div>
         <p class="text-xs text-slate-600 leading-relaxed">
-          Compara la hora actual contra la fecha máxima registrada en el sistema y en la cadena SHA-256 del Kardex (tolerancia máxima: 5 minutos).
+          Compara la hora actual contra el último movimiento registrado para evitar que se atrase el reloj de la computadora (tolerancia: 5 minutos).
         </p>
 
         <div class="mt-2 space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
