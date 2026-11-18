@@ -75,7 +75,15 @@ export class AuditDictamenViewComponent implements OnInit, OnDestroy {
   protected readonly extraMoney = computed(() =>
     sumMoney(this.withDiff().filter((r) => r.diffMoney > 0).map((r) => r.diffMoney)),
   );
-  protected readonly allDone = computed(() => this.withDiff().every((r) => r.status !== 'pendiente'));
+  protected readonly allDone = computed(
+    () => this.rows().length > 0 && this.withDiff().every((r) => r.status !== 'pendiente'),
+  );
+  protected readonly sampleLocationLabel = computed(() => {
+    const locs = [...new Set(this.rows().map((r) => r.location).filter(Boolean))];
+    if (locs.length === 0) return 'Sin muestra activa';
+    if (locs.length === 1) return `Muestra de ${locs[0]}`;
+    return `Muestra de ${locs.length} pasillos / ubicaciones`;
+  });
 
   ngOnInit(): void {
     if (typeof BroadcastChannel !== 'undefined') {

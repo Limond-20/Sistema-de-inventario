@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from lansync.pairing import PairingStore
-from lansync.server import create_app
+from lansync.server import _ignore_benign_connection_reset, create_app
 
 
 @pytest.fixture()
@@ -191,7 +191,7 @@ def test_mensajes_invalidos_no_rompen_la_conexion(local_app, local_client):
 
 
 def test_mensaje_demasiado_grande_cierra(tmp_path):
-    app = create_app(None, ips=[], max_message_bytes=1000)
+    app = create_app(None, ips=[], max_message_bytes=1000, data_dir=tmp_path / "data")
     app.state.trusted_hosts.add("testclient")
     with TestClient(app) as c:
         with pytest.raises(WebSocketDisconnect) as e:
@@ -445,6 +445,26 @@ def test_arranque_borra_temporales_viejos(tmp_path):
 
     assert not old_tmp.exists(), "El temporal de más de 1 hora debe ser eliminado"
     assert new_tmp.exists(), "El temporal reciente (<1h) debe conservarse"
+
+
+def test_ignore_benign_connection_reset_handler():
+    calls = []
+
+    class FakeLoop:
+        def default_exception_handler(self, context):
+            calls.append(context)
+
+    loop = FakeLoop()
+    _ignore_benign_connection_reset(
+        loop,
+        {"exception": ConnectionResetError(10054, "Se ha forzado la interrupción de una conexión existente")},
+    )
+    assert calls == []
+
+    other_ctx = {"exception": RuntimeError("otro error")}
+    _ignore_benign_connection_reset(loop, other_ctx)
+    assert calls == [other_ctx]
+
 
 
 

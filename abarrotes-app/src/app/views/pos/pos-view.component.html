@@ -111,6 +111,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
+          #barcodeSearchInput
           type="text"
           [ngModel]="searchQuery()"
           (ngModelChange)="searchQuery.set($event)"
@@ -230,7 +231,7 @@
   <!-- =========================================================================
        COLUMNA DERECHA (40% ANCHO): TICKET ACTIVO Y CIERRE DE VENTA
        ========================================================================= -->
-  <aside class="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col overflow-hidden sticky top-16">
+  <aside class="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col overflow-hidden sticky top-2">
 
     <!-- Cabecera del Ticket -->
     <div class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
@@ -249,7 +250,7 @@
     <!-- Lista de Artículos en el Ticket -->
     <div class="divide-y divide-slate-100 max-h-[340px] overflow-y-auto px-4 py-1">
       @for (item of cart(); track item.sku) {
-        <div class="py-2.5 flex flex-col gap-2">
+        <div class="py-2 flex flex-col gap-1.5">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0 flex-1">
               <p class="text-sm font-bold text-slate-900 truncate">
@@ -273,9 +274,15 @@
                 class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
                 −
               </button>
-              <span class="min-w-[36px] text-center font-bold text-sm text-slate-900 font-mono">
-                {{ item.saleUnit === 'Kg' ? (item.qty | number:'1.2-2') : (item.qty | number:'1.0-0') }}
-              </span>
+              <input
+                type="number"
+                min="0.001"
+                [step]="item.saleUnit === 'Kg' ? 0.05 : 1"
+                [attr.aria-label]="'Cantidad de ' + item.name"
+                [ngModel]="item.qty"
+                (ngModelChange)="setCartItemDirectQty(item.sku, $event)"
+                class="w-16 h-8 rounded-lg border border-slate-300 bg-white text-center font-bold text-xs text-slate-900 font-mono"
+              />
               <button type="button" (click)="adjustCartItemQty(item, 1)" aria-label="Aumentar"
                 class="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-base font-bold text-slate-700 flex items-center justify-center">
                 +
@@ -407,14 +414,6 @@
           Consumo Interno
         </button>
       </div>
-
-      <!-- Abono a cuenta -->
-      <button
-        type="button"
-        (click)="openCreditModal()"
-        class="h-9 w-full rounded-lg text-xs font-bold text-slate-600 hover:text-blue-700 hover:bg-slate-50 flex items-center justify-center transition-colors">
-        Recibir Abono de Crédito Vecinal
-      </button>
     </div>
 
     <!-- Kardex en Vivo Sutil -->
@@ -584,10 +583,10 @@
         <!-- Selector de Billetes -->
         <div class="flex flex-col gap-2">
           <span class="text-xs font-bold text-slate-600 uppercase">Efectivo entregado por cliente:</span>
-          <div class="grid grid-cols-5 gap-2">
-            @for (bill of [50, 100, 200, 500]; track bill) {
+          <div class="grid grid-cols-3 sm:grid-cols-7 gap-2">
+            @for (bill of [20, 50, 100, 200, 500, 1000]; track bill) {
               <button type="button" (click)="setCashBill(bill)"
-                class="h-11 rounded-lg border text-sm font-bold font-mono transition-colors"
+                class="h-11 rounded-lg border text-xs sm:text-sm font-bold font-mono transition-colors"
                 [class]="cashReceived() === bill
                   ? 'border-slate-800 bg-slate-800 text-white'
                   : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'">
@@ -595,14 +594,14 @@
               </button>
             }
             <button type="button" (click)="setExactCash()"
-              class="h-11 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-800">
+              class="col-span-3 sm:col-span-1 h-11 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-800">
               Exacto
             </button>
           </div>
 
           <label class="flex items-center justify-between pt-1">
             <span class="text-xs font-bold text-slate-700">Otro monto recibido ($):</span>
-            <input type="number" min="1" step="1" [ngModel]="cashReceived()" (ngModelChange)="cashReceived.set($event)"
+            <input type="number" min="0.5" step="0.01" [ngModel]="cashReceived()" (ngModelChange)="cashReceived.set($event)"
               class="h-11 w-40 rounded-lg border border-slate-300 bg-white px-3 text-lg font-black font-mono text-right text-slate-900" />
           </label>
         </div>
@@ -634,6 +633,13 @@
                 class="h-10 w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm font-mono font-bold text-slate-900"
               />
             </label>
+          </div>
+        }
+
+        @if (cashModalError(); as err) {
+          <div role="alert" data-testid="cash-modal-error"
+            class="rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-900">
+            {{ err }}
           </div>
         }
 
@@ -693,13 +699,23 @@
             />
           </div>
 
+          @if (creditModalError() && cart().length === 0) {
+            <div role="alert" data-testid="credit-modal-error"
+              class="rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-900">
+              {{ creditModalError() }}
+            </div>
+          }
+
           <div class="flex flex-col gap-2 max-h-[360px] overflow-y-auto pr-1">
             @for (c of filteredCreditCustomers(); track c.id) {
               @let available = c.creditLimit - c.currentBalance;
-              <button
-                type="button"
+              <div
+                role="button"
+                tabindex="0"
                 (click)="selectCustomerForFiado(c.id)"
-                class="w-full rounded-xl border p-4 text-left transition-all flex flex-col gap-3"
+                (keydown.enter)="selectCustomerForFiado(c.id)"
+                (keydown.space)="selectCustomerForFiado(c.id); $event.preventDefault()"
+                class="w-full cursor-pointer rounded-xl border p-4 text-left transition-all flex flex-col gap-3"
                 [class]="selectedCustomerId() === c.id
                   ? 'border-brand-700 bg-brand-100/40 ring-1 ring-brand-700'
                   : 'border-slate-200 bg-white hover:bg-slate-50'">
@@ -732,10 +748,22 @@
                       class="px-2 py-1 text-xs font-bold rounded-md bg-slate-200 hover:bg-slate-300 text-slate-800">
                       Editar
                     </button>
-                    <button type="button" (click)="deleteCustomer(c, $event)" title="Baja Lógica"
-                      class="px-2 py-1 text-xs font-bold rounded-md bg-rose-100 hover:bg-rose-200 text-rose-800">
-                      Baja
-                    </button>
+                    @if (customerPendingDeactivateId() === c.id) {
+                      <button type="button" (click)="deleteCustomer(c, $event)"
+                        data-testid="btn-confirm-deactivate-customer"
+                        class="px-2 py-1 text-xs font-bold rounded-md bg-rose-700 hover:bg-rose-800 text-white">
+                        Confirmar
+                      </button>
+                      <button type="button" (click)="cancelDeactivateCustomer($event)"
+                        class="px-2 py-1 text-xs font-bold rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-slate-700">
+                        Cancelar
+                      </button>
+                    } @else {
+                      <button type="button" (click)="requestDeactivateCustomer(c, $event)" title="Baja Lógica"
+                        class="px-2 py-1 text-xs font-bold rounded-md bg-rose-100 hover:bg-rose-200 text-rose-800">
+                        Baja
+                      </button>
+                    }
                   </div>
                 </div>
 
@@ -755,7 +783,11 @@
                     </span>
                   </div>
                 </div>
-              </button>
+              </div>
+            } @empty {
+              <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-xs font-semibold text-slate-600" data-testid="credit-customers-empty">
+                No se encontraron clientes con ese criterio de búsqueda.
+              </div>
             }
           </div>
 
@@ -777,6 +809,13 @@
                   placeholder="Ingresa PIN de administrador para autorizar descuento"
                   class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 font-mono font-bold"
                 />
+              </div>
+            }
+
+            @if (creditModalError(); as err) {
+              <div role="alert" data-testid="credit-modal-error"
+                class="rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-900">
+                {{ err }}
               </div>
             }
 
@@ -909,7 +948,7 @@
         <div>
           <label class="block text-xs font-bold uppercase text-slate-600 mb-2">Responsable:</label>
           <div class="grid grid-cols-3 gap-2">
-            @for (opt of responsibleOptions; track opt) {
+            @for (opt of responsibleOptions(); track opt) {
               <button
                 type="button"
                 (click)="consumptionResponsible.set(opt)"
@@ -949,7 +988,7 @@
                 <label class="block text-[11px] font-bold text-slate-700 mb-1">PIN de Administrador:</label>
                 <input
                   type="password"
-                  maxlength="8"
+                  maxlength="32"
                   [value]="consumptionPin()"
                   (input)="consumptionPin.set($any($event.target).value)"
                   placeholder="PIN..."
@@ -965,6 +1004,13 @@
                   class="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 focus:outline-none" />
               </div>
             </div>
+          </div>
+        }
+
+        @if (consumptionModalError(); as err) {
+          <div role="alert" data-testid="consumption-modal-error"
+            class="col-span-2 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-900">
+            {{ err }}
           </div>
         }
 
@@ -1129,7 +1175,7 @@
             }
 
             <div class="grid grid-cols-2 gap-2">
-              <input type="password" inputmode="numeric" placeholder="PIN de encargado o administrador"
+              <input type="password" inputmode="numeric" placeholder="PIN de encargado o administrador (Anonimizar requiere Administrador)"
                 [ngModel]="arcoPin()" (ngModelChange)="arcoPin.set($event)" data-testid="arco-pin"
                 class="col-span-2 h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-mono font-bold" />
               <button type="button" [disabled]="arcoBusy()" (click)="exportCustomerData()" data-testid="btn-arco-export"
@@ -1260,14 +1306,14 @@
 
 <!-- Modal Formulario de Cliente (Crear / Editar) -->
 @if (customerFormModalOpen()) {
-  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-md overflow-hidden">
-      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-customer-form">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
         <h3 class="text-base font-bold">{{ customerFormMode() === 'create' ? 'Nuevo Cliente de Fiado' : 'Editar Datos de Cliente' }}</h3>
-        <button type="button" (click)="closeCustomerFormModal()" class="text-xs text-slate-400 hover:text-white">Cerrar</button>
+        <button type="button" (click)="closeCustomerFormModal()" class="text-xs text-slate-300 hover:text-white">Cerrar</button>
       </div>
 
-      <div class="p-5 flex flex-col gap-3">
+      <div class="p-5 flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <label class="flex flex-col gap-1">
           <span class="text-xs font-bold text-slate-700">Nombre completo *:</span>
           <input type="text" [ngModel]="customerFormName()" (ngModelChange)="customerFormName.set($event)"
@@ -1358,24 +1404,24 @@
             {{ customerFormFeedback() }}
           </div>
         }
+      </div>
 
-        <div class="flex items-center justify-end gap-2 pt-2">
-          <button type="button" (click)="closeCustomerFormModal()"
-            class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100">
-            Cancelar
+      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-200 bg-slate-50">
+        <button type="button" (click)="closeCustomerFormModal()"
+          class="h-10 px-4 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100">
+          Cancelar
+        </button>
+        @if (customerDuplicateWarning()) {
+          <button type="button" (click)="saveCustomerForm(true)"
+            class="h-10 px-4 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-2xs">
+            Confirmar Duplicado y Guardar
           </button>
-          @if (customerDuplicateWarning()) {
-            <button type="button" (click)="saveCustomerForm(true)"
-              class="h-10 px-4 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-2xs">
-              Confirmar Duplicado y Guardar
-            </button>
-          } @else {
-            <button type="button" (click)="saveCustomerForm(false)"
-              class="h-10 px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs">
-              Guardar Cliente
-            </button>
-          }
-        </div>
+        } @else {
+          <button type="button" (click)="saveCustomerForm(false)"
+            class="h-10 px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs">
+            Guardar Cliente
+          </button>
+        }
       </div>
     </div>
   </div>
@@ -1387,19 +1433,19 @@
      ========================================================================= -->
 @if (cashMovementModalOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-cash-movement">
-    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-md overflow-hidden">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
       <!-- Cabecera -->
-      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
         <div>
           <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Tesorería y Flujo</p>
           <h3 class="text-base font-bold leading-tight">Movimiento de Efectivo en Caja</h3>
         </div>
-        <button type="button" (click)="closeCashMovementModal()" class="text-xs text-slate-400 hover:text-white">
+        <button type="button" (click)="closeCashMovementModal()" class="text-xs text-slate-300 hover:text-white">
           Cerrar
         </button>
       </div>
 
-      <div class="p-5 flex flex-col gap-4">
+      <div class="p-5 flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <!-- Selector Tipo: Entrada vs Salida -->
         <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
           <button
@@ -1516,10 +1562,10 @@
      MODAL 7: CORTE DE CAJA Y CONTROL DE TURNO - BLOQUE H
      ========================================================================= -->
 @if (shiftModalOpen()) {
-  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-shift-cut">
-    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-lg overflow-hidden">
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" data-testid="modal-shift-cut">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
       <!-- Cabecera -->
-      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
         <div>
           <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Control de Turnos</p>
           <h3 class="text-base font-bold leading-tight">
@@ -1531,7 +1577,7 @@
         </button>
       </div>
 
-      <div class="p-5 flex flex-col gap-4">
+      <div class="p-5 flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
         @if (shiftData().isShiftOpen) {
           <!-- Resumen contable acumulado -->
           <div class="space-y-1.5 text-xs">
@@ -1571,19 +1617,21 @@
             <div class="rounded-xl border border-brand-200 bg-brand-50/60 p-3.5 space-y-2" data-testid="pos-shift-satisfaction-survey">
               <div class="flex items-center justify-between gap-2">
                 <p class="text-xs font-bold text-slate-900">
-                  Encuesta semanal de satisfacción (1 a 5 · opcional)
+                  Encuesta semanal de satisfacción (opcional)
                 </p>
                 <span class="text-[10px] font-semibold text-brand-700">1 vez por semana</span>
               </div>
-              <div class="flex items-center gap-1.5">
-                @for (n of [1, 2, 3, 4, 5]; track n) {
+              <div class="grid grid-cols-5 gap-1.5">
+                @for (opt of satisfactionOptions; track opt.value) {
                   <button
                     type="button"
-                    (click)="shiftSatisfactionRating.set(n)"
-                    [attr.data-testid]="'pos-shift-rating-' + n"
-                    class="h-8 flex-1 rounded-lg border font-mono text-xs font-black transition-colors"
-                    [class]="shiftSatisfactionRating() === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
-                    {{ n }}
+                    (click)="shiftSatisfactionRating.set(opt.value)"
+                    [attr.data-testid]="'pos-shift-rating-' + opt.value"
+                    [attr.aria-label]="opt.value + ' - ' + opt.label"
+                    class="rounded-lg border px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 transition-colors"
+                    [class]="shiftSatisfactionRating() === opt.value ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+                    <span class="font-mono text-sm font-black leading-none">{{ opt.value }}</span>
+                    <span class="text-[10px] font-semibold leading-tight text-center">{{ opt.label }}</span>
                   </button>
                 }
               </div>
@@ -1663,22 +1711,6 @@
               {{ fb.message }}
             </div>
           }
-
-          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
-            <button
-              type="button"
-              (click)="closeShiftModal()"
-              class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100">
-              Cancelar
-            </button>
-            <button
-              type="button"
-              (click)="executeCloseShift()"
-              data-testid="btn-close-shift-confirm"
-              class="h-10 px-5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-2xs transition-all">
-              Confirmar Corte y Cerrar Turno
-            </button>
-          </div>
         } @else {
           <!-- Formulario de Apertura de Nuevo Turno -->
           <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950 flex flex-col gap-2">
@@ -1717,22 +1749,39 @@
               {{ fb.message }}
             </div>
           }
+        }
+      </div>
 
-          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
-            <button
-              type="button"
-              (click)="closeShiftModal()"
-              class="h-10 px-4 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100">
-              Cerrar
-            </button>
-            <button
-              type="button"
-              (click)="executeOpenNewShift()"
-              data-testid="btn-open-shift-confirm"
-              class="h-10 px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-all">
-              Abrir Nuevo Turno
-            </button>
-          </div>
+      <!-- Pie fijo del modal de corte/apertura de turno -->
+      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-200 bg-slate-50">
+        @if (shiftData().isShiftOpen) {
+          <button
+            type="button"
+            (click)="closeShiftModal()"
+            class="h-10 px-4 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            (click)="executeCloseShift()"
+            data-testid="btn-close-shift-confirm"
+            class="h-10 px-5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-2xs transition-all">
+            Confirmar Corte y Cerrar Turno
+          </button>
+        } @else {
+          <button
+            type="button"
+            (click)="closeShiftModal()"
+            class="h-10 px-4 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100">
+            Cerrar
+          </button>
+          <button
+            type="button"
+            (click)="executeOpenNewShift()"
+            data-testid="btn-open-shift-confirm"
+            class="h-10 px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-all">
+            Abrir Nuevo Turno
+          </button>
         }
       </div>
     </div>
@@ -1757,8 +1806,8 @@
       </div>
 
       <!-- Filtros -->
-      <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
-        <div class="flex items-center gap-2">
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs font-bold text-slate-600">Filtrar:</span>
           <div class="flex rounded-lg border border-slate-300 bg-white p-0.5 text-xs font-bold">
             <button
@@ -1783,6 +1832,14 @@
               Fiado
             </button>
           </div>
+          <input
+            type="text"
+            [ngModel]="salesHistorySearch()"
+            (ngModelChange)="salesHistorySearch.set($event)"
+            data-testid="input-sales-history-search"
+            placeholder="Buscar por folio, cliente o cajero..."
+            class="h-8 w-56 rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
+          />
         </div>
 
         <span class="text-xs text-slate-500 font-semibold">

@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -48,6 +48,17 @@ export class CatalogViewComponent {
   protected readonly approvalCost = signal<number>(0);
   protected readonly approvalPin = signal<string>('');
   protected readonly approvalFeedback = signal<{ ok: boolean; message: string } | null>(null);
+
+  // Permiso de edición/administración de catálogo (Cajero solo consulta)
+  protected readonly canManageCatalog = computed(() => {
+    const role = this.inv.currentUser()?.role || 'ENCARGADO';
+    return role === 'ADMINISTRADOR' || role === 'ENCARGADO';
+  });
+
+  // Modal de confirmación + PIN para Baja Lógica o Eliminación
+  protected readonly pendingDeactivateProduct = signal<(Product & { hasMovements?: boolean }) | null>(null);
+  protected readonly deactivatePin = signal<string>('');
+  protected readonly deactivateError = signal<string | null>(null);
 
   protected readonly pendingApprovalList = computed(() =>
     this.inv.products().filter((p) => p.approvalStatus === 'PENDIENTE_APROBACION')
@@ -106,6 +117,45 @@ export class CatalogViewComponent {
     ...new Set(this.inv.products().map((p) => p.category)),
   ]);
 
+  protected readonly categorySuggestions = computed(() =>
+    Array.from(
+      new Set([
+        'Abarrotes',
+        'Lácteos',
+        'Bebidas',
+        'Enlatados',
+        'Botanas',
+        'Limpieza',
+        'Panadería',
+        'Granos',
+        ...this.inv.products().map((p) => p.category).filter(Boolean),
+      ]),
+    ),
+  );
+
+  protected readonly locationSuggestions = computed(() =>
+    Array.from(
+      new Set([
+        'Anaquel General',
+        'Mostrador',
+        'Refrigerador 1',
+        'Pasillo 1 · Repisa A',
+        'Bodega',
+        ...this.inv.products().map((p) => p.location || '').filter(Boolean),
+      ]),
+    ),
+  );
+
+  protected readonly supplierSuggestions = computed(() =>
+    Array.from(
+      new Set([
+        'Proveedor General',
+        ...this.inv.suppliers().filter((s) => s.isActive !== false).map((s) => s.name),
+        ...this.inv.products().map((p) => p.supplier).filter(Boolean),
+      ]),
+    ),
+  );
+
   protected readonly abcCounts = computed(() => {
     const all = this.inv.products().filter((p) => this.showInactive() || p.isActive !== false);
     return {
@@ -160,9 +210,19 @@ export class CatalogViewComponent {
   });
 
   private daysLeft(p: Product): number {
+    const refNow = new Date();
+    const todayNoon = new Date(refNow.getFullYear(), refNow.getMonth(), refNow.getDate(), 12, 0, 0);
     return Math.round(
-      (new Date(p.fefoExpiryDate + 'T12:00:00').getTime() - Date.now()) / 86_400_000,
+      (new Date(p.fefoExpiryDate + 'T12:00:00').getTime() - todayNoon.getTime()) / 86_400_000,
     );
+  }
+
+  @HostListener('document:keydown.escape')
+  protected onEscapeKey(): void {
+    if (this.pendingDeactivateProduct()) { this.closeDeactivateModal(); return; }
+    if (this.approvalModalOpen()) { this.closeApprovalModal(); return; }
+    if (this.bulkSheetModalOpen()) { this.closeBulkSheetModal(); return; }
+    if (this.productModalOpen()) { this.closeProductModal(); }
   }
 
   protected fmtDate(iso: string): string {
@@ -194,7 +254,17 @@ export class CatalogViewComponent {
 
   // ---------- Acciones de Alta, Edición y Baja Lógica (Bloque F1) ----------
 
+  private requireCatalogManagePermission(): boolean {
+    if (this.canManageCatalog()) return true;
+    this.catalogBanner.set({
+      ok: false,
+      message: 'Tu perfil de Cajero solo permite consultar el catálogo. Solicita autorización al Encargado o Administrador.',
+    });
+    return false;
+  }
+
   protected openCreateModal(): void {
+    if (!this.requireCatalogManagePermission()) return;
     this.editingOriginalSku.set(null);
     this.formFeedback.set(null);
     this.formName.set('');
@@ -229,6 +299,7 @@ export class CatalogViewComponent {
   }
 
   protected openEditModal(p: Product): void {
+    if (!this.requireCatalogManagePermission()) return;
     this.editingOriginalSku.set(p.sku);
     this.formFeedback.set(null);
     this.formName.set(p.name);
@@ -423,17 +494,56 @@ export class CatalogViewComponent {
     this.closeProductModal();
   }
 
+  protected requestDeactivateProduct(p: Product & { hasMovements?: boolean }): void {
+    if (!this.requireCatalogManagePermission()) return;
+    this.pendingDeactivateProduct.set(p);
+    this.deactivatePin.set('');
+    this.deactivateError.set(null);
+  }
+
+  protected closeDeactivateModal(): void {
+    this.pendingDeactivateProduct.set(null);
+    this.deactivatePin.set('');
+    this.deactivateError.set(null);
+  }
+
+  protected async confirmDeactivateProduct(): Promise<void> {
+    if (!this.requireCatalogManagePermission()) return;
+    const prod = this.pendingDeactivateProduct();
+    if (!prod) return;
+    const pin = this.deactivatePin().trim();
+    if (!pin) {
+      this.deactivateError.set('Ingresa el PIN de Encargado o Administrador para confirmar.');
+      return;
+    }
+    const pinCheck = await this.inv.verifyAdminPin(pin);
+    if (!pinCheck.success) {
+      this.deactivateError.set(pinCheck.message || 'PIN de autorización incorrecto.');
+      return;
+    }
+    const res = await this.inv.deactivateOrDeleteCatalogProduct(prod.sku, pin);
+    if (!res.ok) {
+      this.deactivateError.set(res.message);
+      return;
+    }
+    this.catalogBanner.set({ ok: true, message: res.message });
+    this.closeDeactivateModal();
+  }
+
   protected async deactivateProduct(p: Product): Promise<void> {
+    if (!this.requireCatalogManagePermission()) return;
     const res = await this.inv.deactivateOrDeleteCatalogProduct(p.sku);
     this.catalogBanner.set({ ok: res.ok, message: res.message });
   }
 
   protected async reactivateProduct(p: Product): Promise<void> {
+    if (!this.requireCatalogManagePermission()) return;
     const res = await this.inv.reactivateCatalogProduct(p.sku);
     this.catalogBanner.set({ ok: res.ok, message: res.message });
   }
 
   protected async assignInternalCode(p: Product): Promise<void> {
+    if (!this.requireCatalogManagePermission()) return;
     const res = await this.inv.assignInternalBarcodeToProduct(p.sku);
     this.catalogBanner.set({ ok: res.ok, message: res.message });
   }
@@ -441,6 +551,7 @@ export class CatalogViewComponent {
   // ---------- Aprobación de Productos Móviles ----------
 
   protected openApprovalModal(p: Product): void {
+    if (!this.requireCatalogManagePermission()) return;
     this.approvingProduct.set(p);
     this.approvalPrice.set(p.salePrice);
     this.approvalCost.set(p.unitCost ?? p.historicCost ?? 0);
@@ -477,6 +588,7 @@ export class CatalogViewComponent {
   }
 
   protected async rejectProduct(prod: Product): Promise<void> {
+    if (!this.requireCatalogManagePermission()) return;
     const res = await this.inv.rejectPendingProduct(prod.sku);
     this.catalogBanner.set({ ok: res.ok, message: res.message });
   }

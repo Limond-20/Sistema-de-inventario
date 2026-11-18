@@ -450,7 +450,9 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(afterBlockedFlush).toEqual(rawCorruptedPayload);
 
     // Opción 1: Descargar datos dañados (JSON) -> devuelve JSON y NO sobrescribe
+    const clickSpy = spyOn(HTMLAnchorElement.prototype, 'click').and.stub();
     const downloadedJson = service.downloadCorruptedDataJson();
+    expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(JSON.parse(downloadedJson)).toEqual(rawCorruptedPayload);
     expect(await memoryAdapter.load(STATE_STORAGE_KEY)).toEqual(rawCorruptedPayload);
 
@@ -4953,8 +4955,29 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const navComp = navFixture.componentInstance as any;
     navComp.openDrawer();
     expect(navComp.drawerOpen()).toBeTrue();
+    const drawerNavText = navEl.querySelector('#main-nav-drawer nav')?.textContent || '';
+    expect(drawerNavText).toContain('Inicio');
+    expect(drawerNavText).toContain('Reportes e indicadores');
+    expect(drawerNavText).toContain('Ajustes y usuarios');
+    expect(drawerNavText).toContain('Licencia');
+    expect(drawerNavText).not.toContain('Punto de venta');
+    expect(drawerNavText).not.toContain('Catálogo y precios');
+    expect(drawerNavText).not.toContain('Recepción de mercancía');
     navComp.closeDrawer();
     expect(navComp.drawerOpen()).toBeFalse();
+
+    // Ventana de cierre de turno con scroll y encuesta 1..5 con etiquetas
+    navComp.openCloseShift();
+    navFixture.detectChanges();
+    const closeShiftModal = navEl.querySelector('[data-testid="modal-navbar-close-shift"]');
+    expect(closeShiftModal?.innerHTML).toContain('overflow-y-auto');
+    expect(closeShiftModal?.innerHTML).toContain('max-h-[90vh]');
+    const satText = navEl.querySelector('[data-testid="navbar-satisfaction-survey"]')?.textContent || '';
+    expect(satText).toContain('Muy malo');
+    expect(satText).toContain('Malo');
+    expect(satText).toContain('Regular');
+    expect(satText).toContain('Bueno');
+    expect(satText).toContain('Excelente');
 
     const dashFixture = TestBed.createComponent(DashboardViewComponent);
     dashFixture.detectChanges();

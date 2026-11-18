@@ -115,6 +115,11 @@
             class="h-9 rounded-lg border border-slate-300 bg-white px-2.5 font-mono text-xs text-slate-900"
           />
         </label>
+        @if (isDateRangeInverted()) {
+          <span class="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900" data-testid="date-range-inverted-note">
+            La fecha inicial es posterior a la final; el sistema ajustó el rango automáticamente.
+          </span>
+        }
       </div>
     }
   </section>
@@ -140,10 +145,14 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
       @for (card of bundle().indicators; track card.id) {
         <div
+          [attr.role]="card.targetReportTab ? 'button' : null"
+          [attr.tabindex]="card.targetReportTab ? 0 : null"
           (click)="onIndicatorClick(card)"
+          (keydown.enter)="onIndicatorClick(card)"
+          (keydown.space)="onIndicatorClick(card); $event.preventDefault()"
           [attr.data-testid]="'indicator-card-' + card.id"
-          class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs transition-all flex flex-col justify-between gap-2"
-          [class]="toneAccentBorder(card.tone) + (card.targetReportTab ? ' cursor-pointer hover:border-slate-400 hover:shadow-sm' : '')">
+          class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs transition-all flex flex-col justify-between gap-2 focus:outline-none"
+          [class]="toneAccentBorder(card.tone) + (card.targetReportTab ? ' cursor-pointer hover:border-slate-400 hover:shadow-sm' : '') + (card.targetReportTab && activeTab() === card.targetReportTab ? ' ring-2 ring-brand-700' : '')">
           <div>
             <div class="flex items-start justify-between gap-2">
               <span class="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -190,17 +199,22 @@
           </button>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          @for (n of [1, 2, 3, 4, 5]; track n) {
+        <div class="grid grid-cols-5 gap-2">
+          @for (opt of satisfactionOptions; track opt.value) {
             <button
               type="button"
-              (click)="inlineSurveyRating.set(n)"
-              [attr.data-testid]="'btn-inline-rating-' + n"
-              class="h-10 w-12 rounded-xl border font-mono text-sm font-black transition-all"
-              [class]="inlineSurveyRating() === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
-              {{ n }}
+              (click)="inlineSurveyRating.set(opt.value)"
+              [attr.data-testid]="'btn-inline-rating-' + opt.value"
+              [attr.aria-label]="opt.value + ' - ' + opt.label"
+              [attr.aria-pressed]="inlineSurveyRating() === opt.value"
+              class="rounded-xl border px-2 py-2 flex flex-col items-center justify-center gap-0.5 transition-all"
+              [class]="inlineSurveyRating() === opt.value ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+              <span class="font-mono text-sm font-black leading-none">{{ opt.value }}</span>
+              <span class="text-xs font-semibold leading-tight text-center">{{ opt.label }}</span>
             </button>
           }
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
           <input
             type="text"
             [ngModel]="inlineSurveyComment()"
@@ -210,10 +224,11 @@
           />
           <button
             type="button"
+            [disabled]="inlineSurveyRating() < 1"
             (click)="submitInlineSurvey()"
             data-testid="btn-submit-inline-survey"
-            class="h-10 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">
-            Guardar ({{ inlineSurveyRating() }}/5)
+            class="h-10 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-bold">
+            {{ inlineSurveyRating() > 0 ? ('Guardar (' + inlineSurveyRating() + '/5)') : 'Selecciona calificación (1 a 5)' }}
           </button>
         </div>
       </div>
@@ -221,7 +236,7 @@
   </section>
 
   <!-- ===================== PESTAÑAS DE LOS 7 REPORTES DETALLADOS ===================== -->
-  <nav class="no-print flex flex-wrap gap-1.5 border-b border-slate-200 pb-2">
+  <nav id="report-detail-section" class="no-print flex flex-wrap gap-1.5 border-b border-slate-200 pb-2">
     @for (tab of reportTabs; track tab.key) {
       <button
         type="button"
@@ -308,7 +323,7 @@
           </div>
           <div class="overflow-x-auto max-h-96">
             <table class="w-full text-xs text-left">
-              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 border-b border-slate-200">
                 <tr>
                   <th class="py-2 px-3">Producto</th>
                   <th class="py-2 px-3 text-right">Cant. Neta</th>
@@ -341,7 +356,7 @@
           </div>
           <div class="overflow-x-auto max-h-96">
             <table class="w-full text-xs text-left">
-              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 border-b border-slate-200">
                 <tr>
                   <th class="py-2 px-3">Franja Horaria</th>
                   <th class="py-2 px-3 text-right">Tickets</th>
@@ -395,7 +410,7 @@
           </div>
           <div class="overflow-x-auto max-h-96">
             <table class="w-full text-xs text-left">
-              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 border-b border-slate-200">
                 <tr>
                   <th class="py-2 px-3">Producto</th>
                   <th class="py-2 px-3 text-right">Ingreso</th>
@@ -429,7 +444,7 @@
           </div>
           <div class="overflow-x-auto max-h-96">
             <table class="w-full text-xs text-left">
-              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 border-b border-slate-200">
                 <tr>
                   <th class="py-2 px-3">Folio</th>
                   <th class="py-2 px-3">Cajero</th>
@@ -774,7 +789,7 @@
           </div>
           <div class="overflow-x-auto max-h-96">
             <table class="w-full text-xs text-left">
-              <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 border-b border-slate-200">
                 <tr>
                   <th class="py-2 px-3">Folio</th>
                   <th class="py-2 px-3">Cajero</th>
@@ -831,7 +846,7 @@
         </div>
         <div class="overflow-x-auto max-h-[460px]">
           <table class="w-full text-xs text-left">
-            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 border-b border-slate-200">
               <tr>
                 <th class="py-2.5 px-3">Producto</th>
                 <th class="py-2.5 px-3">Categoría</th>

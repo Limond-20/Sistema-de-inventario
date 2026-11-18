@@ -8,6 +8,7 @@ import {
   type ReportTabKey,
   type IndicatorCardMetric,
   type IndicatorTone,
+  SATISFACTION_SCALE_OPTIONS,
   formatCentsMxn,
   formatDurationCompact,
   formatLocalYyyyMmDd,
@@ -34,9 +35,13 @@ export class ReportsViewComponent {
   protected readonly exportFeedback = signal<{ ok: boolean; text: string } | null>(null);
 
   // Encuesta semanal inline opcional cuando esté pendiente
+  protected readonly satisfactionOptions = SATISFACTION_SCALE_OPTIONS;
   protected readonly inlineSurveyOpen = signal<boolean>(false);
-  protected readonly inlineSurveyRating = signal<number>(5);
+  protected readonly inlineSurveyRating = signal<number>(0);
   protected readonly inlineSurveyComment = signal<string>('');
+  protected readonly isDateRangeInverted = computed(
+    () => this.preset() === 'RANGO' && this.customStartDate() > this.customEndDate(),
+  );
 
   protected readonly reportTabs: ReportTabMeta[] = [
     { key: 'VENTAS', label: 'Ventas' },
@@ -77,6 +82,14 @@ export class ReportsViewComponent {
   onIndicatorClick(card: IndicatorCardMetric): void {
     if (card.targetReportTab) {
       this.selectTab(card.targetReportTab);
+      if (typeof document !== 'undefined') {
+        setTimeout(() => {
+          document.getElementById('report-detail-section')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+          });
+        }, 0);
+      }
     }
   }
 
@@ -112,7 +125,7 @@ export class ReportsViewComponent {
   }
 
   openInlineSurvey(): void {
-    this.inlineSurveyRating.set(5);
+    this.inlineSurveyRating.set(0);
     this.inlineSurveyComment.set('');
     this.inlineSurveyOpen.set(true);
   }
@@ -122,8 +135,16 @@ export class ReportsViewComponent {
   }
 
   submitInlineSurvey(): void {
+    const rating = this.inlineSurveyRating();
+    if (rating < 1 || rating > 5) {
+      this.exportFeedback.set({
+        ok: false,
+        text: 'Selecciona una calificación del 1 al 5 antes de guardar la encuesta.',
+      });
+      return;
+    }
     const res = this.inv.submitSatisfactionSurvey({
-      rating: this.inlineSurveyRating(),
+      rating,
       comment: this.inlineSurveyComment(),
     });
     this.exportFeedback.set({ ok: res.ok, text: res.message });

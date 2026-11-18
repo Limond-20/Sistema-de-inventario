@@ -1538,6 +1538,19 @@ export interface SatisfactionDueStatus {
   lastSurvey?: SatisfactionSurveyRecord;
 }
 
+export interface SatisfactionScaleOption {
+  value: 1 | 2 | 3 | 4 | 5;
+  label: string;
+}
+
+export const SATISFACTION_SCALE_OPTIONS: readonly SatisfactionScaleOption[] = [
+  { value: 1, label: 'Muy malo' },
+  { value: 2, label: 'Malo' },
+  { value: 3, label: 'Regular' },
+  { value: 4, label: 'Bueno' },
+  { value: 5, label: 'Excelente' },
+] as const;
+
 export interface SatisfactionMetric {
   asOfDate: string;
   responseCount: number;

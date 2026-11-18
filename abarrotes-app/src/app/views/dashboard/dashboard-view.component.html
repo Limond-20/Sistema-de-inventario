@@ -1,5 +1,5 @@
 <!-- ===================== INICIO: MÓDULOS OPERATIVOS ===================== -->
-<div class="flex min-h-[calc(100dvh-4rem)] flex-col gap-5 select-none">
+<div class="flex min-h-[calc(100dvh-6.5rem)] flex-col gap-5 select-none">
 
   <!-- Alertas visibles de stock negativo / faltantes en sistema -->
   @if (shortageAlerts().length > 0) {
@@ -153,14 +153,17 @@
     <!-- 6. MERMAS Y CONSUMOS -->
     <a routerLink="/mermas" class="module-card btn justify-center gap-4 min-h-[160px]">
       @if (urgentFefoCount() > 0) {
-        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
+        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md"
+          title="Caducidades FEFO próximas">
           {{ urgentFefoCount() }}
         </span>
       }
       <div class="flex items-start justify-between gap-3">
         <span class="module-icon bg-rose-100 text-rose-700"><app-icon name="trash" [size]="28" /></span>
-        @if (inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
-          <span class="module-tag bg-red-100 text-red-800">{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos</span>
+        @if (urgentFefoCount() > 0 || inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
+          <span class="module-tag bg-red-100 text-red-800">
+            @if (urgentFefoCount() > 0) { {{ urgentFefoCount() }} FEFO · }{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos
+          </span>
         }
       </div>
       <h2 class="text-2xl font-bold leading-tight text-slate-900">Mermas y consumos</h2>
@@ -203,7 +206,7 @@
 <!-- ===================== MODAL DE CONFIRMACIÓN RECLASIFICACIÓN ABC ===================== -->
 @if (abcModalOpen()) {
   <div class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true">
-    <div class="bg-white text-slate-900 rounded-3xl shadow-2xl w-full max-w-3xl border-2 border-slate-700 overflow-hidden flex flex-col max-h-[90vh]">
+    <div class="bg-white text-slate-900 rounded-2xl shadow-2xl w-full max-w-3xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
       <!-- Cabecera -->
       <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2.5">
@@ -351,7 +354,7 @@
           <input
             #pinInput
             type="password"
-            maxlength="8"
+            maxlength="32"
             [value]="resolvePin()"
             (input)="setResolvePin(pinInput.value)"
             placeholder="Introduce el PIN..."

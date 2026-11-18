@@ -69,5 +69,10 @@ export const routes: Routes = [
     canActivate: [authGuard],
     title: 'Licencia y Vigencia del Sistema',
   },
-  { path: '**', redirectTo: '' },
+  {
+    path: '**',
+    loadComponent: () =>
+      import('./views/not-found/not-found-view.component').then((m) => m.NotFoundViewComponent),
+    title: 'Página no encontrada · Sistema de Inventario',
+  },
 ];

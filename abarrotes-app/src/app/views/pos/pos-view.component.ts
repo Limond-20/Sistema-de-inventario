@@ -1,4 +1,4 @@
-import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
@@ -25,6 +25,7 @@ import {
 } from '../../domain/sales';
 import type { TicketPaperWidth } from '../../domain/ticket';
 import type { ConsentMethod, ConsentStatus } from '../../domain/privacy';
+import { SATISFACTION_SCALE_OPTIONS } from '../../domain/reports';
 
 type BulkCalcMode = 'weight' | 'amount';
 
@@ -39,6 +40,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
 
   // ---------- Búsqueda y Feedback ----------
+  protected readonly barcodeSearchInputRef = viewChild<ElementRef<HTMLInputElement>>('barcodeSearchInput');
   protected readonly searchQuery = signal<string>('');
   protected readonly syncNotification = signal<string | null>(null);
   protected readonly saleFeedback = signal<{ ok: boolean; text: string; sale?: SaleRecord } | null>(null);
@@ -63,11 +65,14 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Modal Cobro en Efectivo ----------
   protected readonly cashModalOpen = signal<boolean>(false);
   protected readonly cashReceived = signal<number>(100);
+  protected readonly cashModalError = signal<string | null>(null);
 
   // ---------- Modal Libreta Digital de Fiado y Abonos ----------
   protected readonly creditModalOpen = signal<boolean>(false);
   protected readonly selectedCustomerId = signal<string>('');
   protected readonly customerSearchQuery = signal<string>('');
+  protected readonly creditModalError = signal<string | null>(null);
+  protected readonly customerPendingDeactivateId = signal<string | null>(null);
   protected readonly filteredCreditCustomers = computed(() =>
     this.inv.searchCustomers(this.customerSearchQuery()),
   );
@@ -89,6 +94,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   protected readonly consumptionResponsible = signal<string>('Administrador');
   protected readonly consumptionPin = signal<string>('');
   protected readonly consumptionReason = signal<string>('');
+  protected readonly consumptionModalError = signal<string | null>(null);
   protected readonly hasExceedingStockItems = computed(() => {
     const catalog = this.inv.products();
     return this.cart().some((item) => {
@@ -96,11 +102,14 @@ export class PosViewComponent implements OnInit, OnDestroy {
       return p ? item.qty > p.stock : false;
     });
   });
-  protected readonly responsibleOptions: string[] = [
-    'Administrador',
-    'Encargado',
-    'Personal de Mostrador',
-  ];
+  protected readonly responsibleOptions = computed<string[]>(() => {
+    const activeNames = this.inv
+      .users()
+      .filter((u) => u.isActive)
+      .map((u) => u.name);
+    const base = activeNames.length > 0 ? activeNames : ['Administrador', 'Encargado'];
+    return Array.from(new Set([...base, 'Personal de Mostrador']));
+  });
 
   private syncChannel: BroadcastChannel | null = null;
   private readonly storageListener = (ev: StorageEvent) => {
@@ -250,6 +259,25 @@ export class PosViewComponent implements OnInit, OnDestroy {
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', this.storageListener);
     }
+    if (typeof document !== 'undefined') {
+      setTimeout(() => this.barcodeSearchInputRef()?.nativeElement?.focus(), 0);
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.ticketModalOpen()) { this.closeTicketModal(); return; }
+    if (this.returnModalOpen()) { this.closeReturnModal(); return; }
+    if (this.salesHistoryModalOpen()) { this.closeSalesHistoryModal(); return; }
+    if (this.customerFormModalOpen()) { this.closeCustomerFormModal(); return; }
+    if (this.customerFichaModalOpen()) { this.closeCustomerFichaModal(); return; }
+    if (this.cashMovementModalOpen()) { this.closeCashMovementModal(); return; }
+    if (this.shiftModalOpen()) { this.closeShiftModal(); return; }
+    if (this.discountCapModalOpen()) { this.closeDiscountCapModal(); return; }
+    if (this.internalConsumptionModalOpen()) { this.closeInternalConsumptionModal(); return; }
+    if (this.creditModalOpen()) { this.closeCreditModal(); return; }
+    if (this.cashModalOpen()) { this.closeCashModal(); return; }
+    if (this.bulkModalProduct()) { this.closeBulkCalculator(); }
   }
 
   ngOnDestroy(): void {
@@ -515,6 +543,28 @@ export class PosViewComponent implements OnInit, OnDestroy {
     );
   }
 
+  setCartItemDirectQty(sku: string, rawQty: number): void {
+    const qty = Number(rawQty);
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    const item = this.cart().find((i) => i.sku === sku);
+    if (!item) return;
+    const cleanQty = item.isBulk ? Math.round(qty * 1000) / 1000 : Math.max(1, Math.round(qty));
+    const resolved = this.inv.resolveProductUnitPriceForQty(sku, cleanQty);
+    this.cart.update((list) =>
+      list.map((i) =>
+        i.sku === sku
+          ? {
+              ...i,
+              qty: cleanQty,
+              unitPrice: resolved.unitPrice,
+              selectedTier: resolved.appliedTier,
+              subtotal: multiplyMoney(resolved.unitPrice, cleanQty),
+            }
+          : i,
+      ),
+    );
+  }
+
   /**
    * Selector manual de nivel de precio escalonado en el POS (Menudeo, Medio Mayoreo, Mayoreo).
    */
@@ -610,11 +660,13 @@ export class PosViewComponent implements OnInit, OnDestroy {
     const suggestedBills = [50, 100, 200, 500].find((b) => b >= total) ?? Math.ceil(total);
     this.cashReceived.set(suggestedBills);
     this.discountAuthPin.set('');
+    this.cashModalError.set(null);
     this.cashModalOpen.set(true);
   }
 
   closeCashModal(): void {
     this.cashModalOpen.set(false);
+    this.cashModalError.set(null);
   }
 
   setCashExact(): void {
@@ -631,6 +683,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   async confirmCashSale(): Promise<void> {
     if (!this.canConfirmCash()) return;
+    this.cashModalError.set(null);
     const finishedAt = new Date().toISOString();
     const startedAt = this.currentSaleStartedAt() || finishedAt;
     const evalRes = this.cartDiscountEvaluation();
@@ -653,6 +706,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
         this.discountAuthPin.set('');
         this.closeCashModal();
       } else {
+        this.cashModalError.set(res.message);
         this.saleFeedback.set({ ok: false, text: res.message });
       }
       return;
@@ -667,6 +721,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       this.ticketDiscountPct.set(0);
       this.closeCashModal();
     } else {
+      this.cashModalError.set(res.message);
       this.saleFeedback.set({ ok: false, text: res.message });
     }
   }
@@ -674,6 +729,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Modal Fiado ----------
   openCreditModal(): void {
     this.discountAuthPin.set('');
+    this.creditModalError.set(null);
     this.creditModalOpen.set(true);
     this.abonoFeedback.set(null);
   }
@@ -684,6 +740,8 @@ export class PosViewComponent implements OnInit, OnDestroy {
 
   closeCreditModal(): void {
     this.creditModalOpen.set(false);
+    this.creditModalError.set(null);
+    this.customerPendingDeactivateId.set(null);
   }
 
   async confirmCreditSale(): Promise<void> {
@@ -692,6 +750,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     const customer = this.selectedCustomer();
     if (!customer) return;
 
+    this.creditModalError.set(null);
     const finishedAt = new Date().toISOString();
     const startedAt = this.currentSaleStartedAt() || finishedAt;
     const evalRes = this.cartDiscountEvaluation();
@@ -714,6 +773,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
         this.discountAuthPin.set('');
         this.closeCreditModal();
       } else {
+        this.creditModalError.set(res.message);
         this.saleFeedback.set({ ok: false, text: res.message });
       }
       return;
@@ -728,6 +788,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       this.ticketDiscountPct.set(0);
       this.closeCreditModal();
     } else {
+      this.creditModalError.set(res.message);
       this.saleFeedback.set({ ok: false, text: res.message });
     }
   }
@@ -735,15 +796,22 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- Modal Consumo Interno ----------
   openInternalConsumptionModal(): void {
     if (!this.cart().length) return;
+    const opts = this.responsibleOptions();
+    if (!opts.includes(this.consumptionResponsible())) {
+      this.consumptionResponsible.set(this.inv.activeUser() || opts[0] || 'Personal de Mostrador');
+    }
+    this.consumptionModalError.set(null);
     this.internalConsumptionModalOpen.set(true);
   }
 
   closeInternalConsumptionModal(): void {
     this.internalConsumptionModalOpen.set(false);
+    this.consumptionModalError.set(null);
   }
 
   async confirmInternalConsumption(): Promise<void> {
     if (!this.cart().length) return;
+    this.consumptionModalError.set(null);
     const res = await this.inv.processInternalConsumption(
       this.cart(),
       this.consumptionResponsible(),
@@ -759,6 +827,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
       this.consumptionReason.set('');
       this.closeInternalConsumptionModal();
     } else {
+      this.consumptionModalError.set(res.message);
       this.saleFeedback.set({ ok: false, text: res.message });
     }
   }
@@ -917,13 +986,23 @@ export class PosViewComponent implements OnInit, OnDestroy {
     }
   }
 
+  requestDeactivateCustomer(c: CreditCustomer, ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.creditModalError.set(null);
+    this.customerPendingDeactivateId.set(c.id);
+  }
+
+  cancelDeactivateCustomer(ev?: Event): void {
+    if (ev) ev.stopPropagation();
+    this.customerPendingDeactivateId.set(null);
+  }
+
   deleteCustomer(c: CreditCustomer, ev?: Event): void {
     if (ev) ev.stopPropagation();
-    const ok = confirm(`¿Dar de baja lógica al cliente ${c.name}? No se perderá su historial.`);
-    if (!ok) return;
+    this.customerPendingDeactivateId.set(null);
     const res = this.inv.deleteCustomerLogical(c.id);
     if (!res.ok) {
-      alert(res.message);
+      this.creditModalError.set(res.message);
       return;
     }
     if (this.selectedCustomerId() === c.id) {
@@ -1138,6 +1217,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     };
   });
 
+  protected readonly satisfactionOptions = SATISFACTION_SCALE_OPTIONS;
   protected readonly shiftSatisfactionRating = signal<number | null>(null);
   protected readonly shiftSatisfactionComment = signal<string>('');
   protected readonly currentSaleStartedAt = signal<string | null>(null);
@@ -1174,7 +1254,10 @@ export class PosViewComponent implements OnInit, OnDestroy {
       pin,
       notes: this.shiftNotes().trim() || undefined,
     });
-    this.shiftFeedback.set({ ok: res.ok, message: res.message });
+    const msg = res.ok && res.satisfactionSaved
+      ? `${res.message} · Encuesta semanal guardada.`
+      : res.message;
+    this.shiftFeedback.set({ ok: res.ok, message: msg });
     if (res.ok) {
       this.shiftPin.set('');
     }
@@ -1201,11 +1284,21 @@ export class PosViewComponent implements OnInit, OnDestroy {
   // ---------- 3. Historial de Ventas ----------
   protected readonly salesHistoryModalOpen = signal<boolean>(false);
   protected readonly salesHistoryFilter = signal<'ALL' | 'EFECTIVO' | 'FIADO'>('ALL');
+  protected readonly salesHistorySearch = signal<string>('');
   protected readonly filteredSalesHistory = computed(() => {
     const f = this.salesHistoryFilter();
-    const list = [...this.inv.salesHistory()].reverse();
-    if (f === 'ALL') return list;
-    return list.filter((s) => s.paymentType === f);
+    const q = this.salesHistorySearch().trim().toLowerCase();
+    let list = [...this.inv.salesHistory()].reverse();
+    if (f !== 'ALL') {
+      list = list.filter((s) => s.paymentType === f);
+    }
+    if (!q) return list;
+    return list.filter(
+      (s) =>
+        (s.folio || '').toLowerCase().includes(q) ||
+        (s.customerName || '').toLowerCase().includes(q) ||
+        (s.cashier || '').toLowerCase().includes(q),
+    );
   });
 
   openSalesHistoryModal(): void {

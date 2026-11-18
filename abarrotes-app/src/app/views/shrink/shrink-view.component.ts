@@ -1,11 +1,12 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { MockInventoryService } from '../../services/mock-inventory.service';
+import { MockInventoryService, ShrinkRecord } from '../../services/mock-inventory.service';
 
 @Component({
   selector: 'app-shrink-view',
-  imports: [CurrencyPipe, RouterLink],
+  imports: [CurrencyPipe, FormsModule, RouterLink],
   template: `
     <!-- ===================== ENCABEZADO EJECUTIVO ===================== -->
     <section class="mb-5 flex flex-wrap items-end justify-between gap-4 pb-3 border-b border-slate-200">
@@ -45,6 +46,18 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
         <p class="text-xs text-slate-500 mt-0.5">Sin convenio de cambio físico</p>
       </div>
     </section>
+
+    <!-- ===================== FEEDBACK DE REVISIÓN ===================== -->
+    @if (shrinkFeedback(); as fb) {
+      <div role="alert" data-testid="shrink-feedback-banner"
+        class="mb-4 rounded-xl border px-4 py-3 text-xs font-bold flex items-center justify-between gap-3"
+        [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-950' : 'border-rose-300 bg-rose-50 text-rose-950'">
+        <span>{{ fb.message }}</span>
+        <button type="button" (click)="shrinkFeedback.set(null)" class="text-xs underline font-semibold shrink-0">
+          Cerrar
+        </button>
+      </div>
+    }
 
     <!-- ===================== LISTA DE REGISTROS CON EVIDENCIA ===================== -->
     <section class="flex flex-col gap-3">
@@ -111,7 +124,7 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
                 <span>Revisada y Auditada</span>
               </div>
             } @else {
-              <button type="button" (click)="inv.markShrinkReviewed(r.id)"
+              <button type="button" (click)="onConfirmShrink(r)" data-testid="btn-confirm-shrink"
                 class="w-full h-11 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-2xs flex items-center justify-center transition-colors">
                 Confirmar Revisión
               </button>
@@ -126,9 +139,64 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
       }
     </section>
 
+    <!-- Modal de Autorización PIN cuando la merma supera stock -->
+    @if (pendingShrinkAuth(); as rec) {
+      <div class="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4" role="dialog" aria-modal="true"
+           data-testid="modal-shrink-pin-auth" (click)="closeShrinkAuthModal()">
+        <div class="bg-white rounded-2xl border border-slate-200 max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+             (click)="$event.stopPropagation()">
+          <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+            <div>
+              <h2 class="text-base font-bold">Autorizar Baja de Merma con PIN</h2>
+              <p class="text-xs text-slate-300 mt-0.5">{{ rec.qty }} {{ rec.saleUnit }} × {{ rec.name }}</p>
+            </div>
+            <button type="button" (click)="closeShrinkAuthModal()" class="text-xs text-slate-300 hover:text-white font-semibold">
+              Cerrar
+            </button>
+          </div>
+          <div class="p-5 space-y-3.5 overflow-y-auto flex-1">
+            <p class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
+              La cantidad de merma ({{ rec.qty }}) supera la existencia actual registrada. Ingresa PIN de Administrador y el motivo para autorizar el ajuste.
+            </p>
+            <label class="block space-y-1">
+              <span class="block text-xs font-bold text-slate-700">PIN de Administrador *</span>
+              <input type="password" inputmode="numeric" maxlength="32" data-testid="input-shrink-auth-pin"
+                [ngModel]="shrinkAuthPin()" (ngModelChange)="shrinkAuthPin.set($event)"
+                placeholder="Ingresa PIN de autorización"
+                class="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm font-mono font-bold text-slate-900" />
+            </label>
+            <label class="block space-y-1">
+              <span class="block text-xs font-bold text-slate-700">Motivo justificado *</span>
+              <input type="text" data-testid="input-shrink-auth-reason"
+                [ngModel]="shrinkAuthReason()" (ngModelChange)="shrinkAuthReason.set($event)"
+                placeholder="Ej. Conteo físico rezagado / derrame en pasillo"
+                class="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900" />
+            </label>
+            @if (shrinkAuthError(); as err) {
+              <div role="alert" data-testid="shrink-auth-error"
+                class="rounded-lg border border-rose-300 bg-rose-50 p-2.5 text-xs font-bold text-rose-900">
+                {{ err }}
+              </div>
+            }
+          </div>
+          <div class="shrink-0 border-t border-slate-200 bg-slate-50 px-5 py-3.5 flex justify-end gap-2">
+            <button type="button" (click)="closeShrinkAuthModal()"
+              class="h-10 px-4 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100">
+              Cancelar
+            </button>
+            <button type="button" (click)="submitShrinkAuth()" data-testid="btn-submit-shrink-auth"
+              class="h-10 px-5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold">
+              Autorizar Baja de Merma
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
     <!-- Modal / Visor de Evidencia en Grande -->
     @if (selectedEvidenceUrl()) {
       <div class="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-6"
+           role="dialog" aria-modal="true" aria-label="Evidencia Fotográfica de Merma"
            (click)="closeLightbox()">
         <div class="relative bg-white rounded-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
              (click)="$event.stopPropagation()">
@@ -155,6 +223,67 @@ export class ShrinkViewComponent {
 
   protected readonly selectedEvidenceUrl = signal<string | null>(null);
   protected readonly imgErrors = signal<Set<string>>(new Set());
+  protected readonly shrinkFeedback = signal<{ ok: boolean; message: string } | null>(null);
+  protected readonly pendingShrinkAuth = signal<ShrinkRecord | null>(null);
+  protected readonly shrinkAuthPin = signal<string>('');
+  protected readonly shrinkAuthReason = signal<string>('');
+  protected readonly shrinkAuthError = signal<string | null>(null);
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.pendingShrinkAuth()) {
+      this.closeShrinkAuthModal();
+      return;
+    }
+    if (this.selectedEvidenceUrl()) {
+      this.closeLightbox();
+    }
+  }
+
+  async onConfirmShrink(r: ShrinkRecord): Promise<void> {
+    this.shrinkFeedback.set(null);
+    const res = await this.inv.markShrinkReviewed(r.id);
+    if (res.ok) {
+      this.shrinkFeedback.set({ ok: true, message: res.message });
+      return;
+    }
+    this.shrinkFeedback.set({ ok: false, message: res.message });
+    if (res.message.toLowerCase().includes('pin')) {
+      this.pendingShrinkAuth.set(r);
+      this.shrinkAuthPin.set('');
+      this.shrinkAuthReason.set('');
+      this.shrinkAuthError.set(null);
+    }
+  }
+
+  closeShrinkAuthModal(): void {
+    this.pendingShrinkAuth.set(null);
+    this.shrinkAuthPin.set('');
+    this.shrinkAuthReason.set('');
+    this.shrinkAuthError.set(null);
+  }
+
+  async submitShrinkAuth(): Promise<void> {
+    const rec = this.pendingShrinkAuth();
+    if (!rec) return;
+    const pin = this.shrinkAuthPin().trim();
+    const reason = this.shrinkAuthReason().trim();
+    if (!pin) {
+      this.shrinkAuthError.set('Ingresa el PIN de Administrador.');
+      return;
+    }
+    if (!reason) {
+      this.shrinkAuthError.set('Ingresa el motivo justificado de la merma.');
+      return;
+    }
+    const res = await this.inv.markShrinkReviewed(rec.id, 'Administrador (PIN)', pin, reason);
+    if (!res.ok) {
+      this.shrinkAuthError.set(res.message);
+      return;
+    }
+    this.shrinkFeedback.set({ ok: true, message: res.message });
+    this.closeShrinkAuthModal();
+  }
 
   openLightbox(url: string): void {
     this.selectedEvidenceUrl.set(url);

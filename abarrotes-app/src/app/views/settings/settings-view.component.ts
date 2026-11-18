@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MockInventoryService } from '../../services/mock-inventory.service';
@@ -43,9 +43,16 @@ export class SettingsViewComponent implements OnInit {
   protected readonly newUserPin = signal<string>('');
   protected readonly userModalError = signal<string>('');
   protected readonly userModalFeedback = signal<string>('');
+  protected readonly userActionError = signal<string>('');
+  protected readonly userPendingDeactivateId = signal<string | null>(null);
 
   // ---------- Formulario Cambio de PIN ----------
   protected readonly selectedUserForPin = signal<string>('');
+  protected readonly isResettingOtherUserPin = computed(() => {
+    const targetId = this.selectedUserForPin();
+    const current = this.inv.currentUser();
+    return !!targetId && current?.role === 'ADMINISTRADOR' && targetId !== current.id;
+  });
   protected readonly pinCurrent = signal<string>('');
   protected readonly pinNew = signal<string>('');
   protected readonly pinConfirm = signal<string>('');
@@ -119,12 +126,20 @@ export class SettingsViewComponent implements OnInit {
     this.adminAuthPin.set('');
   }
 
+  @HostListener('document:keydown.escape')
+  protected onEscapeKey(): void {
+    if (this.userModalOpen()) {
+      this.closeNewUserModal();
+    }
+  }
+
   setTab(tab: SettingsTab): void {
     this.activeTab.set(tab);
     this.settingsFeedback.set('');
     this.settingsError.set('');
     this.pinFeedback.set('');
     this.pinError.set('');
+    this.userActionError.set('');
     if (tab === 'privacidad') {
       void this.loadPrivacyForm();
     }
@@ -229,21 +244,34 @@ export class SettingsViewComponent implements OnInit {
     }, 1200);
   }
 
-  async handleRoleChange(user: AppUser, newRole: UserRole): Promise<void> {
+  async handleRoleChange(user: AppUser, newRole: UserRole, selectEl?: HTMLSelectElement): Promise<void> {
+    this.userActionError.set('');
     if (user.role === newRole) return;
     const res = await this.inv.updateUserRole(user.id, newRole);
     if (!res.ok) {
-      alert(res.message);
+      if (selectEl) {
+        selectEl.value = user.role;
+      }
+      this.userActionError.set(res.message);
     }
   }
 
+  requestDeactivateUser(user: AppUser): void {
+    this.userActionError.set('');
+    this.userPendingDeactivateId.set(user.id);
+  }
+
+  cancelDeactivateUser(): void {
+    this.userPendingDeactivateId.set(null);
+  }
+
   async handleToggleUser(user: AppUser): Promise<void> {
+    this.userActionError.set('');
     if (user.isActive) {
-      const confirmDeact = window.confirm(`¿Estás seguro de desactivar al usuario "${user.name}"? No podrá iniciar sesión.`);
-      if (!confirmDeact) return;
+      this.userPendingDeactivateId.set(null);
       const res = await this.inv.deactivateUser(user.id);
       if (!res.ok) {
-        alert(res.message);
+        this.userActionError.set(res.message);
       }
     } else {
       this.inv.users.update((list) =>

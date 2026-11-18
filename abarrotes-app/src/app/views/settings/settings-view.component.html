@@ -45,7 +45,7 @@
       <div class="space-y-3">
         <input
           type="password"
-          maxlength="8"
+          maxlength="32"
           pattern="[0-9]*"
           inputmode="numeric"
           placeholder="Ingresa PIN (mínimo 6 dígitos)"
@@ -75,7 +75,7 @@
     <!-- =========================================================================
          NAVEGACIÓN POR PESTAÑAS
          ========================================================================= -->
-    <nav class="flex border-b border-slate-200 gap-2" aria-label="Pestañas de Ajustes">
+    <nav class="flex flex-wrap border-b border-slate-200 gap-2" aria-label="Pestañas de Ajustes">
       <button
         type="button"
         (click)="setTab('parametros')"
@@ -349,8 +349,16 @@
           </button>
         </div>
 
+        @if (userActionError(); as err) {
+          <div role="alert" data-testid="user-action-error"
+            class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-900 flex items-center justify-between gap-2">
+            <span>{{ err }}</span>
+            <button type="button" (click)="userActionError.set('')" class="underline font-semibold">Cerrar</button>
+          </div>
+        }
+
         <!-- Listado de Usuarios -->
-        <div class="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+        <div class="rounded-2xl border border-slate-200 bg-white overflow-x-auto shadow-xs">
           <table class="w-full text-left text-xs" data-testid="users-table">
             <thead class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
               <tr>
@@ -373,7 +381,7 @@
                     <select
                       [disabled]="!user.isActive"
                       [value]="user.role"
-                      (change)="handleRoleChange(user, $any($event.target).value)"
+                      (change)="handleRoleChange(user, $any($event.target).value, $any($event.target))"
                       data-testid="select-user-role"
                       class="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 focus:outline-none">
                       <option value="CAJERO">Cajero</option>
@@ -405,16 +413,34 @@
                     {{ user.createdAt ? (user.createdAt | date:'shortDate') : 'Sistema' }}
                   </td>
                   <td class="py-3 px-4 text-right">
-                    <button
-                      type="button"
-                      (click)="handleToggleUser(user)"
-                      data-testid="btn-toggle-user"
-                      class="h-8 px-3 rounded-lg border text-xs font-bold transition-colors"
-                      [class]="user.isActive
-                        ? 'border-slate-300 text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
-                        : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'">
-                      {{ user.isActive ? 'Desactivar' : 'Reactivar' }}
-                    </button>
+                    @if (user.isActive && userPendingDeactivateId() === user.id) {
+                      <div class="inline-flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          (click)="handleToggleUser(user)"
+                          data-testid="btn-confirm-deactivate-user"
+                          class="h-8 px-2.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold transition-colors">
+                          Confirmar
+                        </button>
+                        <button
+                          type="button"
+                          (click)="cancelDeactivateUser()"
+                          class="h-8 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors">
+                          Cancelar
+                        </button>
+                      </div>
+                    } @else {
+                      <button
+                        type="button"
+                        (click)="user.isActive ? requestDeactivateUser(user) : handleToggleUser(user)"
+                        data-testid="btn-toggle-user"
+                        class="h-8 px-3 rounded-lg border text-xs font-bold transition-colors"
+                        [class]="user.isActive
+                          ? 'border-slate-300 text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                          : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'">
+                        {{ user.isActive ? 'Desactivar' : 'Reactivar' }}
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -515,19 +541,21 @@
             </select>
           </div>
 
-          <!-- PIN actual -->
+          <!-- PIN actual o PIN de Administrador para restablecer -->
           <div class="space-y-1.5">
-            <label for="input-pin-current" class="block text-xs font-bold text-slate-700">PIN Actual del Usuario</label>
+            <label for="input-pin-current" class="block text-xs font-bold text-slate-700">
+              {{ isResettingOtherUserPin() ? 'Tu PIN de Administrador (para restablecer el PIN del usuario)' : 'PIN Actual del Usuario' }}
+            </label>
             <input
               id="input-pin-current"
               type="password"
-              maxlength="8"
+              maxlength="32"
               pattern="[0-9]*"
               inputmode="numeric"
               [ngModel]="pinCurrent()"
               (ngModelChange)="pinCurrent.set($event)"
               data-testid="input-pin-current"
-              placeholder="Ingresa tu PIN actual"
+              [placeholder]="isResettingOtherUserPin() ? 'Ingresa tu PIN de Administrador' : 'Ingresa tu PIN actual'"
               class="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-mono tracking-widest font-bold text-slate-900 focus:border-slate-800 focus:outline-none" />
           </div>
 
@@ -537,7 +565,7 @@
             <input
               id="input-pin-new"
               type="password"
-              maxlength="8"
+              maxlength="32"
               pattern="[0-9]*"
               inputmode="numeric"
               [ngModel]="pinNew()"
@@ -556,7 +584,7 @@
             <input
               id="input-pin-confirm"
               type="password"
-              maxlength="8"
+              maxlength="32"
               pattern="[0-9]*"
               inputmode="numeric"
               [ngModel]="pinConfirm()"
@@ -754,7 +782,7 @@
         </div>
 
         <!-- Tabla de Eventos de la Bitácora -->
-        <div class="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+        <div class="rounded-2xl border border-slate-200 bg-white overflow-x-auto shadow-xs">
           <table class="w-full text-left text-xs" data-testid="audit-log-table">
             <thead class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
               <tr>
@@ -865,7 +893,7 @@
             <input
               id="modal-input-pin"
               type="password"
-              maxlength="8"
+              maxlength="32"
               pattern="[0-9]*"
               inputmode="numeric"
               [ngModel]="newUserPin()"

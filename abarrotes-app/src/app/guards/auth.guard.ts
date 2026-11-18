@@ -17,6 +17,7 @@ export const authGuard: CanActivateFn = (route, state) => {
   const targetPath = state.url || '';
 
   if (!canAccessRoute(currentRole, targetPath)) {
+    inv.notifyAccessDenied(`Tu perfil (${currentRole}) no tiene permiso para abrir esta sección.`);
     return router.createUrlTree(['/pos']);
   }
   return true;

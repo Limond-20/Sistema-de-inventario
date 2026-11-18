@@ -39,13 +39,8 @@
     }
   </div>
 
-  <!-- Derecha: Datos de usuario siempre visibles + accesos rápidos compactos -->
+  <!-- Derecha: Usuario autenticado y acciones globales por rol -->
   <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
-    <div class="hidden lg:flex items-center gap-1.5 rounded-xl bg-brand-800 px-3 py-1.5 text-xs font-semibold">
-      <app-icon name="cash" [size]="15" />
-      <span class="tabular-nums">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</span>
-    </div>
-
     <button type="button" (click)="openQr()"
       class="hidden sm:flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-colors"
       [class]="isPhoneLinked()
@@ -55,19 +50,21 @@
       <span class="hidden md:inline">{{ phoneButtonLabel() }}</span>
     </button>
 
-    <button type="button" (click)="openCloseShift()"
-      class="hidden sm:flex h-9 items-center gap-1.5 rounded-xl border border-white/25 px-3 text-xs font-semibold text-brand-100 hover:border-rose-200/60 hover:bg-rose-300/15 hover:text-white transition-colors">
-      <app-icon name="power" [size]="15" />
-      <span class="hidden md:inline">Cerrar Turno</span>
-    </button>
+    @if (canCloseShiftGlobal()) {
+      <button type="button" (click)="openCloseShift()"
+        class="hidden sm:flex h-9 items-center gap-1.5 rounded-xl border border-white/25 px-3 text-xs font-semibold text-brand-100 hover:border-rose-200/60 hover:bg-rose-300/15 hover:text-white transition-colors">
+        <app-icon name="power" [size]="15" />
+        <span class="hidden md:inline">Cerrar Turno</span>
+      </button>
+    }
 
     <!-- Datos de usuario SIEMPRE visibles -->
     <div class="flex items-center gap-2 rounded-xl bg-brand-800 px-2.5 py-1.5" data-testid="authenticated-user-panel">
       <app-icon name="user" [size]="15" />
-      <span class="max-w-[140px] truncate text-xs font-bold text-white" data-testid="current-user-name">
+      <span class="max-w-[220px] truncate text-xs font-bold text-white" data-testid="current-user-name">
         {{ inv.currentUser()?.name || inv.activeUser() }}
       </span>
-      <span class="hidden sm:inline-block rounded px-1.5 py-0.5 text-[10px] font-bold"
+      <span class="hidden sm:inline-block rounded px-1.5 py-0.5 text-[11px] font-bold"
         [class]="inv.currentUser()?.role === 'ADMINISTRADOR'
           ? 'bg-purple-400/25 text-purple-200 border border-purple-400/40'
           : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-blue-400/25 text-blue-200 border border-blue-400/40' : 'bg-slate-700 text-slate-200')">
@@ -117,13 +114,19 @@
 
     <nav class="flex flex-col gap-1 py-4" aria-label="Secciones">
       @for (item of navItems; track item.key) {
+        @let isRestricted = (item.key === 'reportes' && inv.currentUser()?.role === 'CAJERO') || (item.key === 'ajustes' && inv.currentUser()?.role && inv.currentUser()?.role !== 'ADMINISTRADOR');
         <a [routerLink]="item.link" [queryParams]="item.query" (click)="closeDrawer()"
-          class="btn flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[15px] font-semibold leading-tight"
+          class="btn flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-[15px] font-semibold leading-tight"
           [class]="isActive(item.key)
             ? 'bg-white text-brand-700 shadow-xs'
-            : 'text-brand-100 hover:bg-white/10 hover:text-white'">
-          <app-icon [name]="item.icon" [size]="19" />
-          <span>{{ item.label }}</span>
+            : (isRestricted ? 'text-brand-200/75 hover:bg-white/10' : 'text-brand-100 hover:bg-white/10 hover:text-white')">
+          <span class="flex items-center gap-3">
+            <app-icon [name]="item.icon" [size]="19" />
+            <span>{{ item.label }}</span>
+          </span>
+          @if (isRestricted) {
+            <app-icon name="lock" [size]="14" />
+          }
         </a>
       }
     </nav>
@@ -141,11 +144,13 @@
         </div>
       }
 
-      <button type="button" (click)="closeDrawer(); handleQuickBackupNow()" data-testid="btn-backup-now"
-        class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 bg-brand-800/80 px-3.5 text-xs font-semibold text-white hover:bg-brand-800">
-        <app-icon name="lock" [size]="15" />
-        <span>Respaldar ahora</span>
-      </button>
+      @if (canBackupGlobal()) {
+        <button type="button" (click)="closeDrawer(); handleQuickBackupNow()" data-testid="btn-backup-now"
+          class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 bg-brand-800/80 px-3.5 text-xs font-semibold text-white hover:bg-brand-800">
+          <app-icon name="lock" [size]="15" />
+          <span>Respaldar ahora</span>
+        </button>
+      }
 
       <div class="sm:hidden flex flex-col gap-2">
         <button type="button" (click)="closeDrawer(); openQr()"
@@ -153,11 +158,13 @@
           <app-icon [name]="isPhoneLinked() ? 'phone' : 'qr'" [size]="16" />
           <span>{{ phoneButtonLabel() }}</span>
         </button>
-        <button type="button" (click)="closeDrawer(); openCloseShift()"
-          class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 text-xs font-semibold text-brand-100 hover:bg-rose-300/15">
-          <app-icon name="power" [size]="16" />
-          <span>Cerrar Turno</span>
-        </button>
+        @if (canCloseShiftGlobal()) {
+          <button type="button" (click)="closeDrawer(); openCloseShift()"
+            class="flex h-10 items-center justify-center gap-2 rounded-xl border border-white/25 text-xs font-semibold text-brand-100 hover:bg-rose-300/15">
+            <app-icon name="power" [size]="16" />
+            <span>Cerrar Turno</span>
+          </button>
+        }
       </div>
     </div>
   </aside>
@@ -165,14 +172,15 @@
 
 <!-- ===================== MODAL VINCULACIÓN QR ===================== -->
 @if (qrOpen()) {
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true">
-    <div class="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 sm:p-6 overflow-y-auto" role="dialog" aria-modal="true">
+    <div class="w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5 shrink-0">
         <h2 class="text-xl font-bold">Vincular Celular a la Terminal de Mostrador</h2>
         <button type="button" (click)="closeQr()" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
           <app-icon name="close" [size]="20" />
         </button>
       </div>
+      <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
 
       @if (lanSync.isUnavailable()) {
         <!-- Modo demostración (ng serve sin servidor local) -->
@@ -280,13 +288,29 @@
           </div>
         }
       }
+      </div>
 
-      <div class="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-7 py-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-7 py-4 shrink-0">
         @if (!lanSync.isUnavailable()) {
-          <button type="button" (click)="handleRotateCode()" [disabled]="rotatingCode()"
-            class="h-11 rounded-xl border border-rose-200 bg-white px-4 text-xs font-bold text-rose-700 hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50">
-            {{ rotatingCode() ? 'Generando código…' : 'Generar código nuevo' }}
-          </button>
+          @if (!confirmingRotateCode()) {
+            <button type="button" (click)="requestRotateCode()" [disabled]="rotatingCode()"
+              class="h-11 rounded-xl border border-rose-200 bg-white px-4 text-xs font-bold text-rose-700 hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50">
+              {{ rotatingCode() ? 'Generando código…' : 'Generar código nuevo' }}
+            </button>
+          } @else {
+            <div class="flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5">
+              <span class="text-xs font-bold text-rose-900">¿Desvincular celulares y rotar QR?</span>
+              <button type="button" (click)="handleRotateCode()" [disabled]="rotatingCode()"
+                data-testid="btn-confirm-rotate-qr"
+                class="h-8 rounded-lg bg-rose-700 px-3 text-xs font-bold text-white hover:bg-rose-800 disabled:opacity-50">
+                Confirmar
+              </button>
+              <button type="button" (click)="cancelRotateCode()" [disabled]="rotatingCode()"
+                class="h-8 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-100">
+                Cancelar
+              </button>
+            </div>
+          }
         } @else {
           <div></div>
         }
@@ -300,25 +324,36 @@
 
 <!-- ===================== MODAL CORTE / CERRAR TURNO ===================== -->
 @if (closeShiftModalOpen()) {
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true">
-    <div class="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 sm:p-6 overflow-y-auto" role="dialog" aria-modal="true" data-testid="modal-navbar-close-shift">
+    <div class="w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 shrink-0">
         <h2 class="text-xl font-bold">Corte de Caja y Cierre de Turno</h2>
         <button type="button" (click)="closeCloseShiftModal()" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
           <app-icon name="close" [size]="20" />
         </button>
       </div>
 
-      <div class="p-7">
+      <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6">
         @if (shiftClosedSuccess()) {
           <div class="flex flex-col items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-7 text-center">
             <h3 class="text-xl font-bold text-emerald-950">Turno Cerrado Correctamente</h3>
-            <p class="text-[15px] text-slate-700">
-              Se ha registrado el arqueo de caja con un efectivo esperado de <b class="tabular-nums">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</b>.
-            </p>
-  
+            @if (closedShiftSummary(); as cutInfo) {
+              <p class="text-[15px] text-slate-700">
+                Arqueo registrado: efectivo contado <b class="tabular-nums">{{ cutInfo.physicalCash | currency:'MXN':'symbol-narrow' }}</b> frente a esperado <b class="tabular-nums">{{ cutInfo.theoreticalCash | currency:'MXN':'symbol-narrow' }}</b> ({{ cutInfo.statusLabel }}).
+              </p>
+            } @else {
+              <p class="text-[15px] text-slate-700">
+                Se ha registrado el cierre y respaldo con efectivo esperado de <b class="tabular-nums">{{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}</b>.
+              </p>
+            }
 
-          @if (shiftBackupMessage()) {
+            @if (lastSatisfactionSaved()) {
+              <p class="text-xs font-semibold text-emerald-900 bg-white border border-emerald-200 rounded-lg px-3 py-1.5" data-testid="navbar-satisfaction-saved-badge">
+                Encuesta semanal de satisfacción registrada correctamente.
+              </p>
+            }
+
+            @if (shiftBackupMessage()) {
               <p class="text-xs font-semibold text-brand-800 bg-white border border-emerald-200 rounded-lg px-3 py-1.5">
                 {{ shiftBackupMessage() }}
               </p>
@@ -329,38 +364,105 @@
             </button>
           </div>
         } @else {
-          <p class="mb-4 text-sm font-semibold text-slate-500">
+          @if (!inv.isShiftOpen()) {
+            <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs font-semibold text-amber-950">
+              El turno de caja ya se encuentra cerrado. Puedes generar un respaldo cifrado ahora o abrir un nuevo turno desde Punto de Venta.
+            </div>
+          }
+
+          <p class="mb-3 text-sm font-semibold text-slate-500">
             Resumen contable acumulado para el cajón en este turno:
           </p>
 
           <div class="space-y-2">
-            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
               <span class="text-sm text-slate-600">Fondo Inicial de Caja:</span>
-              <span class="font-bold text-slate-900 tabular-nums">{{ inv.cashRegister().openingFloat | currency:'MXN':'symbol-narrow' }}</span>
+              <span class="font-bold text-slate-900 tabular-nums">{{ inv.cashShift().openingCash | currency:'MXN':'symbol-narrow' }}</span>
             </div>
-            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <span class="text-sm text-slate-600">Ventas en Efectivo Hoy:</span>
-              <span class="font-bold text-slate-900 tabular-nums">+{{ inv.cashRegister().cashSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
+            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
+              <span class="text-sm text-slate-600">(+) Ventas en Efectivo:</span>
+              <span class="font-bold text-slate-900 tabular-nums">+{{ inv.cashShift().cashSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
             </div>
-            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <span class="text-sm text-slate-600">Abonos Recibidos en Efectivo:</span>
-              <span class="font-bold text-slate-900 tabular-nums">+{{ inv.cashRegister().creditPaymentsReceived | currency:'MXN':'symbol-narrow' }}</span>
+            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
+              <span class="text-sm text-slate-600">(+) Abonos Recibidos en Efectivo:</span>
+              <span class="font-bold text-slate-900 tabular-nums">+{{ inv.cashShift().creditPaymentsReceived | currency:'MXN':'symbol-narrow' }}</span>
             </div>
-            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <span class="text-sm text-slate-600">Ventas en Libreta (Fiado):</span>
+            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
+              <span class="text-sm text-slate-600">(+) Entradas Extraordinarias:</span>
+              <span class="font-bold text-emerald-700 tabular-nums">+{{ inv.cashShift().cashInTotal || 0 | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
+              <span class="text-sm text-slate-600">(-) Salidas y Retiros de Caja:</span>
+              <span class="font-bold text-rose-700 tabular-nums">-{{ inv.cashShift().cashPayoutsTotal || 0 | currency:'MXN':'symbol-narrow' }}</span>
+            </div>
+            <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
+              <span class="text-sm text-slate-600">Ventas en Libreta (Fiado · no entra a caja):</span>
               <span class="font-medium text-slate-500 tabular-nums">{{ inv.cashRegister().creditSalesTotal | currency:'MXN':'symbol-narrow' }}</span>
             </div>
           </div>
 
-          <div class="mt-5 flex items-center justify-between rounded-xl bg-brand-700 p-5 text-white">
+          <div class="mt-4 flex items-center justify-between rounded-xl bg-brand-700 p-4 text-white">
             <div>
-              <span class="block text-sm text-brand-200">Efectivo Total en Cajón:</span>
+              <span class="block text-sm text-brand-200">Efectivo Teórico Esperado en Cajón:</span>
               <span class="font-display text-3xl font-bold tabular-nums">
                 {{ inv.getExpectedDrawerCash() | currency:'MXN':'symbol-narrow' }}
               </span>
             </div>
-            <span class="text-sm text-brand-200">(Fondo + Ventas + Abonos)</span>
+            <span class="text-xs text-brand-200 text-right">(Fondo + Ventas + Abonos + Entradas - Salidas)</span>
           </div>
+
+          @if (inv.isShiftOpen()) {
+            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3">
+              <label class="flex flex-col gap-1 text-xs font-bold text-amber-950">
+                <span>Efectivo Físico Contado en Cajón ($):</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  data-testid="navbar-input-counted-cash"
+                  [ngModel]="physicalCashCounted()"
+                  (ngModelChange)="physicalCashCounted.set($event)"
+                  class="h-11 rounded-lg border border-amber-300 bg-white px-3 font-mono text-lg font-bold text-slate-900 focus:outline-none"
+                />
+              </label>
+
+              <div class="flex items-center justify-between pt-1 border-t border-amber-200/80 text-xs font-bold">
+                <span class="text-slate-700">Estado del Arqueo:</span>
+                @if (shiftCutSummary().status === 'CUADRADA') {
+                  <span class="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800">{{ shiftCutSummary().statusLabel }}</span>
+                } @else if (shiftCutSummary().status === 'SOBRANTE') {
+                  <span class="px-2.5 py-1 rounded-md bg-blue-100 text-blue-800">{{ shiftCutSummary().statusLabel }}</span>
+                } @else {
+                  <span class="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800">{{ shiftCutSummary().statusLabel }}</span>
+                }
+              </div>
+
+              <div class="grid sm:grid-cols-2 gap-3 pt-1">
+                <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+                  <span>PIN Encargado / Admin *:</span>
+                  <input
+                    type="password"
+                    data-testid="navbar-input-shift-pin"
+                    [ngModel]="shiftClosePin()"
+                    (ngModelChange)="shiftClosePin.set($event)"
+                    placeholder="PIN de autorización"
+                    class="h-10 rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm font-bold text-slate-900 focus:outline-none"
+                  />
+                </label>
+                <label class="flex flex-col gap-1 text-xs font-bold text-slate-700">
+                  <span>Notas de corte (opcional):</span>
+                  <input
+                    type="text"
+                    data-testid="navbar-input-shift-notes"
+                    [ngModel]="shiftCloseNotes()"
+                    (ngModelChange)="shiftCloseNotes.set($event)"
+                    placeholder="Observaciones de entrega"
+                    class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900 focus:outline-none"
+                  />
+                </label>
+              </div>
+            </div>
+          }
 
           @if (!inv.hasSessionBackupPassphrase()) {
             <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -372,26 +474,29 @@
                 placeholder="Ingresa tu frase de respaldo (no se guarda en disco)..."
                 class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-700 focus:outline-none" />
               <p class="mt-1 text-[11px] text-slate-500">
-                Al cerrar caja se genera automáticamente un respaldo cifrado AES-GCM en el servidor local.
+                Al cerrar caja se genera automáticamente un respaldo cifrado en el servidor local.
               </p>
             </div>
           }
 
           <!-- Encuesta semanal de satisfacción 1..5 (Bloque I) -->
-          @if (inv.satisfactionDueStatus().due) {
+          @if (inv.satisfactionDueStatus().due && inv.isShiftOpen()) {
             <div class="mt-4 rounded-xl border border-brand-200 bg-brand-50/60 p-3.5 space-y-2 text-left" data-testid="navbar-satisfaction-survey">
               <p class="text-xs font-bold text-slate-900">
-                Encuesta semanal de satisfacción (1 a 5 · opcional):
+                Encuesta semanal de satisfacción (opcional · ¿cómo te sentiste con el sistema?):
               </p>
-              <div class="flex items-center gap-1.5">
-                @for (n of [1, 2, 3, 4, 5]; track n) {
+              <div class="grid grid-cols-5 gap-1.5">
+                @for (opt of satisfactionOptions; track opt.value) {
                   <button
                     type="button"
-                    (click)="closeShiftSatisfactionRating.set(n)"
-                    [attr.data-testid]="'navbar-rating-' + n"
-                    class="h-8 flex-1 rounded-lg border font-mono text-xs font-black transition-colors"
-                    [class]="closeShiftSatisfactionRating() === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'">
-                    {{ n }}
+                    (click)="closeShiftSatisfactionRating.set(opt.value)"
+                    [attr.data-testid]="'navbar-rating-' + opt.value"
+                    [attr.aria-label]="opt.value + ' - ' + opt.label"
+                    [attr.aria-pressed]="closeShiftSatisfactionRating() === opt.value"
+                    class="rounded-lg border px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 transition-colors"
+                    [class]="closeShiftSatisfactionRating() === opt.value ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+                    <span class="font-mono text-sm font-black leading-none">{{ opt.value }}</span>
+                    <span class="text-[11px] font-semibold leading-tight text-center">{{ opt.label }}</span>
                   </button>
                 }
               </div>
@@ -405,22 +510,27 @@
             </div>
           }
 
-          @if (shiftBackupMessage()) {
-            <p class="mt-3 text-xs font-semibold text-[#a33f3f]">{{ shiftBackupMessage() }}</p>
+          @if (closeShiftError() || shiftBackupMessage()) {
+            <div role="alert" data-testid="navbar-close-shift-error"
+              class="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-900">
+              {{ closeShiftError() || shiftBackupMessage() }}
+            </div>
           }
-
-          <div class="mt-6 flex justify-end gap-3">
-            <button type="button" (click)="closeCloseShiftModal()" class="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Cancelar
-            </button>
-
-
-            <button type="button" (click)="confirmCloseShift()" class="h-11 rounded-xl bg-[#a33f3f] px-6 text-sm font-semibold text-white hover:bg-[#8c3434]">
-              Confirmar y Cerrar Turno
-            </button>
-          </div>
         }
       </div>
+
+      @if (!shiftClosedSuccess()) {
+        <div class="shrink-0 flex justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <button type="button" (click)="closeCloseShiftModal()"
+            class="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+            Cancelar
+          </button>
+          <button type="button" (click)="confirmCloseShift()" data-testid="btn-navbar-confirm-close-shift"
+            class="h-11 rounded-xl bg-[#a33f3f] px-6 text-sm font-semibold text-white hover:bg-[#8c3434]">
+            {{ inv.isShiftOpen() ? 'Confirmar Corte y Cerrar Turno' : 'Generar Respaldo Cifrado' }}
+          </button>
+        </div>
+      }
     </div>
   </div>
 }
