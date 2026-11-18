@@ -51,7 +51,7 @@ def test_health_y_cabeceras(app, client):
 
 def test_endpoints_locales_prohibidos_desde_otro_dispositivo(app, client):
     c = client  # 'testclient' no es loopback => es "otro dispositivo"
-    for path in ("/api/pairing", "/api/pairing/qr.svg", "/api/status", "/vincular"):
+    for path in ("/api/pairing", "/api/pairing/qr.svg", "/api/status"):
         assert c.get(path).status_code == 403
     assert c.post("/api/pairing/rotate").status_code == 403
 
@@ -101,11 +101,6 @@ def test_pairing_con_parametro_ip_invalida_rechaza_400(local_app, local_client):
     res_qr = c.get("/api/pairing/qr.svg?ip=10.99.99.99&nocache=123")
     assert res_qr.status_code == 400
     assert "IP no válida" in res_qr.text
-
-
-def test_vincular_muestra_qr(local_app, local_client):
-    html = TestClient(local_app).get("/vincular").text
-    assert "<svg" in html and "movil-prototipo.html?t=" in html
 
 
 def test_spa_fallback_y_estaticos(app, client):

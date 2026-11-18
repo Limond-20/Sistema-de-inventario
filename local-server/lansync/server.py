@@ -276,7 +276,7 @@ def create_app(
             response.headers["Cache-Control"] = "public, max-age=604800"
         elif path.startswith("/api/evidencia"):
             response.headers["Cache-Control"] = "private"
-        elif path.startswith("/api/") or path == "/vincular":
+        elif path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -378,17 +378,6 @@ def create_app(
                 "X-Content-Type-Options": "nosniff",
             },
         )
-
-    @app.get("/vincular", response_class=HTMLResponse, dependencies=[Depends(require_local)])
-    async def vincular() -> str:
-        token, _ = st.pairing.current()
-        url = pairing_url(token)
-        svg = segno.make(url, error="m").svg_inline(scale=7, border=2, dark="#0f172a")
-        no_net = "" if st.ips else (
-            '<p class="warn">No se detectó una red. Conecta la PC al Wi-Fi de la tienda '
-            "(sirve aunque no tenga internet) o activa la zona Wi-Fi del celular.</p>"
-        )
-        return _VINCULAR_HTML.format(svg=svg, url=url, no_net=no_net)
 
     @app.post("/api/evidencia")
     async def upload_evidencia(request: Request) -> dict:
@@ -673,7 +662,6 @@ def create_app(
                 "<meta charset='utf-8'><h2>Falta compilar la app</h2>"
                 "<p>Ejecuta <code>npm run build</code> dentro de <code>abarrotes-app</code> "
                 "o indica la carpeta con <code>--static</code>.</p>"
-                "<p><a href='/vincular'>Vincular celular</a></p>"
             )
 
     return app
@@ -684,51 +672,6 @@ async def _safe_close(ws: WebSocket, code: int) -> None:
         await ws.close(code=code)
     except Exception:
         pass
-
-
-_VINCULAR_HTML = """<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Vincular celular</title>
-<style>
- body{{font-family:system-ui,Segoe UI,Arial,sans-serif;background:#f1f5f9;color:#0f172a;margin:0;padding:24px;display:flex;justify-content:center}}
- main{{max-width:760px;width:100%;background:#fff;border-radius:20px;padding:28px;box-shadow:0 6px 24px rgba(15,23,42,.12)}}
- h1{{margin:0 0 6px;font-size:28px}} .sub{{color:#475569;margin:0 0 18px;font-size:18px}}
- .grid{{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}}
- .qr{{background:#fff;border:3px solid #0f172a;border-radius:16px;padding:10px}} .qr svg{{display:block;width:260px;height:260px}}
- ol{{font-size:19px;line-height:1.5;padding-left:22px;margin:0;flex:1;min-width:260px}} li{{margin-bottom:10px}}
- .status{{margin-top:22px;border-radius:14px;padding:16px 18px;font-size:20px;font-weight:700}}
- .off{{background:#fef3c7;color:#92400e}} .on{{background:#dcfce7;color:#166534}}
- .url{{font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all;color:#475569;margin-top:16px}}
- button{{margin-top:16px;min-height:52px;padding:0 20px;font-size:17px;font-weight:700;border-radius:12px;border:2px solid #94a3b8;background:#fff;cursor:pointer}}
- .warn{{background:#fee2e2;color:#991b1b;border-radius:12px;padding:12px 14px;font-weight:600}}
-</style></head><body><main>
-<h1>Vincular celular</h1><p class="sub">Convierte tu celular en el escáner de la tienda.</p>
-{no_net}
-<div class="grid"><div class="qr">{svg}</div>
-<ol>
- <li>Conecta el celular al <b>mismo Wi-Fi</b> que esta computadora (sirve aunque el Wi-Fi no tenga internet).</li>
- <li>Abre la <b>cámara</b> del celular y apunta al código.</li>
- <li>Si aparece una advertencia de seguridad, toca <b>Avanzado</b> y luego <b>Continuar</b>. Es normal: el certificado lo creó esta misma computadora.</li>
-</ol></div>
-<div id="st" class="status off">Esperando celular…</div>
-<div class="url">{url}</div>
-<button id="rot">Generar código nuevo (desvincula los celulares)</button>
-</main>
-<script>
-async function poll(){{
-  try{{
-    const r=await fetch('/api/status',{{cache:'no-store'}}); const s=await r.json(); const el=document.getElementById('st');
-    if(s.phones>0){{el.className='status on';el.textContent='Celular enlazado ('+s.phones+')';}}
-    else{{el.className='status off';el.textContent='Esperando celular…';}}
-  }}catch(e){{}}
-}}
-setInterval(poll,2000);poll();
-document.getElementById('rot').onclick=async()=>{{
-  if(!confirm('Se desvincularán los celulares actuales. ¿Continuar?'))return;
-  await fetch('/api/pairing/rotate',{{method:'POST'}});location.reload();
-}};
-</script></body></html>
-"""
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -774,7 +717,7 @@ def main(argv: list[str] | None = None) -> None:
     scheme = "http" if args.no_tls else "https"
     print("\n  Servidor de la tienda en marcha")
     print(f"  En esta PC:      {scheme}://localhost:{args.port}/")
-    print(f"  Vincular celular: {scheme}://localhost:{args.port}/vincular")
+    print("  Vincular celular: botón 'Móvil (QR)' en la barra superior de la app")
     if ips:
         print(f"  Red local:       {scheme}://{ips[0]}:{args.port}/")
     else:

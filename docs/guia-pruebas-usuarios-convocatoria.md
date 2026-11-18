@@ -84,7 +84,7 @@ Durante las pruebas con negocios piloto se busca medir y documentar con datos re
 *Objetivo: Medir la mejora en velocidad de cobro usando el celular como escáner LAN frente a la búsqueda manual.*
 
 **Pasos con el usuario:**
-1. En la barra superior de la PC, tocar **Móvil (QR)** (o abrir `https://localhost:8443/vincular`).
+1. En la barra superior de la PC, tocar **Móvil (QR)**.
 2. Con la cámara del celular, escanear el código QR. Validar la advertencia local del certificado en el navegador del celular y confirmar que aparece el indicador verde **Móvil Conectado**.
 3. Abrir **Punto de venta** (`/pos`). Si el turno está cerrado, abrir turno en **Corte / Turno** con el fondo inicial.
 4. **Comparativa A (Sin escáner — línea base):** Cobrar **3 ventas de muestra** (al menos 3 productos por ticket, incluyendo 1 producto a granel por monto `$` o peso `Kg`) buscando todo a mano en el buscador de la PC. **Cronometrar cada venta** desde el primer producto hasta imprimir/confirmar el cobro.
