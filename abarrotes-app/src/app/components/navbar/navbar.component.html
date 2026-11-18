@@ -165,14 +165,15 @@
 
 <!-- ===================== MODAL VINCULACIÓN QR ===================== -->
 @if (qrOpen()) {
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true">
-    <div class="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 sm:p-6 overflow-y-auto" role="dialog" aria-modal="true">
+    <div class="w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5 shrink-0">
         <h2 class="text-xl font-bold">Vincular Celular a la Terminal de Mostrador</h2>
         <button type="button" (click)="closeQr()" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
           <app-icon name="close" [size]="20" />
         </button>
       </div>
+      <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
 
       @if (lanSync.isUnavailable()) {
         <!-- Modo demostración (ng serve sin servidor local) -->
@@ -280,8 +281,9 @@
           </div>
         }
       }
+      </div>
 
-      <div class="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-7 py-4">
+      <div class="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-7 py-4 shrink-0">
         @if (!lanSync.isUnavailable()) {
           <button type="button" (click)="handleRotateCode()" [disabled]="rotatingCode()"
             class="h-11 rounded-xl border border-rose-200 bg-white px-4 text-xs font-bold text-rose-700 hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50">
@@ -300,16 +302,16 @@
 
 <!-- ===================== MODAL CORTE / CERRAR TURNO ===================== -->
 @if (closeShiftModalOpen()) {
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6" role="dialog" aria-modal="true">
-    <div class="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-7 py-5">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 sm:p-6 overflow-y-auto" role="dialog" aria-modal="true" data-testid="modal-navbar-close-shift">
+    <div class="w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 shrink-0">
         <h2 class="text-xl font-bold">Corte de Caja y Cierre de Turno</h2>
         <button type="button" (click)="closeCloseShiftModal()" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Cerrar">
           <app-icon name="close" [size]="20" />
         </button>
       </div>
 
-      <div class="p-7">
+      <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6">
         @if (shiftClosedSuccess()) {
           <div class="flex flex-col items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-7 text-center">
             <h3 class="text-xl font-bold text-emerald-950">Turno Cerrado Correctamente</h3>
@@ -381,17 +383,19 @@
           @if (inv.satisfactionDueStatus().due) {
             <div class="mt-4 rounded-xl border border-brand-200 bg-brand-50/60 p-3.5 space-y-2 text-left" data-testid="navbar-satisfaction-survey">
               <p class="text-xs font-bold text-slate-900">
-                Encuesta semanal de satisfacción (1 a 5 · opcional):
+                Encuesta semanal de satisfacción (opcional · ¿cómo te sentiste con el sistema?):
               </p>
-              <div class="flex items-center gap-1.5">
-                @for (n of [1, 2, 3, 4, 5]; track n) {
+              <div class="grid grid-cols-5 gap-1.5">
+                @for (opt of satisfactionOptions; track opt.value) {
                   <button
                     type="button"
-                    (click)="closeShiftSatisfactionRating.set(n)"
-                    [attr.data-testid]="'navbar-rating-' + n"
-                    class="h-8 flex-1 rounded-lg border font-mono text-xs font-black transition-colors"
-                    [class]="closeShiftSatisfactionRating() === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'">
-                    {{ n }}
+                    (click)="closeShiftSatisfactionRating.set(opt.value)"
+                    [attr.data-testid]="'navbar-rating-' + opt.value"
+                    [attr.aria-label]="opt.value + ' - ' + opt.label"
+                    class="rounded-lg border px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 transition-colors"
+                    [class]="closeShiftSatisfactionRating() === opt.value ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+                    <span class="font-mono text-sm font-black leading-none">{{ opt.value }}</span>
+                    <span class="text-[10px] font-semibold leading-tight text-center">{{ opt.label }}</span>
                   </button>
                 }
               </div>

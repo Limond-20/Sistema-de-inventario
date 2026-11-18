@@ -8,6 +8,7 @@ import {
   type ReportTabKey,
   type IndicatorCardMetric,
   type IndicatorTone,
+  SATISFACTION_SCALE_OPTIONS,
   formatCentsMxn,
   formatDurationCompact,
   formatLocalYyyyMmDd,
@@ -34,6 +35,7 @@ export class ReportsViewComponent {
   protected readonly exportFeedback = signal<{ ok: boolean; text: string } | null>(null);
 
   // Encuesta semanal inline opcional cuando esté pendiente
+  protected readonly satisfactionOptions = SATISFACTION_SCALE_OPTIONS;
   protected readonly inlineSurveyOpen = signal<boolean>(false);
   protected readonly inlineSurveyRating = signal<number>(5);
   protected readonly inlineSurveyComment = signal<string>('');

@@ -25,6 +25,7 @@ import {
 } from '../../domain/sales';
 import type { TicketPaperWidth } from '../../domain/ticket';
 import type { ConsentMethod, ConsentStatus } from '../../domain/privacy';
+import { SATISFACTION_SCALE_OPTIONS } from '../../domain/reports';
 
 type BulkCalcMode = 'weight' | 'amount';
 
@@ -1165,6 +1166,7 @@ export class PosViewComponent implements OnInit, OnDestroy {
     };
   });
 
+  protected readonly satisfactionOptions = SATISFACTION_SCALE_OPTIONS;
   protected readonly shiftSatisfactionRating = signal<number | null>(null);
   protected readonly shiftSatisfactionComment = signal<string>('');
   protected readonly currentSaleStartedAt = signal<string | null>(null);

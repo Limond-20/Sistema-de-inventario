@@ -190,17 +190,21 @@
           </button>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          @for (n of [1, 2, 3, 4, 5]; track n) {
+        <div class="grid grid-cols-5 gap-2">
+          @for (opt of satisfactionOptions; track opt.value) {
             <button
               type="button"
-              (click)="inlineSurveyRating.set(n)"
-              [attr.data-testid]="'btn-inline-rating-' + n"
-              class="h-10 w-12 rounded-xl border font-mono text-sm font-black transition-all"
-              [class]="inlineSurveyRating() === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
-              {{ n }}
+              (click)="inlineSurveyRating.set(opt.value)"
+              [attr.data-testid]="'btn-inline-rating-' + opt.value"
+              [attr.aria-label]="opt.value + ' - ' + opt.label"
+              class="rounded-xl border px-2 py-2 flex flex-col items-center justify-center gap-0.5 transition-all"
+              [class]="inlineSurveyRating() === opt.value ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+              <span class="font-mono text-sm font-black leading-none">{{ opt.value }}</span>
+              <span class="text-[11px] font-semibold leading-tight text-center">{{ opt.label }}</span>
             </button>
           }
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
           <input
             type="text"
             [ngModel]="inlineSurveyComment()"

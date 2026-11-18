@@ -1516,10 +1516,10 @@
      MODAL 7: CORTE DE CAJA Y CONTROL DE TURNO - BLOQUE H
      ========================================================================= -->
 @if (shiftModalOpen()) {
-  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" data-testid="modal-shift-cut">
-    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-lg overflow-hidden">
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" data-testid="modal-shift-cut">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
       <!-- Cabecera -->
-      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between shrink-0">
         <div>
           <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Control de Turnos</p>
           <h3 class="text-base font-bold leading-tight">
@@ -1531,7 +1531,7 @@
         </button>
       </div>
 
-      <div class="p-5 flex flex-col gap-4">
+      <div class="p-5 flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
         @if (shiftData().isShiftOpen) {
           <!-- Resumen contable acumulado -->
           <div class="space-y-1.5 text-xs">
@@ -1571,19 +1571,21 @@
             <div class="rounded-xl border border-brand-200 bg-brand-50/60 p-3.5 space-y-2" data-testid="pos-shift-satisfaction-survey">
               <div class="flex items-center justify-between gap-2">
                 <p class="text-xs font-bold text-slate-900">
-                  Encuesta semanal de satisfacción (1 a 5 · opcional)
+                  Encuesta semanal de satisfacción (opcional)
                 </p>
                 <span class="text-[10px] font-semibold text-brand-700">1 vez por semana</span>
               </div>
-              <div class="flex items-center gap-1.5">
-                @for (n of [1, 2, 3, 4, 5]; track n) {
+              <div class="grid grid-cols-5 gap-1.5">
+                @for (opt of satisfactionOptions; track opt.value) {
                   <button
                     type="button"
-                    (click)="shiftSatisfactionRating.set(n)"
-                    [attr.data-testid]="'pos-shift-rating-' + n"
-                    class="h-8 flex-1 rounded-lg border font-mono text-xs font-black transition-colors"
-                    [class]="shiftSatisfactionRating() === n ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
-                    {{ n }}
+                    (click)="shiftSatisfactionRating.set(opt.value)"
+                    [attr.data-testid]="'pos-shift-rating-' + opt.value"
+                    [attr.aria-label]="opt.value + ' - ' + opt.label"
+                    class="rounded-lg border px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 transition-colors"
+                    [class]="shiftSatisfactionRating() === opt.value ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'">
+                    <span class="font-mono text-sm font-black leading-none">{{ opt.value }}</span>
+                    <span class="text-[10px] font-semibold leading-tight text-center">{{ opt.label }}</span>
                   </button>
                 }
               </div>
