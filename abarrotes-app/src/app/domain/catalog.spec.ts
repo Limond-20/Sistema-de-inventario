@@ -22,6 +22,8 @@ import {
   hasProductMovements,
   validateCatalogProductInput,
   validateMobileProductCreateRequest,
+  buildMobileCatalogSnapshot,
+  computeMobileCatalogFingerprint,
 } from './catalog.ts';
 
 test('Catálogo (F1): autogeneración de SKU interno editable y códigos internos EAN-13 sin colisiones', () => {
@@ -592,4 +594,74 @@ test('Catálogo (F1 seguimiento 2): Ventas irregulares (0.125, 0.730, 1.005 kg) 
 
   assert.equal(cumulativeSold, 50.0);
   assert.equal(totalCostCents, 84700); // Exactamente 84,700 centavos ($847.00)
+});
+
+test('Sincronización móvil: buildMobileCatalogSnapshot omite stock/minStock/rop, prioriza ABC (10/4/1) y fingerprint ignora stock', () => {
+  const mk = (i: number, abc: 'A' | 'B' | 'C', extra: Record<string, any> = {}) => ({
+    sku: `SKU-${abc}-${i}`,
+    barcode: `75010000${String(i).padStart(5, '0')}`,
+    barcodes: [`75010000${String(i).padStart(5, '0')}`, `75020000${String(i).padStart(5, '0')}`],
+    name: `Producto ${abc} ${i}`,
+    category: 'Abarrotes',
+    location: `Pasillo ${abc}`,
+    saleUnit: abc === 'A' && i === 1 ? 'Kg' : 'Pieza',
+    salePrice: 25.5,
+    historicCost: 19.25,
+    targetMargin: 22,
+    abcClass: abc,
+    isBulk: abc === 'A' && i === 1,
+    stock: 42 + i,
+    minStock: 5,
+    rop: 8,
+    safetyStock: 2,
+    dailySalesRate: 3,
+    supplierLeadTimeDays: 2,
+    isActive: true,
+    approvalStatus: 'APROBADO',
+    ...extra,
+  });
+
+  const products = [
+    ...Array.from({ length: 12 }, (_, idx) => mk(idx + 1, 'A')),
+    ...Array.from({ length: 6 }, (_, idx) => mk(idx + 20, 'B')),
+    ...Array.from({ length: 3 }, (_, idx) => mk(idx + 40, 'C')),
+    mk(99, 'A', { isActive: false }),
+    mk(100, 'A', { approvalStatus: 'PENDIENTE_APROBACION' }),
+  ];
+
+  const snap1 = buildMobileCatalogSnapshot(products, 'La Esquina', 3, '2026-11-18T12:00:00.000Z');
+  assert.equal(snap1.type, 'CATALOG_SNAPSHOT');
+  assert.equal(snap1.version, 3);
+  assert.equal(snap1.storeName, 'La Esquina');
+  assert.equal(snap1.products.length, products.length);
+
+  // Nunca incluir stock ni campos sensibles de reposición
+  for (const item of snap1.products as unknown as Record<string, unknown>[]) {
+    assert.equal('stock' in item, false);
+    assert.equal('minStock' in item, false);
+    assert.equal('rop' in item, false);
+    assert.equal('safetyStock' in item, false);
+    assert.equal('dailySalesRate' in item, false);
+  }
+  for (const m of snap1.auditMission as unknown as Record<string, unknown>[]) {
+    assert.equal('stock' in m, false);
+  }
+
+  // Misión prioriza 10 A + 4 B + 1 C y excluye inactivos/pendientes
+  assert.equal(snap1.auditMission.length, 15);
+  assert.equal(snap1.auditMission.filter((m) => m.cls === 'A').length, 10);
+  assert.equal(snap1.auditMission.filter((m) => m.cls === 'B').length, 4);
+  assert.equal(snap1.auditMission.filter((m) => m.cls === 'C').length, 1);
+  assert.equal(snap1.auditMission[0].allowDecimal, true);
+  assert.equal(snap1.auditMission[0].unit, 'kg');
+  assert.equal(snap1.auditMission.some((m) => m.sku === 'SKU-A-99' || m.sku === 'SKU-A-100'), false);
+
+  // Cambiar únicamente stock no altera la huella
+  const withDifferentStock = products.map((p) => ({ ...p, stock: 999 }));
+  const snap2 = buildMobileCatalogSnapshot(withDifferentStock, 'La Esquina', 4, '2026-11-18T12:05:00.000Z');
+  assert.equal(computeMobileCatalogFingerprint(snap1), computeMobileCatalogFingerprint(snap2));
+
+  // Cambiar catálogo o storeName sí altera la huella
+  const snap3 = buildMobileCatalogSnapshot(withDifferentStock, 'Tienda Nueva', 5, '2026-11-18T12:05:00.000Z');
+  assert.notEqual(computeMobileCatalogFingerprint(snap1), computeMobileCatalogFingerprint(snap3));
 });

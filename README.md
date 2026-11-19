@@ -157,8 +157,8 @@ El Bloque G introduce la centralización administrativa del sistema con base en 
   - Almacén de llaves `__binnitech_keystore_v1__`: `{ "format": "BTKEYS", "version": 1, "kid", "slots": [...] }`. Cada ranura guarda sus propias iteraciones (se pueden subir después sin romper nada). Versiones desconocidas se rechazan en lugar de adivinar.
 - **Desbloqueo al iniciar:** si hay datos cifrados, la app muestra "Datos de la tienda cifrados" y no carga nada (ni escribe) hasta recibir el PIN de un administrador. Tras 5 intentos fallidos espera 30 s (y 5 min en los siguientes bloqueos).
 - **Migración del dato sin cifrar:** la primera vez que se abre esta versión, si ya hay datos guardados en claro, se pide el **PIN actual de un administrador** (se verifica contra los usuarios guardados), se crea la llave y se cifra cada registro existente (estado, copias `corrupt_`, `prerestore_`, pendientes del servidor). Cada registro se lee de vuelta y se compara antes de darlo por migrado; si algo no cuadra, se deja el original. En una instalación nueva se pide **crear** el PIN del administrador (reemplaza al PIN de demostración).
-- **Llaves por administrador:** al crear un administrador, cambiar su PIN o cuando inicia sesión sin llave (p. ej. lo acaban de promover) se le agrega/actualiza su ranura; al desactivarlo, borrarlo o quitarle el rol se le quita (nunca se borra la última).
-- **SQLite no se cifra con este adaptador:** `local-server` necesita leer el Kardex para verificar la cadena SHA-256 antes de aceptar cada snapshot. Cifrar `inventory.sqlite3` en reposo tendría que hacerse del lado del servidor (pendiente del dueño del Bloque N).
+- **Llaves por administrador:** al crear un administrador, cambiar su PIN o cuando inicia sesión sin llave (p. ej. lo acaban de promover) se le agrega/actualiza su ranura tanto en el navegador como en SQLite; al desactivarlo, borrarlo o quitarle el rol se le quita (nunca se borra la última).
+- **Cifrado de SQLite en reposo (`local-server/data/inventory.sqlite3`):** `state_snapshots.payload_json` y `kardex_entries.payload_json` se cifran con AES-256-GCM en dos niveles: al arrancar por primera vez se protege con una llave aleatoria local (DPAPI en Windows / `0600` en POSIX) y, en cuanto se configura el PIN de administrador, se reemplaza por ranuras derivadas con PBKDF2-SHA256 (600,000 iteraciones). Mientras la base esté bloqueada, los endpoints de estado devuelven HTTP `423 Locked`; al restaurar un respaldo `.bak` portable, el servidor re-cifra los registros con el almacén activo manteniendo las llaves y disparadores append-only de Kardex.
 
 ### 2. ¿Y si se olvida el PIN? → Recuperación desde un respaldo
 
@@ -186,10 +186,17 @@ No hay puerta trasera: sin el PIN de un administrador lo cifrado en este equipo 
 ### 4. Límites conocidos
 
 - La fuerza del cifrado depende del PIN: uno de 6 dígitos son solo 1,000,000 de combinaciones; con la computadora robada y hardware dedicado se puede adivinar. **Usen 8 dígitos o más para los administradores.**
-- `pin.ts` (anterior a este bloque) guarda en `localStorage` un hash PBKDF2 del PIN de administrador; no debilita el cifrado más allá del punto anterior, pero conviene retirarlo cuando se unifique con los usuarios del Bloque G.
+- La autorización por PIN en piso de venta quedó unificada en los usuarios del Bloque G (`auth.ts`), y las llaves heredadas de `localStorage` (`binnitech_pin_*`) se purgan automáticamente al iniciar.
 - Después de una cancelación, el nombre puede seguir en: respaldos `.bak` anteriores (rotan a los 30), copias `corrupt_`/`prerestore_` locales (cifradas) y los snapshots históricos de `state_snapshots` en SQLite.
 
 Pruebas del bloque: `src/app/domain/encrypted-storage.spec.ts` (K1–K10), `src/app/domain/privacy.spec.ts` (K11–K15) con `npm run test:domain`, y `src/app/services/datos-personales.service.spec.ts` (K-I1–K-I7, IndexedDB real en ChromeHeadless) con `npm test`.
+
+---
+
+## 📱 Sincronización de Catálogo en Vivo e Importación Masiva (Excel / CSV)
+
+- **Catálogo en tiempo real (PC → Celular):** al conectar un teléfono por WebSocket (`abarrotes_lan_sync`), ante `CATALOG_SYNC_REQUEST` o al editar productos/nombre de tienda, la PC envía una instantánea ligera (`CATALOG_SNAPSHOT`) sin existencias ni mínimos/ROP para mantener ciego el conteo físico de auditoría, además de notificar `AUDIT_RECOUNT` cuando se solicita reconteo.
+- **Importación masiva en `/catalogo`:** lector offline puro en TypeScript para archivos `.xlsx` (`DecompressionStream('deflate-raw')`) y CSV (`,` o `;`), con descarga de plantilla UTF-8 con BOM, detección de duplicados internos/existentes, control de permisos para cambios de precio (`ADMINISTRADOR`) y alta por lotes con autorización única de PIN (`CATALOG_BULK_IMPORTED`).
 
 ---
 

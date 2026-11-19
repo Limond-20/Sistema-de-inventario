@@ -4921,4 +4921,202 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     expect(dashEl.textContent).not.toContain('Punto de venta (POS)');
     expect(dashEl.textContent).not.toContain('Cobro rápido');
   });
+
+  it('90. Sincronización LAN de catálogo (PC -> Móvil): responde CATALOG_SYNC_REQUEST sin stock y emite cambios y AUDIT_RECOUNT', async () => {
+    await service.restorePersistedState();
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    service.currentUser.set(admin);
+    service.activeUser.set(admin.name);
+
+    const peerChannel = new BroadcastChannel('abarrotes_lan_sync');
+    const received: any[] = [];
+    peerChannel.onmessage = (ev) => {
+      received.push(ev.data);
+    };
+
+    try {
+      // 1. Petición explícita desde celular (CATALOG_SYNC_REQUEST)
+      service.handleIncomingLanMessage({ type: 'CATALOG_SYNC_REQUEST' });
+      await new Promise((r) => setTimeout(r, 80));
+
+      const snap = received.find((m) => m?.type === 'CATALOG_SNAPSHOT');
+      expect(snap).toBeDefined();
+      expect(snap.storeName).toBe(service.businessSettings().storeName);
+      expect(Array.isArray(snap.products)).toBeTrue();
+      expect(snap.products.length).toBeGreaterThan(0);
+      expect(Array.isArray(snap.auditMission)).toBeTrue();
+      // Integridad ciega: ningún producto ni ítem de auditoría expone stock o rop
+      for (const p of snap.products) {
+        expect('stock' in p).toBeFalse();
+        expect('minStock' in p).toBeFalse();
+        expect('rop' in p).toBeFalse();
+      }
+      for (const m of snap.auditMission) {
+        expect('stock' in m).toBeFalse();
+      }
+
+      // 2. Cambio en nombre comercial difunde snapshot actualizado
+      received.length = 0;
+      const updStore = await service.updateBusinessSettings({ storeName: 'Abarrotes El Roble' });
+      expect(updStore.ok).toBeTrue();
+      await new Promise((r) => setTimeout(r, 220));
+      const storeSnap = received.find((m) => m?.type === 'CATALOG_SNAPSHOT');
+      expect(storeSnap).toBeDefined();
+      expect(storeSnap.storeName).toBe('Abarrotes El Roble');
+
+      // 3. Una venta POS que solo modifica stock NO debe reenviar CATALOG_SNAPSHOT (fingerprinting)
+      received.length = 0;
+      const firstProd = service.products()[0];
+      service.processCashSale([{ ...firstProd, qty: 1, subtotal: firstProd.salePrice } as any], firstProd.salePrice);
+      await new Promise((r) => setTimeout(r, 220));
+      expect(received.some((m) => m?.type === 'CATALOG_SNAPSHOT')).toBeFalse();
+
+      // 4. Reconteo en dictamen emite AUDIT_RECOUNT al celular
+      received.length = 0;
+      service.setAuditStatus(firstProd.sku, 'reconteo');
+      await new Promise((r) => setTimeout(r, 80));
+      const recountMsg = received.find((m) => m?.type === 'AUDIT_RECOUNT');
+      expect(recountMsg).toBeDefined();
+      expect(recountMsg.sku).toBe(firstProd.sku);
+    } finally {
+      peerChannel.close();
+    }
+  });
+
+  it('91. Importación masiva (Punto 3.3): crea productos con AJUSTE_INICIAL, respeta duplicados/roles y audita en bitácora', async () => {
+    await service.restorePersistedState();
+    const admin = service.users().find((u) => u.role === 'ADMINISTRADOR')!;
+    const encargado = service.users().find((u) => u.role === 'ENCARGADO')!;
+    const cajero = service.users().find((u) => u.role === 'CAJERO')!;
+
+    const sampleRows: string[][] = [
+      ['Nombre', 'Código de barras', 'Categoría', 'Precio de venta', 'Costo unitario', 'Unidad de venta', 'Stock inicial'],
+      ['Chocolate Abuelita 540g', '7501058612345', 'Abarrotes', '48.00', '36.00', 'Pieza', '10'],
+      ['Canela Molida Granel', '', 'Granos', '120.00', '85.00', 'Kg', '4'],
+      ['Leche Lala Entera 1L', '7501020515350', 'Lácteos', '29.00', '22.00', 'Pieza', '50'],
+    ];
+
+    // 1. Cajero no puede importar
+    service.currentUser.set(cajero);
+    service.activeUser.set(cajero.name);
+    const cajeroRes = await service.importCatalogProductsBatch(sampleRows, {
+      duplicateMode: 'SKIP',
+      pin: '984312',
+    });
+    expect(cajeroRes.ok).toBeFalse();
+
+    // 2. Administrador con PIN incorrecto -> rechazado
+    service.currentUser.set(admin);
+    service.activeUser.set(admin.name);
+    const badPinRes = await service.importCatalogProductsBatch(sampleRows, {
+      duplicateMode: 'SKIP',
+      pin: '000000',
+    });
+    expect(badPinRes.ok).toBeFalse();
+
+    // 3. Importación válida con SKIP (2 nuevos creados, Leche Lala omitida sin cambiar stock ni precio)
+    const lecheBefore = service.products().find((p) => p.sku === 'LAC-LAL-1L')!;
+    const skipRes = await service.importCatalogProductsBatch(sampleRows, {
+      duplicateMode: 'SKIP',
+      pin: '984312',
+      fileName: 'productos.xlsx',
+    });
+    expect(skipRes.ok).withContext(skipRes.message).toBeTrue();
+    expect(skipRes.createdCount).toBe(2);
+    expect(skipRes.skippedCount).toBe(1);
+
+    const choco = service.products().find((p) => p.barcode === '7501058612345');
+    expect(choco).toBeDefined();
+    expect(choco!.stock).toBe(10);
+    const canela = service.products().find((p) => p.name === 'Canela Molida Granel');
+    expect(canela).toBeDefined();
+    expect(canela!.hasInternalBarcode).toBeTrue();
+    expect(canela!.barcode.startsWith('200')).toBeTrue();
+    expect(canela!.isBulk).toBeTrue();
+
+    // Leche Lala conservó su stock y precio en modo SKIP
+    const lecheAfterSkip = service.products().find((p) => p.sku === 'LAC-LAL-1L')!;
+    expect(lecheAfterSkip.salePrice).toBe(lecheBefore.salePrice);
+    expect(lecheAfterSkip.stock).toBe(lecheBefore.stock);
+
+    // Cadena Kardex sigue válida tras múltiples AJUSTE_INICIAL
+    expect(service.verifyKardexIntegrity().valid).toBeTrue();
+    expect(service.securityAuditLog()[0].action).toBe('CATALOG_BULK_IMPORTED');
+
+    // 4. Encargado intentando UPDATE con cambio de precio es bloqueado
+    service.currentUser.set(encargado);
+    service.activeUser.set(encargado.name);
+    const updateRows: string[][] = [
+      ['Nombre', 'Código de barras', 'Precio de venta', 'Costo unitario', 'Stock inicial'],
+      ['Leche Lala Entera 1L', '7501020515350', '29.00', '22.00', '999'],
+    ];
+    const encUpdate = await service.importCatalogProductsBatch(updateRows, {
+      duplicateMode: 'UPDATE',
+      pin: '839201',
+    });
+    expect(encUpdate.ok).toBeFalse();
+
+    // 5. Administrador en modo UPDATE actualiza precio pero conserva stock existente
+    service.currentUser.set(admin);
+    service.activeUser.set(admin.name);
+    const adminUpdate = await service.importCatalogProductsBatch(updateRows, {
+      duplicateMode: 'UPDATE',
+      pin: '984312',
+    });
+    expect(adminUpdate.ok).withContext(adminUpdate.message).toBeTrue();
+    expect(adminUpdate.updatedCount).toBe(1);
+    const lecheAfterUpdate = service.products().find((p) => p.sku === 'LAC-LAL-1L')!;
+    expect(lecheAfterUpdate.salePrice).toBe(29);
+    expect(lecheAfterUpdate.stock).toBe(lecheBefore.stock);
+  });
+
+  it('92. Retiro de pin.ts (Punto 4B): purga llaves legadas de localStorage y unifica setupInitialPin/verifyAdminPin en users()', async () => {
+    await service.releaseWriterLock();
+    TestBed.resetTestingModule();
+
+    localStorage.setItem('binnitech_pin_config_v2', JSON.stringify({ pinHash: 'obsoleto' }));
+    localStorage.setItem('binnitech_pin_state_v2', JSON.stringify({ failedAttempts: 2, lockedUntil: null, lockoutCount: 0 }));
+
+    TestBed.configureTestingModule({ providers: [MockInventoryService] });
+    const cleanService = TestBed.inject(MockInventoryService);
+    await cleanService.acquireWriterLock();
+
+    try {
+      // 1. Purgó las llaves heredadas al arrancar
+      expect(localStorage.getItem('binnitech_pin_config_v2')).toBeNull();
+      expect(localStorage.getItem('binnitech_pin_state_v2')).toBeNull();
+
+      // 2. Configura PIN mediante setupInitialPin y cambia PIN con changeUserPin sin escribir en localStorage
+      const setupRes = await cleanService.setupInitialPin('739184');
+      expect(setupRes.success).toBeTrue();
+      expect(localStorage.getItem('binnitech_pin_config_v2')).toBeNull();
+      expect(localStorage.getItem('binnitech_pin_state_v2')).toBeNull();
+
+      const okNew = await cleanService.verifyAdminPin('739184');
+      expect(okNew.success).toBeTrue();
+
+      const admin = cleanService.users().find((u) => u.role === 'ADMINISTRADOR')!;
+      cleanService.currentUser.set(admin);
+      cleanService.activeUser.set(admin.name);
+      const changeRes = await cleanService.changeUserPin(admin.id, '739184', '846291');
+      expect(changeRes.ok).toBeTrue();
+      expect(localStorage.getItem('binnitech_pin_config_v2')).toBeNull();
+      expect(localStorage.getItem('binnitech_pin_state_v2')).toBeNull();
+
+      // 3. Verifica intentos fallidos y bloqueo temporal en memoria sin tocar localStorage
+      const fail1 = await cleanService.verifyAdminPin('000000');
+      expect(fail1.success).toBeFalse();
+      expect(fail1.remainingAttempts).toBe(2);
+      const fail2 = await cleanService.verifyAdminPin('111111');
+      expect(fail2.success).toBeFalse();
+      expect(fail2.remainingAttempts).toBe(1);
+      const fail3 = await cleanService.verifyAdminPin('222222');
+      expect(fail3.success).toBeFalse();
+      expect(fail3.isLocked).toBeTrue();
+      expect(fail3.lockedRemainingSeconds).toBeGreaterThan(0);
+      expect(localStorage.getItem('binnitech_pin_state_v2')).toBeNull();
+    } finally {
+      await cleanService.releaseWriterLock();
+    }
+  });
 });

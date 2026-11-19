@@ -99,16 +99,6 @@ import {
   type KardexType,
 } from '../domain/kardex';
 import {
-  isPinConfigured,
-  setupInitialPin,
-  verifyPinAttempt,
-  loadPinState,
-  createInitialPinState,
-  type PinAuthConfig,
-  type PinAuthState,
-  type PinVerificationResult,
-} from '../domain/pin';
-import {
   CURRENT_SCHEMA_VERSION,
   STATE_STORAGE_KEY,
   LEGACY_STATE_STORAGE_KEY_V5,
@@ -126,6 +116,7 @@ import {
   DebouncedStorageSaver,
   StateStorageAdapter,
   getDefaultStorageAdapter,
+  findServerAdapter,
   type PersistedAppState,
 } from '../domain/persistence';
 import {
@@ -146,6 +137,12 @@ import {
   generateSalt as generateUserPinSalt,
   validatePinPolicy as validateUserPinPolicy,
   DEFAULT_PIN_ITERATIONS as USER_PIN_ITERATIONS,
+  DEFAULT_MAX_ATTEMPTS,
+  FIRST_LOCKOUT_MS,
+  SUBSEQUENT_LOCKOUT_MS,
+  createInitialPinState,
+  type PinAuthState,
+  type PinVerificationResult,
   type UserPinVerifyResult,
   type SupervisorPinVerifyResult,
 } from '../domain/auth';
@@ -273,6 +270,9 @@ import {
   hasProductMovements,
   validateCatalogProductInput,
   validateMobileProductCreateRequest,
+  buildMobileCatalogSnapshot,
+  computeMobileCatalogFingerprint,
+  formatMobileAuditUnit,
   type PriceTierCode,
   type PriceTier,
   type CartDiscountEvaluation,
@@ -280,7 +280,12 @@ import {
   type ShrinkVarianceClassification,
   type CatalogProductInput,
   type MobileProductCreateRequest,
+  type MobileCatalogSnapshot,
 } from '../domain/catalog';
+import {
+  previewCatalogImport,
+  type CatalogImportDuplicateMode,
+} from '../domain/catalog-import';
 
 export type {
   PriceTierCode,
@@ -1364,10 +1369,10 @@ const CREDIT_CUSTOMERS: CreditCustomer[] = [
 ];
 
 const MORNING_ALERTS: MorningAlert[] = [
-  { id: 'A1', kind: 'cambio-fisico', icon: '⚠️', title: 'Separar 4 cajas de Leche Lala Entera 1L', detail: 'Caduca en 2 días (FEFO). El repartidor de Lala viene mañana a las 8:00 a.m. para hacer el cambio físico mano a mano.', actionLabel: 'Ver en catálogo', route: '/catalogo' },
+  { id: 'A1', kind: 'cambio-fisico', icon: '⚠️', title: 'Separar 4 cajas de Leche Lala Entera 1L', detail: 'Caduca en 2 días. El repartidor de Lala viene mañana a las 8:00 a.m. para hacer el cambio físico mano a mano.', actionLabel: 'Ver en catálogo', route: '/catalogo' },
   { id: 'A2', kind: 'cambio-fisico', icon: '⚠️', title: 'Separar 7 piezas de Pan Blanco Bimbo Grande', detail: 'Caduca mañana. Ponlas en la charola de devoluciones; el repartidor de Bimbo pasa hoy a las 4:00 p.m.', actionLabel: 'Ver en catálogo', route: '/catalogo' },
   { id: 'A4', kind: 'margen', icon: '🔺', title: 'Nota #DB-20931: 2 productos subieron de costo', detail: 'Aceite Nutrioli y Frijol Negro Granel ahora te dejan menos ganancia. Revísalos antes de guardar la mercancía.', actionLabel: 'Revisar nota', route: '/recepcion' },
-  { id: 'A5', kind: 'por-agotarse', icon: '📉', title: '5 Productos Clase A están debajo de su Punto de Reorden (ROP)', detail: 'Leche Lala, Aceite Nutrioli, Frijol Negro, Huevo Blanco y Coca-Cola 600ml requieren pedido hoy.', actionLabel: 'Ver ROP en Catálogo', route: '/catalogo' },
+  { id: 'A5', kind: 'por-agotarse', icon: '📉', title: '5 productos de alta venta necesitan pedido hoy', detail: 'Leche Lala, Aceite Nutrioli, Frijol Negro, Huevo Blanco y Coca-Cola 600ml están por agotarse y requieren pedido hoy.', actionLabel: 'Ver en Catálogo', route: '/catalogo' },
   { id: 'A7', kind: 'auditoria', icon: '📋', title: 'Llegó el conteo del Pasillo 3 desde el celular', detail: 'Hay 3 productos con diferencias. Revisa antes de cerrar caja.', actionLabel: 'Revisar conteo', route: '/auditoria' },
 ];
 
@@ -2008,14 +2013,6 @@ export class MockInventoryService implements OnDestroy {
     // Bloque K: el PIN nuevo del administrador re-envuelve su llave de cifrado (no se re-cifran los datos).
     const slotError = await this.syncEncryptionKeySlots({ userId, pin: newPin });
 
-    if (user.role === 'ADMINISTRADOR') {
-      try {
-        await setupInitialPin(newPin);
-      } catch {
-        // ignore if already configured
-      }
-    }
-
     this.appendSecurityAuditEntry(
       'PIN_CHANGED',
       `Actualización de PIN de acceso para usuario "${user.name}" (${user.role})`,
@@ -2207,6 +2204,10 @@ export class MockInventoryService implements OnDestroy {
   private lockAcquisitionPromise: Promise<boolean> | null = null;
   private lockFallbackChannel: BroadcastChannel | null = null;
   private lanSyncChannel: BroadcastChannel | null = null;
+  private catalogSyncVersion = 0;
+  private lastCatalogBroadcastFingerprint = '';
+  private catalogBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastKnownPhoneCount = 0;
 
   // Cola de mensajes LAN recibidos antes de terminar la hidratación
   private pendingLanMessages: any[] = [];
@@ -2233,6 +2234,7 @@ export class MockInventoryService implements OnDestroy {
   };
 
   constructor() {
+    this.purgeLegacyPinLocalStorage();
     const defaultUser = this.users().find((u) => u.name.includes('Don Lupe')) || this.users()[0];
     if (defaultUser) {
       this.currentUser.set(defaultUser);
@@ -2245,9 +2247,37 @@ export class MockInventoryService implements OnDestroy {
     this.initInactivityListener();
   }
 
+  /** Elimina las llaves obsoletas del antiguo módulo `pin.ts` en localStorage. */
+  private purgeLegacyPinLocalStorage(): void {
+    try {
+      globalThis.localStorage?.removeItem('binnitech_pin_config_v2');
+      globalThis.localStorage?.removeItem('binnitech_pin_state_v2');
+    } catch {
+      // Entornos sin localStorage (SSR / Node)
+    }
+  }
+
+  /** Extrae `state` cuando el `.bak` viene envuelto en un bundle con copia binaria de SQLite. */
+  private unwrapBackupState(parsed: any): any {
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.__binnitech_backup_bundle__ === 1 &&
+      parsed.state &&
+      typeof parsed.state === 'object'
+    ) {
+      return parsed.state;
+    }
+    return parsed;
+  }
+
   ngOnDestroy(): void {
     this.teardownInactivityListener();
     this.storageSaver.cancel();
+    if (this.catalogBroadcastTimer) {
+      clearTimeout(this.catalogBroadcastTimer);
+      this.catalogBroadcastTimer = null;
+    }
     if (this.hourlyBackupTimer) {
       clearInterval(this.hourlyBackupTimer);
       this.hourlyBackupTimer = null;
@@ -2482,6 +2512,13 @@ export class MockInventoryService implements OnDestroy {
 
         if (this.canWriteToStorage() && !this.suppressEffectSchedule) {
           this.scheduleSave();
+        }
+      });
+      effect(() => {
+        const _p = this.products();
+        const _s = this.businessSettings().storeName;
+        if (this.isHydrated()) {
+          this.scheduleCatalogBroadcast();
         }
       });
     } catch {
@@ -2916,7 +2953,7 @@ export class MockInventoryService implements OnDestroy {
     this.backupSaveStatus.set('saving');
     try {
       const plainBytes = await decryptBackupBytes(bakBytes, passphrase);
-      const rawState = JSON.parse(new TextDecoder().decode(plainBytes));
+      const rawState = this.unwrapBackupState(JSON.parse(new TextDecoder().decode(plainBytes)));
       const migration = migrateState(rawState);
       const stateToValidate = migration.state;
 
@@ -3249,6 +3286,9 @@ export class MockInventoryService implements OnDestroy {
 
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
+      if (this.phoneLinked() || (typeof window !== 'undefined' && ((window as any).LanSync?.phones || 0) > 0)) {
+        this.broadcastCatalogSnapshot(true);
+      }
 
       if (migration.migrated || loadedFromLegacy) {
         try {
@@ -3280,6 +3320,9 @@ export class MockInventoryService implements OnDestroy {
       this.corruptedModalOpen.set(true);
       this.isHydrated.set(true);
       this.drainPendingLanMessages();
+      if (this.phoneLinked() || (typeof window !== 'undefined' && ((window as any).LanSync?.phones || 0) > 0)) {
+        this.broadcastCatalogSnapshot(true);
+      }
       return { success: false, corrupted: true, reason: errMsg };
     }
   }
@@ -3393,6 +3436,63 @@ export class MockInventoryService implements OnDestroy {
     this.processedMobileProductRequests.clear();
     this.isHydrated.set(true);
     await this.flushSave();
+    if (this.phoneLinked() || (typeof window !== 'undefined' && ((window as any).LanSync?.phones || 0) > 0)) {
+      this.broadcastCatalogSnapshot(true);
+    }
+  }
+
+  /**
+   * Construye la instantánea ligera del catálogo y misión ciega para los celulares enlazados (sin stock).
+   */
+  getMobileCatalogSnapshot(): MobileCatalogSnapshot {
+    return buildMobileCatalogSnapshot(
+      this.products(),
+      this.businessSettings().storeName,
+      this.catalogSyncVersion,
+    );
+  }
+
+  /**
+   * Envía el catálogo y misión ciega de auditoría a los celulares conectados por `abarrotes_lan_sync`.
+   * Omitido si no cambió el catálogo ni el nombre comercial (p. ej. ventas POS que solo modifican stock),
+   * salvo cuando `force = true` (conexión de celular nuevo o `CATALOG_SYNC_REQUEST`).
+   */
+  broadcastCatalogSnapshot(force = false): boolean {
+    if (!this.isHydrated() || !this.lanSyncChannel || !this.assertWritable()) {
+      return false;
+    }
+    const candidate = buildMobileCatalogSnapshot(
+      this.products(),
+      this.businessSettings().storeName,
+      this.catalogSyncVersion,
+    );
+    const fp = computeMobileCatalogFingerprint(candidate);
+    if (!force && fp === this.lastCatalogBroadcastFingerprint) {
+      return false;
+    }
+    this.catalogSyncVersion += 1;
+    const snap: MobileCatalogSnapshot = {
+      ...candidate,
+      version: this.catalogSyncVersion,
+    };
+    this.lastCatalogBroadcastFingerprint = fp;
+    try {
+      this.lanSyncChannel.postMessage(snap);
+      return true;
+    } catch (err) {
+      console.warn('[MockInventoryService] Error difundiendo catálogo móvil:', err);
+      return false;
+    }
+  }
+
+  private scheduleCatalogBroadcast(): void {
+    if (this.catalogBroadcastTimer) {
+      clearTimeout(this.catalogBroadcastTimer);
+    }
+    this.catalogBroadcastTimer = setTimeout(() => {
+      this.catalogBroadcastTimer = null;
+      this.broadcastCatalogSnapshot(false);
+    }, 120);
   }
 
   private initLanSyncListener(): void {
@@ -3412,9 +3512,16 @@ export class MockInventoryService implements OnDestroy {
 
       const winLan = typeof window !== 'undefined' ? (window as any).LanSync : undefined;
       if (winLan) {
+        this.lastKnownPhoneCount = Number(winLan.phones) || 0;
         winLan.on('peers', (s: any) => {
           if (s && s.status !== 'unavailable') {
-            this.phoneLinked.set(s.phones > 0);
+            const phones = Number(s.phones) || 0;
+            const prevPhones = this.lastKnownPhoneCount;
+            this.lastKnownPhoneCount = phones;
+            this.phoneLinked.set(phones > 0);
+            if (phones > prevPhones && this.isHydrated()) {
+              this.broadcastCatalogSnapshot(true);
+            }
           }
         });
         if (winLan.status !== 'unavailable') {
@@ -3453,6 +3560,7 @@ export class MockInventoryService implements OnDestroy {
 
   private applyLanMessage(data: any): void {
     if (!data || typeof data !== 'object') return;
+    if (data.type === 'CATALOG_SNAPSHOT' || data.type === 'AUDIT_RECOUNT') return;
     if (!this.assertWritable()) return;
     this.phoneLinked.set(true);
 
@@ -3472,6 +3580,8 @@ export class MockInventoryService implements OnDestroy {
       this.setCustomOcrNote(data.lines, data.folio || 'OCR-MOVIL', 'Celular en Vivo');
     } else if (data.type === 'PRODUCT_CREATE_REQUEST') {
       this.handleProductCreateRequestFromLan(data);
+    } else if (data.type === 'CATALOG_SYNC_REQUEST') {
+      this.broadcastCatalogSnapshot(true);
     }
   }
 
@@ -3579,21 +3689,48 @@ export class MockInventoryService implements OnDestroy {
   readonly blindAuditMission = signal<BlindAuditItem[]>([]);
 
   // ===================================================================
-  // SEGURIDAD OPERACIONAL: PIN DE AUTORIZACIÓN (PBKDF2 >= 100,000 it.)
-  // Control de autorización para piso de venta, no seguridad física de la PC.
+  // SEGURIDAD OPERACIONAL: PIN DE AUTORIZACIÓN (Bloque G - users() PBKDF2)
+  // Control de autorización para piso de venta unificado en usuarios.
   // ===================================================================
-  readonly isPinSetupRequired = signal<boolean>(!isPinConfigured());
-  readonly pinState = signal<PinAuthState>(loadPinState());
+  readonly isPinSetupRequired = computed(
+    () => !this.users().some((u) => u.isActive && u.role === 'ADMINISTRADOR' && Boolean(u.pinHash))
+  );
+  readonly pinState = signal<PinAuthState>(createInitialPinState());
 
-  /** Establece el PIN de administrador por primera vez (obligatorio en primer uso). */
+  /** Establece el PIN del administrador activo directamente sobre `users()` sin escribir en localStorage. */
   async setupInitialPin(newPin: string): Promise<{ success: boolean; message: string }> {
     if (!this.assertWritable()) {
       return { success: false, message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana' };
     }
+    const cleanPin = String(newPin ?? '').trim();
+    const policy = validateUserPinPolicy(cleanPin);
+    if (!policy.valid) {
+      return { success: false, message: policy.error || 'El PIN no cumple la política de seguridad.' };
+    }
+    const admin = this.users().find((u) => u.isActive && u.role === 'ADMINISTRADOR');
+    if (!admin) {
+      return { success: false, message: 'No hay un usuario administrador activo para asignar el PIN.' };
+    }
     try {
-      await setupInitialPin(newPin);
-      this.isPinSetupRequired.set(false);
-      this.pinState.set(loadPinState());
+      const salt = generateUserPinSalt(16);
+      const iterations = admin.iterations || USER_PIN_ITERATIONS;
+      const pinHash = await computeUserPinHash(cleanPin, salt, iterations);
+      const updatedAdmin: AppUser = {
+        ...admin,
+        salt,
+        iterations,
+        pinHash,
+        failedAttempts: 0,
+        lockedUntil: null,
+        lockoutCount: 0,
+        updatedAt: new Date().toISOString(),
+      };
+      this.users.update((list) => list.map((u) => (u.id === admin.id ? updatedAdmin : u)));
+      if (this.currentUser()?.id === admin.id) {
+        this.currentUser.set(updatedAdmin);
+      }
+      this.pinState.set(createInitialPinState());
+      await this.syncEncryptionKeySlots({ userId: updatedAdmin.id, pin: cleanPin });
       return { success: true, message: 'PIN de administrador configurado exitosamente.' };
     } catch (err: any) {
       return { success: false, message: err?.message || 'Error al configurar el PIN.' };
@@ -3622,38 +3759,105 @@ export class MockInventoryService implements OnDestroy {
   }
 
   /**
-   * Verifica un intento de PIN con persistencia ante recarga de página (máx. 3 intentos y bloqueo 30s).
-   * Registra quién autorizó la operación en el Kardex.
+   * Verifica un intento de PIN contra los supervisores activos en `users()`, manteniendo
+   * el conteo de intentos fallidos y bloqueo temporal únicamente en memoria.
    */
   async verifyAdminPin(pin: string, authorizer?: string): Promise<PinVerificationResult> {
-    if (this.users().length > 0) {
-      const supCheck = await this.verifySupervisorPin(pin);
-      if (supCheck.success && supCheck.supervisor) {
-        return {
-          success: true,
-          message: supCheck.message,
-          remainingAttempts: 3,
-          isLocked: false,
-          lockedRemainingSeconds: 0,
-          authorizedBy: (authorizer && authorizer !== 'Administrador') ? authorizer : supCheck.supervisor.name,
-          nextState: { failedAttempts: 0, lockedUntil: null, lockoutCount: 0 },
-        };
-      }
-      if (!isPinConfigured()) {
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now = Date.now();
+    const currentState = this.pinState();
+
+    if (currentState.lockedUntil !== null) {
+      if (now < currentState.lockedUntil) {
+        const remainingSeconds = Math.max(1, Math.ceil((currentState.lockedUntil - now) / 1000));
         return {
           success: false,
-          message: supCheck.message || 'PIN de autorización incorrecto o no autorizado.',
+          message: `Acceso bloqueado temporalmente por intentos fallidos. Espera ${remainingSeconds} s.`,
           remainingAttempts: 0,
-          isLocked: false,
-          lockedRemainingSeconds: 0,
-          nextState: this.pinState(),
+          isLocked: true,
+          lockedRemainingSeconds: remainingSeconds,
+          nextState: currentState,
         };
       }
+      const cleared: PinAuthState = {
+        failedAttempts: 0,
+        lockedUntil: null,
+        lockoutCount: currentState.lockoutCount,
+      };
+      this.pinState.set(cleared);
     }
-    const authUser = authorizer || this.activeUser();
-    const result = await verifyPinAttempt(pin, undefined, Date.now(), authUser);
-    this.pinState.set(loadPinState());
-    return result;
+
+    const activeState = this.pinState();
+    const cleanPin = String(pin ?? '').trim();
+    if (!cleanPin) {
+      return {
+        success: false,
+        message: 'Ingresa el PIN de autorización del supervisor.',
+        remainingAttempts: Math.max(0, DEFAULT_MAX_ATTEMPTS - activeState.failedAttempts),
+        isLocked: false,
+        lockedRemainingSeconds: 0,
+        nextState: activeState,
+      };
+    }
+
+    const supCheck = await this.verifySupervisorPin(cleanPin);
+    const durationMs =
+      Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt) * 100) /
+      100;
+
+    if (supCheck.success && supCheck.supervisor) {
+      const resetState = createInitialPinState();
+      this.pinState.set(resetState);
+      return {
+        success: true,
+        message: supCheck.message,
+        remainingAttempts: DEFAULT_MAX_ATTEMPTS,
+        isLocked: false,
+        lockedRemainingSeconds: 0,
+        authorizedBy: authorizer && authorizer !== 'Administrador' ? authorizer : supCheck.supervisor.name,
+        nextState: resetState,
+        verificationDurationMs: durationMs,
+      };
+    }
+
+    const newFailed = activeState.failedAttempts + 1;
+    if (newFailed >= DEFAULT_MAX_ATTEMPTS) {
+      const nextLockoutCount = activeState.lockoutCount + 1;
+      const lockMs = nextLockoutCount === 1 ? FIRST_LOCKOUT_MS : SUBSEQUENT_LOCKOUT_MS;
+      const lockedState: PinAuthState = {
+        failedAttempts: 0,
+        lockedUntil: now + lockMs,
+        lockoutCount: nextLockoutCount,
+      };
+      this.pinState.set(lockedState);
+      const lockSeconds = Math.ceil(lockMs / 1000);
+      return {
+        success: false,
+        message: `Demasiados intentos incorrectos. Acceso bloqueado por ${lockSeconds} segundos.`,
+        remainingAttempts: 0,
+        isLocked: true,
+        lockedRemainingSeconds: lockSeconds,
+        nextState: lockedState,
+        verificationDurationMs: durationMs,
+      };
+    }
+
+    const remainingAttempts = DEFAULT_MAX_ATTEMPTS - newFailed;
+    const nextState: PinAuthState = {
+      failedAttempts: newFailed,
+      lockedUntil: null,
+      lockoutCount: activeState.lockoutCount,
+    };
+    this.pinState.set(nextState);
+    return {
+      success: false,
+      message: `${supCheck.message || 'PIN de supervisor incorrecto.'} Intentos restantes: ${remainingAttempts}.`,
+      remainingAttempts,
+      isLocked: false,
+      lockedRemainingSeconds: 0,
+      nextState,
+      verificationDurationMs: durationMs,
+    };
   }
 
   /** Verifica la integridad de la cadena criptográfica completa del Kardex. */
@@ -5217,8 +5421,20 @@ export class MockInventoryService implements OnDestroy {
     setupAdmins: AppUser[];
   }> {
     const status = await enc.getStatus();
-    if (status === 'unlocked') return { status: 'unlocked', message: null, setupAdmins: [] };
-    if (status === 'locked') {
+    const srv = findServerAdapter(this.storageAdapter);
+    const srvStatus = srv ? await srv.getServerCryptoStatus() : null;
+    if (status === 'unlocked') {
+      if (srvStatus?.mode === 'pin' && !srvStatus.unlocked) {
+        return {
+          status: 'locked',
+          message:
+            'La base de datos local en esta computadora está cifrada. Ingresa el PIN de un administrador para desbloquearla.',
+          setupAdmins: [],
+        };
+      }
+      return { status: 'unlocked', message: null, setupAdmins: [] };
+    }
+    if (status === 'locked' || (srvStatus?.mode === 'pin' && !srvStatus.unlocked)) {
       return {
         status: 'locked',
         message: 'Los datos de la tienda están cifrados en este equipo. Ingresa el PIN de un administrador para abrirlos.',
@@ -5317,20 +5533,55 @@ export class MockInventoryService implements OnDestroy {
   /** Desbloqueo al iniciar: deriva la llave con el PIN de administrador y carga los datos. */
   async unlockEncryptedStorage(pin: string): Promise<{ ok: boolean; message: string }> {
     const enc = findEncryptedLayer(this.storageAdapter);
-    if (!enc) return { ok: true, message: 'El almacenamiento actual no está cifrado.' };
+    const srv = findServerAdapter(this.storageAdapter);
+    if (!enc && !srv) return { ok: true, message: 'El almacenamiento actual no está cifrado.' };
     if (this.storageCryptoStatus() !== 'locked') {
       return { ok: false, message: 'No hay datos cifrados pendientes de desbloquear.' };
     }
     const throttle = this.checkStorageUnlockThrottle();
     if (!throttle.allowed) return { ok: false, message: throttle.message };
 
-    const res = await enc.unlock(pin);
-    if (!res.ok) {
-      return { ok: false, message: `${res.message} ${this.registerStorageUnlockFailure()}`.trim() };
+    const cleanPin = String(pin ?? '').trim();
+    const encStatus = enc ? await enc.getStatus() : 'unconfigured';
+    const srvStatus = srv ? await srv.getServerCryptoStatus() : null;
+
+    if (encStatus === 'locked' && enc) {
+      const res = await enc.unlock(cleanPin);
+      if (!res.ok) {
+        return { ok: false, message: `${res.message} ${this.registerStorageUnlockFailure()}`.trim() };
+      }
+      if (srv && srvStatus?.mode === 'pin' && !srvStatus.unlocked) {
+        const srvRes = await srv.unlockServerCrypto(cleanPin);
+        if (srvRes && !srvRes.ok) {
+          return {
+            ok: false,
+            message: `${srvRes.message || 'PIN de administrador incorrecto.'} ${this.registerStorageUnlockFailure()}`.trim(),
+          };
+        }
+      } else if (srv && srvStatus?.mode === 'local-key' && this.assertWritable()) {
+        await srv.configureServerCrypto(res.slotId || 'USR-ADMIN', cleanPin);
+      }
+    } else if (srv && srvStatus?.mode === 'pin' && !srvStatus.unlocked) {
+      const srvRes = await srv.unlockServerCrypto(cleanPin);
+      if (!srvRes || !srvRes.ok) {
+        return {
+          ok: false,
+          message: `${srvRes?.message || 'PIN de administrador incorrecto.'} ${this.registerStorageUnlockFailure()}`.trim(),
+        };
+      }
+      if (enc && encStatus === 'unconfigured') {
+        await enc.initialize(srvRes.slotId || 'USR-ADMIN', cleanPin);
+      }
+    } else if (enc) {
+      const res = await enc.unlock(cleanPin);
+      if (!res.ok) {
+        return { ok: false, message: `${res.message} ${this.registerStorageUnlockFailure()}`.trim() };
+      }
     }
+
     this.resetStorageUnlockThrottle();
     // Solo la ventana con permiso de escritura termina de cifrar datos heredados.
-    if (this.assertWritable()) {
+    if (enc && this.assertWritable()) {
       try {
         await enc.migratePlaintext();
       } catch (err) {
@@ -5380,6 +5631,13 @@ export class MockInventoryService implements OnDestroy {
         updatedAt: new Date().toISOString(),
       };
       await enc.initialize(admin.id, cleanPin, salt);
+      const srv = findServerAdapter(this.storageAdapter);
+      if (srv) {
+        const okSrv = await srv.configureServerCrypto(admin.id, cleanPin);
+        if (!okSrv) {
+          await srv.unlockServerCrypto(cleanPin);
+        }
+      }
       this.users.update((list) => list.map((u) => (u.id === admin.id ? updatedAdmin : u)));
       if (this.currentUser()?.id === admin.id) this.currentUser.set(updatedAdmin);
       this.storageCryptoStatus.set('unlocked');
@@ -5414,6 +5672,13 @@ export class MockInventoryService implements OnDestroy {
       }
       this.resetStorageUnlockThrottle();
       const report = await enc.initialize(matched.id, cleanPin, matched.salt);
+      const srv = findServerAdapter(this.storageAdapter);
+      if (srv) {
+        const okSrv = await srv.configureServerCrypto(matched.id, cleanPin);
+        if (!okSrv) {
+          await srv.unlockServerCrypto(cleanPin);
+        }
+      }
       this.storageCryptoStatus.set('unlocked');
       this.storageCryptoMessage.set(null);
       this.pendingSetupAdmins = [];
@@ -5443,6 +5708,7 @@ export class MockInventoryService implements OnDestroy {
     const enc = findEncryptedLayer(this.storageAdapter);
     if (!enc || !enc.isUnlocked()) return null;
     try {
+      const srv = findServerAdapter(this.storageAdapter);
       const admins = this.users().filter((u) => u.isActive && u.role === 'ADMINISTRADOR');
       let slots = await enc.listSlots();
       if (credential) {
@@ -5450,13 +5716,21 @@ export class MockInventoryService implements OnDestroy {
         const slot = slots.find((s) => s.slotId === credential.userId);
         if (admin && (!slot || slot.userPinSalt !== admin.salt)) {
           await enc.setSlot(admin.id, credential.pin, admin.salt);
+          if (srv) {
+            await srv.setServerCryptoSlot(admin.id, credential.pin);
+          }
           slots = await enc.listSlots();
         }
       }
       const adminIds = new Set(admins.map((u) => u.id));
       if (slots.some((s) => adminIds.has(s.slotId))) {
         for (const slot of slots) {
-          if (!adminIds.has(slot.slotId)) await enc.removeSlot(slot.slotId);
+          if (!adminIds.has(slot.slotId)) {
+            await enc.removeSlot(slot.slotId);
+            if (srv) {
+              await srv.removeServerCryptoSlot(slot.slotId);
+            }
+          }
         }
       }
       this.storageCryptoSlotCount.set((await enc.listSlots()).length);
@@ -5489,7 +5763,7 @@ export class MockInventoryService implements OnDestroy {
       let rawState: any;
       if (input.bakBytes) {
         const plain = await decryptBackupBytes(input.bakBytes, input.passphrase);
-        rawState = JSON.parse(new TextDecoder().decode(plain));
+        rawState = this.unwrapBackupState(JSON.parse(new TextDecoder().decode(plain)));
       } else if (input.serverFilename) {
         rawState = await this.backupAdapter.restoreBackup(input.passphrase, input.serverFilename);
       } else {
@@ -5575,6 +5849,10 @@ export class MockInventoryService implements OnDestroy {
 
     await enc.resetAll();
     await enc.initialize(updatedAdmin.id, cleanPin, salt);
+    const srv = findServerAdapter(this.storageAdapter);
+    if (srv) {
+      await srv.resetServerCryptoWithPin(updatedAdmin.id, cleanPin);
+    }
     this.resetStorageUnlockThrottle();
 
     this.storageSaver.cancel();
@@ -6251,6 +6529,26 @@ export class MockInventoryService implements OnDestroy {
         }
       }
     }
+    if (status === 'reconteo' && this.lanSyncChannel) {
+      const prod = this.products().find((p) => p.sku === sku);
+      if (prod) {
+        try {
+          this.lanSyncChannel.postMessage({
+            type: 'AUDIT_RECOUNT',
+            sku: prod.sku,
+            barcode: prod.barcode,
+            name: prod.name,
+            cls: prod.abcClass || 'B',
+            loc: prod.location || 'Pasillo General',
+            unit: formatMobileAuditUnit(prod.saleUnit),
+            allowDecimal: Boolean(prod.isBulk || prod.saleUnit === 'Kg' || prod.saleUnit === 'g' || prod.saleUnit === 'L'),
+            timestamp: new Date().toISOString(),
+          });
+        } catch {
+          // ignore
+        }
+      }
+    }
     if (this.pendingAuditCount() === 0) {
       this.morningAlerts.update((a) => a.filter((x) => x.kind !== 'auditoria'));
     }
@@ -6475,7 +6773,7 @@ export class MockInventoryService implements OnDestroy {
           adminPinAuthorized: isExceeding,
           overrideReason: reason?.trim(),
           amount: totalLoss,
-          description: `Merma rechazada FEFO: ${batch.quantity}x ${batch.productName} ($${totalLoss.toFixed(2)})`,
+          description: `Merma rechazada por caducidad: ${batch.quantity}x ${batch.productName} ($${totalLoss.toFixed(2)})`,
           previousHash,
         });
 
@@ -6505,7 +6803,7 @@ export class MockInventoryService implements OnDestroy {
           saleUnit: product ? product.saleUnit : 'Pieza',
           reason: 'Caducado sin devolución',
           unitCost,
-          registeredBy: `${this.activeUser()} (Módulo FEFO)`,
+          registeredBy: `${this.activeUser()} (Control de Caducidades)`,
           hasPhoto: false,
           reviewed: true,
         },
@@ -6968,7 +7266,7 @@ export class MockInventoryService implements OnDestroy {
       return {
         ok: false,
         requiresPin: true,
-        message: 'Se requiere el PIN de administrador o encargado para registrar el alta y el AJUSTE_INICIAL en el Kardex.',
+        message: 'Se requiere el PIN de administrador o encargado para registrar el producto y su inventario inicial.',
       };
     }
 
@@ -7133,7 +7431,7 @@ export class MockInventoryService implements OnDestroy {
 
       return {
         ok: true,
-        message: `Producto "${newProduct.name}" (${newProduct.sku}) creado con movimiento AJUSTE_INICIAL en Kardex.`,
+        message: `Producto "${newProduct.name}" (${newProduct.sku}) creado correctamente.`,
         product: newProduct,
       };
     });
@@ -7924,6 +8222,309 @@ export class MockInventoryService implements OnDestroy {
       ok: true,
       message: `Producto "${prod.name}" rechazado.`,
     };
+  }
+
+  /**
+   * Importación masiva de catálogo desde Excel (.xlsx) o CSV.
+   * Ejecuta todas las altas y actualizaciones válidas en una sola operación atómica,
+   * encadenando movimientos AJUSTE_INICIAL en el Kardex para los productos nuevos y registrando
+   * un único evento en la bitácora de seguridad.
+   */
+  async importCatalogProductsBatch(
+    rows: readonly (readonly string[])[],
+    options: {
+      duplicateMode: CatalogImportDuplicateMode;
+      pin: string;
+      fileName?: string;
+    },
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    createdCount: number;
+    updatedCount: number;
+    skippedCount: number;
+    errorCount: number;
+  }> {
+    if (!this.assertWritable()) {
+      return {
+        ok: false,
+        message: this.readOnlyWarning() || 'Esta app ya está abierta en otra ventana',
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        errorCount: 0,
+      };
+    }
+
+    const currentRole = this.currentUser()?.role || 'ADMINISTRADOR';
+    if (currentRole !== 'ADMINISTRADOR' && currentRole !== 'ENCARGADO') {
+      return {
+        ok: false,
+        message: 'Solo un Encargado o Administrador puede importar productos al catálogo.',
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        errorCount: 0,
+      };
+    }
+
+    const allowPriceUpdate = currentRole === 'ADMINISTRADOR';
+    const duplicateMode = options?.duplicateMode ?? 'SKIP';
+    const preview = previewCatalogImport(rows, this.products(), {
+      duplicateMode,
+      allowPriceUpdate,
+    });
+
+    if (preview.headerError) {
+      return {
+        ok: false,
+        message: preview.headerError,
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        errorCount: 0,
+      };
+    }
+
+    if (preview.toCreateCount + preview.toUpdateCount === 0) {
+      const detail =
+        preview.errorCount > 0
+          ? `Revisa las ${preview.errorCount} fila(s) con error antes de continuar.`
+          : 'No hay productos nuevos ni por actualizar en el archivo.';
+      return {
+        ok: false,
+        message: detail,
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: preview.skippedCount,
+        errorCount: preview.errorCount,
+      };
+    }
+
+    const pin = String(options?.pin ?? '').trim();
+    if (!pin) {
+      return {
+        ok: false,
+        message: 'Ingresa el PIN de Encargado o Administrador para autorizar la importación.',
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: preview.skippedCount,
+        errorCount: preview.errorCount,
+      };
+    }
+
+    const pinResult = await this.verifyAdminPin(pin);
+    if (!pinResult.success) {
+      return {
+        ok: false,
+        message: pinResult.message || 'PIN de autorización incorrecto.',
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: preview.skippedCount,
+        errorCount: preview.errorCount,
+      };
+    }
+
+    const authorizer = pinResult.authorizedBy || this.activeUser();
+
+    return this.enqueueKardexOperation(async () => {
+      const currentCatalog = [...this.products()];
+      const takenSkus = new Set(currentCatalog.map((p) => p.sku.trim().toUpperCase()));
+      const takenBarcodes = currentCatalog.flatMap((p) => getAllProductBarcodes(p));
+
+      const createdProducts: Product[] = [];
+      let updatedCatalog = [...currentCatalog];
+      let nextKardex = [...this.kardex()];
+      let previousHash = nextKardex[0]?.entryHash || 'GENESIS';
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      for (const row of preview.rows) {
+        if (row.action === 'CREATE') {
+          const n = row.normalized;
+          let finalSku =
+            n.sku && !takenSkus.has(n.sku)
+              ? n.sku
+              : generateInternalSku(n.name, n.category, takenSkus);
+          while (takenSkus.has(finalSku.toUpperCase())) {
+            finalSku = generateInternalSku(`${n.name} ${createdCount + 1}`, n.category, takenSkus);
+          }
+          takenSkus.add(finalSku.toUpperCase());
+
+          const codes = [...n.barcodes];
+          let hasInternalBarcode = n.useInternalBarcode || codes.length === 0;
+          if (codes.length === 0) {
+            const internal = generateInternalBarcode([...takenBarcodes]);
+            codes.push(internal);
+            hasInternalBarcode = true;
+          } else {
+            const dupCheck = validateBarcodeUniqueness(codes, [...createdProducts, ...updatedCatalog]);
+            if (!dupCheck.valid) continue;
+          }
+          takenBarcodes.push(...codes);
+
+          const unitCost = fromCents(toCents(n.cost));
+          const salePrice = fromCents(toCents(n.salePrice));
+          const conversionFactor = resolveConversionFactor(
+            n.unitsPerPurchase,
+            n.purchaseUnit,
+            n.saleUnit,
+          );
+          const targetMargin = salePrice > 0 ? Math.max(5, Math.round(marginPct(unitCost, salePrice))) : 20;
+
+          const newProduct: Product = {
+            sku: finalSku,
+            barcode: codes[0],
+            barcodes: codes,
+            hasInternalBarcode: hasInternalBarcode || codes.some((c) => c.startsWith('200')),
+            name: n.name,
+            category: n.category,
+            location: n.location,
+            emoji: '',
+            purchaseUnit: n.purchaseUnit as PurchaseUnit,
+            unitsPerPurchase: conversionFactor,
+            saleUnit: n.saleUnit as SaleUnit,
+            historicCost: unitCost,
+            unitCost,
+            purchaseCost: unitCost,
+            newCost: unitCost,
+            weightedAvgCost: unitCost,
+            lastPurchaseCost: unitCost,
+            salePrice,
+            ivaRate: n.ivaRate,
+            iepsRate: n.iepsRate,
+            priceTiers: normalizePriceTiers(salePrice),
+            targetMargin,
+            monthlySalesUnits: 30,
+            expiry: n.expiry,
+            fefoExpiryDate: n.expiry,
+            acceptsPhysicalExchange: false,
+            stock: n.initialStock,
+            minStock: n.minStock,
+            abcClass: 'B',
+            dailySalesRate: 1,
+            supplierLeadTimeDays: 3,
+            safetyStock: 2,
+            rop: n.rop > 0 ? n.rop : n.minStock,
+            isBulk: n.isBulk,
+            naturalShrinkTolerancePct: n.naturalShrinkTolerancePct,
+            isActive: true,
+            approvalStatus: 'APROBADO',
+            supplier: n.supplier,
+          };
+
+          const entry = createKardexEntry(
+            {
+              type: 'AJUSTE_INICIAL',
+              producto: {
+                sku: newProduct.sku,
+                name: newProduct.name,
+                saleUnit: newProduct.saleUnit,
+              },
+              cantidad: n.initialStock,
+              saldoAnterior: 0,
+              saldoResultante: n.initialStock,
+              usuario: authorizer,
+              referencia: `Importación masiva (${newProduct.sku})`,
+              amount: multiplyMoney(unitCost, n.initialStock),
+              description: `Alta por importación masiva de ${newProduct.name}: ${n.initialStock} ${newProduct.saleUnit} (Autorizó: ${authorizer})`,
+            },
+            previousHash,
+          );
+          previousHash = entry.entryHash;
+          nextKardex = [entry, ...nextKardex];
+          createdProducts.push(newProduct);
+          createdCount += 1;
+        } else if (row.action === 'UPDATE' && row.matchedExistingSku) {
+          const targetIdx = updatedCatalog.findIndex((p) => p.sku === row.matchedExistingSku);
+          if (targetIdx < 0) continue;
+          const existing = updatedCatalog[targetIdx];
+          const n = row.normalized;
+
+          const candidateCodes =
+            n.barcodes.length > 0 ? Array.from(new Set([...n.barcodes, ...getAllProductBarcodes(existing)])) : getAllProductBarcodes(existing);
+          const dupCheck = validateBarcodeUniqueness(
+            candidateCodes,
+            [...createdProducts, ...updatedCatalog],
+            existing.sku,
+          );
+          const resolvedBarcodes = dupCheck.valid ? dupCheck.normalizedBarcodes : getAllProductBarcodes(existing);
+
+          const nextCost = allowPriceUpdate && n.cost >= 0 ? fromCents(toCents(n.cost)) : existing.historicCost;
+          const nextPrice = allowPriceUpdate && n.salePrice > 0 ? fromCents(toCents(n.salePrice)) : existing.salePrice;
+
+          updatedCatalog[targetIdx] = {
+            ...existing,
+            name: n.name,
+            category: n.category,
+            location: n.location,
+            supplier: n.supplier,
+            saleUnit: n.saleUnit as SaleUnit,
+            purchaseUnit: n.purchaseUnit as PurchaseUnit,
+            unitsPerPurchase: resolveConversionFactor(n.unitsPerPurchase, n.purchaseUnit, n.saleUnit),
+            barcode: resolvedBarcodes[0] || existing.barcode,
+            barcodes: resolvedBarcodes,
+            historicCost: nextCost,
+            unitCost: nextCost,
+            purchaseCost: nextCost,
+            newCost: nextCost,
+            weightedAvgCost: nextCost,
+            lastPurchaseCost: nextCost,
+            salePrice: nextPrice,
+            priceTiers: normalizePriceTiers(nextPrice, existing.priceTiers),
+            targetMargin: nextPrice > 0 ? Math.max(5, Math.round(marginPct(nextCost, nextPrice))) : existing.targetMargin,
+            ivaRate: n.ivaRate,
+            iepsRate: n.iepsRate,
+            minStock: n.minStock,
+            rop: n.rop > 0 ? n.rop : n.minStock,
+            expiry: n.expiry,
+            fefoExpiryDate: n.expiry,
+            isBulk: n.isBulk,
+            naturalShrinkTolerancePct: n.naturalShrinkTolerancePct,
+          };
+          updatedCount += 1;
+        }
+      }
+
+      if (createdCount === 0 && updatedCount === 0) {
+        return {
+          ok: false,
+          message: 'No se pudo aplicar ninguna fila del archivo.',
+          createdCount: 0,
+          updatedCount: 0,
+          skippedCount: preview.skippedCount,
+          errorCount: preview.errorCount,
+        };
+      }
+
+      this.products.set([...createdProducts, ...updatedCatalog]);
+      this.kardex.set(nextKardex);
+
+      const fileLabel = options?.fileName ? ` desde "${options.fileName}"` : '';
+      this.appendSecurityAuditEntry(
+        'CATALOG_BULK_IMPORTED',
+        `Importación masiva${fileLabel}: ${createdCount} producto(s) creado(s), ${updatedCount} actualizado(s), ${preview.skippedCount} omitido(s). Autorizó: ${authorizer}.`,
+        {
+          fileName: options?.fileName || '',
+          duplicateMode,
+          createdCount,
+          updatedCount,
+          skippedCount: preview.skippedCount,
+          errorCount: preview.errorCount,
+        },
+      );
+
+      await this.flushSave();
+
+      return {
+        ok: true,
+        message: `Importación completada: ${createdCount} nuevo(s)${updatedCount > 0 ? `, ${updatedCount} actualizado(s)` : ''}${preview.skippedCount > 0 ? `, ${preview.skippedCount} omitido(s)` : ''}.`,
+        createdCount,
+        updatedCount,
+        skippedCount: preview.skippedCount,
+        errorCount: preview.errorCount,
+      };
+    });
   }
 
   // =====================================================================================

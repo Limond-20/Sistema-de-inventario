@@ -25,7 +25,8 @@ export type SecurityAuditAction =
   | 'CUSTOMER_CONSENT_RECORDED'
   | 'CUSTOMER_DATA_EXPORTED'
   | 'CUSTOMER_ANONYMIZED'
-  | 'CUSTOMER_OPPOSITION_RECORDED';
+  | 'CUSTOMER_OPPOSITION_RECORDED'
+  | 'CATALOG_BULK_IMPORTED';
 
 export interface SecurityAuditEntry {
   id: string;

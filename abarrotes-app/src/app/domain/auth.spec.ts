@@ -6,6 +6,7 @@ import {
   checkUserDuplicate,
   createAppUser,
   hasPermission,
+  isTrivialPin,
   normalizeUserName,
   updateUserPin,
   validateAdminSuicideProtection,
@@ -70,7 +71,10 @@ test('Usuarios y Roles (Bloque G): Matriz de permisos estricta por rol', () => {
 });
 
 test('Usuarios (Bloque G): Alta de usuario con credenciales PBKDF2 y validación de políticas de PIN', async () => {
-  // Rechazo de PIN trivial
+  // Rechazo de PIN trivial (secuencias y pares repetidos)
+  assert.equal(isTrivialPin('121212'), true);
+  assert.equal(isTrivialPin('484848'), true);
+  assert.equal(isTrivialPin('984312'), false);
   const trivialRes = await createAppUser({
     name: 'Cajero Juan',
     role: 'CAJERO',
@@ -79,6 +83,15 @@ test('Usuarios (Bloque G): Alta de usuario con credenciales PBKDF2 y validación
   });
   assert.equal(trivialRes.ok, false);
   assert.match(trivialRes.message, /trivial/i);
+
+  const pairRes = await createAppUser({
+    name: 'Cajero Par',
+    role: 'CAJERO',
+    pin: '121212',
+    iterations: 1000,
+  });
+  assert.equal(pairRes.ok, false);
+  assert.match(pairRes.message, /trivial/i);
 
   // Rechazo de PIN corto
   const shortRes = await createAppUser({

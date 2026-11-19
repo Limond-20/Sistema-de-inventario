@@ -42,7 +42,7 @@ from .backup import (
 )
 from .netinfo import is_loopback, lan_ips
 from .pairing import PairingStore
-from .state_store import KardexIntegrityError, SQLiteStateStore, StateStoreError
+from .state_store import DatabaseLockedError, KardexIntegrityError, SQLiteStateStore, StateStoreError
 from .usb import UsbBackupCopier
 
 MAX_MESSAGE_BYTES = 8 * 1024 * 1024
@@ -300,10 +300,90 @@ def create_app(
             raise HTTPException(status_code=400, detail="Se requiere el campo 'value'.")
         return _validate_state_key(body.get("key")), body["value"]
 
+    @app.get("/api/estado/cifrado", dependencies=[Depends(require_local)])
+    async def get_state_crypto_status() -> dict:
+        return st.state_store.crypto_status()
+
+    @app.post("/api/estado/cifrado/configurar", dependencies=[Depends(require_local)])
+    async def configure_state_crypto(request: Request) -> dict:
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Cuerpo JSON inválido.") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Se requiere slotId y pin.")
+        slot_id = str(body.get("slotId") or "").strip()
+        pin = str(body.get("pin") or "").strip()
+        if not slot_id or not pin:
+            raise HTTPException(status_code=400, detail="Se requiere slotId y pin.")
+        if st.state_store.crypto_status().get("mode") == "pin":
+            raise HTTPException(status_code=409, detail="El cifrado por PIN ya está configurado en SQLite.")
+        try:
+            return st.state_store.configure_pin_encryption(slot_id, pin)
+        except StateStoreError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/estado/cifrado/desbloquear", dependencies=[Depends(require_local)])
+    async def unlock_state_crypto(request: Request) -> dict:
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Cuerpo JSON inválido.") from exc
+        pin = str((body or {}).get("pin") or "").strip() if isinstance(body, dict) else ""
+        ok, slot_id = st.state_store.unlock_with_pin(pin)
+        if not ok:
+            raise HTTPException(status_code=403, detail="PIN de administrador incorrecto.")
+        return {"ok": True, "slotId": slot_id, **st.state_store.crypto_status()}
+
+    @app.post("/api/estado/cifrado/ranura", dependencies=[Depends(require_local)])
+    async def set_state_crypto_slot(request: Request) -> dict:
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Cuerpo JSON inválido.") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Se requiere slotId y pin.")
+        slot_id = str(body.get("slotId") or "").strip()
+        pin = str(body.get("pin") or "").strip()
+        try:
+            return st.state_store.set_pin_slot(slot_id, pin)
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
+        except StateStoreError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/estado/cifrado/ranura/{slot_id}", dependencies=[Depends(require_local)])
+    async def remove_state_crypto_slot(slot_id: str) -> dict:
+        try:
+            removed = st.state_store.remove_pin_slot(slot_id)
+            return {"ok": True, "removed": removed}
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
+        except StateStoreError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/estado/cifrado/reiniciar", dependencies=[Depends(require_local)])
+    async def reset_state_crypto(request: Request) -> dict:
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Cuerpo JSON inválido.") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Se requiere slotId y pin.")
+        slot_id = str(body.get("slotId") or "").strip()
+        pin = str(body.get("pin") or "").strip()
+        try:
+            return st.state_store.reset_with_new_pin(slot_id, pin)
+        except StateStoreError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/estado", dependencies=[Depends(require_local)])
     async def load_state(key: str) -> dict:
         state_key = _validate_state_key(key)
-        value, version = st.state_store.load_with_version(state_key)
+        try:
+            value, version = st.state_store.load_with_version(state_key)
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
         return {"found": version > 0, "value": value, "version": version}
 
     @app.put("/api/estado", dependencies=[Depends(require_local)])
@@ -311,6 +391,8 @@ def create_app(
         state_key, value = await _read_state_payload(request)
         try:
             version = st.state_store.save(state_key, value)
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
         except KardexIntegrityError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except StateStoreError as exc:
@@ -323,6 +405,8 @@ def create_app(
         state_key, value = await _read_state_payload(request)
         try:
             migrated, current_value, version = st.state_store.migrate(state_key, value)
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
         except KardexIntegrityError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except StateStoreError as exc:
@@ -338,13 +422,19 @@ def create_app(
     @app.delete("/api/estado", dependencies=[Depends(require_local)])
     async def delete_state(key: str) -> dict:
         state_key = _validate_state_key(key)
-        st.state_store.delete(state_key)
+        try:
+            st.state_store.delete(state_key)
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
         return {"ok": True}
 
     @app.delete("/api/estado/todo", dependencies=[Depends(require_local)])
     async def clear_state() -> dict:
         # El libro Kardex no se elimina: la tabla es append-only incluso al limpiar snapshots.
-        st.state_store.clear()
+        try:
+            st.state_store.clear()
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
         return {"ok": True}
 
     @app.get("/api/status", dependencies=[Depends(require_local)])
@@ -512,6 +602,8 @@ def create_app(
         try:
             database_copy = st.state_store.backup_bytes()
             entry = st.backups.create(payload, passphrase, database_bytes=database_copy)
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
         except BackupPassphraseError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except BackupError as exc:
@@ -529,31 +621,37 @@ def create_app(
         request: Request,
         nombre: str | None = None,
         name: str | None = None,
+        solo_leer: bool = False,
     ) -> Response:
         passphrase = _extract_backup_passphrase(request)
         if not passphrase or len(passphrase) < 8:
             raise HTTPException(status_code=403, detail="No autorizado")
 
         target_name = nombre or name
-        if not target_name:
-            try:
-                raw_body = await request.body()
-                if raw_body and raw_body.strip():
-                    body_json = json.loads(raw_body)
-                    if isinstance(body_json, dict):
+        preview_only = bool(solo_leer)
+        try:
+            raw_body = await request.body()
+            if raw_body and raw_body.strip():
+                body_json = json.loads(raw_body)
+                if isinstance(body_json, dict):
+                    if not target_name:
                         target_name = (
                             body_json.get("nombre")
                             or body_json.get("name")
                             or body_json.get("filename")
                         )
-            except ValueError:
-                pass
+                    if body_json.get("previewOnly") or body_json.get("soloLeer"):
+                        preview_only = True
+        except ValueError:
+            pass
 
         try:
             bundle = st.backups.restore_bundle(passphrase, target_name)
             restored = bundle["state"]
-            if bundle["database"] is not None:
+            if bundle["database"] is not None and not preview_only and not st.state_store.is_locked():
                 st.state_store.restore_bytes(bundle["database"])
+        except DatabaseLockedError as exc:
+            raise HTTPException(status_code=423, detail=str(exc)) from exc
         except (KardexIntegrityError, StateStoreError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except BackupInvalidFilenameError as exc:

@@ -16,6 +16,14 @@ import {
   getAllProductBarcodes,
   normalizePriceTiers,
 } from '../../domain/catalog';
+import {
+  generateCatalogImportCsvTemplate,
+  parseCsvText,
+  previewCatalogImport,
+  type CatalogImportDuplicateMode,
+  type CatalogImportPreviewResult,
+} from '../../domain/catalog-import';
+import { parseXlsxBuffer } from '../../domain/xlsx-reader';
 
 const TODAY = new Date('2026-10-22T12:00:00');
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -60,6 +68,27 @@ export class CatalogViewComponent {
   protected readonly pendingDeactivateProduct = signal<(Product & { hasMovements?: boolean }) | null>(null);
   protected readonly deactivatePin = signal<string>('');
   protected readonly deactivateError = signal<string | null>(null);
+
+  // Modal de Importación Masiva (Excel / CSV)
+  protected readonly importModalOpen = signal<boolean>(false);
+  protected readonly importFileName = signal<string>('');
+  protected readonly importRawRows = signal<string[][]>([]);
+  protected readonly importDuplicateMode = signal<CatalogImportDuplicateMode>('SKIP');
+  protected readonly importParseError = signal<string | null>(null);
+  protected readonly importPin = signal<string>('');
+  protected readonly importFeedback = signal<{ ok: boolean; message: string } | null>(null);
+  protected readonly importBusy = signal<boolean>(false);
+  protected readonly importIsAdmin = computed(
+    () => (this.inv.currentUser()?.role || 'ADMINISTRADOR') === 'ADMINISTRADOR',
+  );
+  protected readonly importPreview = computed<CatalogImportPreviewResult | null>(() => {
+    const rows = this.importRawRows();
+    if (!rows.length) return null;
+    return previewCatalogImport(rows, this.inv.products(), {
+      duplicateMode: this.importDuplicateMode(),
+      allowPriceUpdate: this.importIsAdmin(),
+    });
+  });
 
   protected readonly pendingApprovalList = computed(() =>
     this.inv.products().filter((p) => p.approvalStatus === 'PENDIENTE_APROBACION')
@@ -221,6 +250,7 @@ export class CatalogViewComponent {
   @HostListener('document:keydown.escape')
   protected onEscapeKey(): void {
     if (this.pendingDeactivateProduct()) { this.closeDeactivateModal(); return; }
+    if (this.importModalOpen()) { this.closeBulkImportModal(); return; }
     if (this.approvalModalOpen()) { this.closeApprovalModal(); return; }
     if (this.bulkSheetModalOpen()) { this.closeBulkSheetModal(); return; }
     if (this.productModalOpen()) { this.closeProductModal(); }
@@ -582,6 +612,102 @@ export class CatalogViewComponent {
     if (!this.requireCatalogManagePermission()) return;
     const res = await this.inv.assignInternalBarcodeToProduct(p.sku);
     this.catalogBanner.set({ ok: res.ok, message: res.message });
+  }
+
+  // ---------- Importación Masiva Excel / CSV ----------
+
+  protected openBulkImportModal(): void {
+    if (!this.requireCatalogManagePermission()) return;
+    this.importFileName.set('');
+    this.importRawRows.set([]);
+    this.importDuplicateMode.set('SKIP');
+    this.importParseError.set(null);
+    this.importPin.set('');
+    this.importFeedback.set(null);
+    this.importBusy.set(false);
+    this.importModalOpen.set(true);
+  }
+
+  protected closeBulkImportModal(): void {
+    this.importModalOpen.set(false);
+  }
+
+  protected downloadImportTemplate(): void {
+    const csv = generateCatalogImportCsvTemplate();
+    if (typeof document === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') {
+      return;
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla-catalogo.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  protected async onImportFileSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (input) input.value = '';
+
+    this.importParseError.set(null);
+    this.importFeedback.set(null);
+    this.importFileName.set(file.name);
+
+    if (file.size > 8 * 1024 * 1024) {
+      this.importRawRows.set([]);
+      this.importParseError.set('El archivo supera el límite permitido de 8 MB.');
+      return;
+    }
+
+    const lower = file.name.toLowerCase();
+    try {
+      if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+        const buffer = await file.arrayBuffer();
+        const rows = await parseXlsxBuffer(new Uint8Array(buffer));
+        this.importRawRows.set(rows);
+      } else {
+        const text = await file.text();
+        const rows = parseCsvText(text);
+        this.importRawRows.set(rows);
+      }
+    } catch (err: any) {
+      this.importRawRows.set([]);
+      this.importParseError.set(err?.message || 'No se pudo leer el archivo seleccionado.');
+    }
+  }
+
+  protected async confirmBulkImport(): Promise<void> {
+    if (!this.requireCatalogManagePermission()) return;
+    const rows = this.importRawRows();
+    if (!rows.length) {
+      this.importFeedback.set({ ok: false, message: 'Selecciona primero un archivo Excel (.xlsx) o CSV.' });
+      return;
+    }
+    const pin = this.importPin().trim();
+    if (!pin) {
+      this.importFeedback.set({ ok: false, message: 'Ingresa el PIN de Encargado o Administrador.' });
+      return;
+    }
+    this.importBusy.set(true);
+    this.importFeedback.set(null);
+    try {
+      const res = await this.inv.importCatalogProductsBatch(rows, {
+        duplicateMode: this.importDuplicateMode(),
+        pin,
+        fileName: this.importFileName(),
+      });
+      if (!res.ok) {
+        this.importFeedback.set({ ok: false, message: res.message });
+        return;
+      }
+      this.catalogBanner.set({ ok: true, message: res.message });
+      this.closeBulkImportModal();
+    } finally {
+      this.importBusy.set(false);
+    }
   }
 
   // ---------- Aprobación de Productos Móviles ----------

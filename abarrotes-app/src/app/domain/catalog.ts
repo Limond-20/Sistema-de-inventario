@@ -1506,3 +1506,171 @@ export function validateMobileProductCreateRequest(payload: any): {
     },
   };
 }
+
+// =====================================================================
+//  SINCRONIZACIÓN DE CATÁLOGO PC -> MÓVIL (SIN STOCK PARA AUDITORÍA CIEGA)
+// =====================================================================
+
+export interface MobileCatalogProduct {
+  sku: string;
+  barcode: string;
+  barcodes: string[];
+  name: string;
+  category: string;
+  location: string;
+  saleUnit: CatalogSaleUnit | string;
+  salePrice: number;
+  historicCost: number;
+  targetMargin: number;
+  abcClass: 'A' | 'B' | 'C';
+  isBulk: boolean;
+  isActive: boolean;
+  approvalStatus: 'APROBADO' | 'PENDIENTE_APROBACION' | 'RECHAZADO';
+}
+
+export interface MobileAuditMissionItem {
+  sku: string;
+  barcode: string;
+  name: string;
+  cls: 'A' | 'B' | 'C';
+  loc: string;
+  unit: string;
+  allowDecimal: boolean;
+}
+
+export interface MobileCatalogSnapshot {
+  type: 'CATALOG_SNAPSHOT';
+  version: number;
+  storeName: string;
+  products: MobileCatalogProduct[];
+  auditMission: MobileAuditMissionItem[];
+  timestamp: string;
+}
+
+export function formatMobileAuditUnit(saleUnit?: string): string {
+  switch (saleUnit) {
+    case 'Kg':
+      return 'kg';
+    case 'g':
+      return 'g';
+    case 'L':
+      return 'L';
+    case 'Lata':
+      return 'latas';
+    case 'Paquete':
+      return 'paq';
+    default:
+      return 'pzas';
+  }
+}
+
+export interface MobileCatalogSourceProduct {
+  sku?: string;
+  barcode?: string;
+  barcodes?: readonly string[];
+  name?: string;
+  category?: string;
+  location?: string;
+  saleUnit?: string;
+  salePrice?: number;
+  historicCost?: number;
+  unitCost?: number;
+  targetMargin?: number;
+  abcClass?: string;
+  isBulk?: boolean;
+  isActive?: boolean;
+  approvalStatus?: string;
+}
+
+/**
+ * Construye una instantánea ligera del catálogo y la misión de auditoría ciega para el celular.
+ * Regla de integridad: NUNCA incluye existencias (`stock`), mínimos (`minStock`), ni punto de reorden (`rop`).
+ */
+export function buildMobileCatalogSnapshot(
+  products: readonly MobileCatalogSourceProduct[],
+  storeName = 'Mi Tiendita',
+  version = 1,
+  nowIso: string = new Date().toISOString()
+): MobileCatalogSnapshot {
+  const safeStoreName = String(storeName || 'Mi Tiendita').trim() || 'Mi Tiendita';
+  const safeVersion = Math.max(0, Math.floor(Number(version) || 0));
+
+  const projected: MobileCatalogProduct[] = [];
+  for (const p of products || []) {
+    if (!p || !p.sku) continue;
+    const barcodes = getAllProductBarcodes(p);
+    const primaryBarcode = String(p.barcode || barcodes[0] || '').trim();
+    const saleUnit = (p.saleUnit || 'Pieza') as CatalogSaleUnit;
+    const rawAbc = p.abcClass;
+    const abcClass: 'A' | 'B' | 'C' = rawAbc === 'A' || rawAbc === 'C' ? rawAbc : 'B';
+    const rawApproval = p.approvalStatus;
+    const approvalStatus: 'APROBADO' | 'PENDIENTE_APROBACION' | 'RECHAZADO' =
+      rawApproval === 'PENDIENTE_APROBACION' || rawApproval === 'RECHAZADO' ? rawApproval : 'APROBADO';
+
+    projected.push({
+      sku: String(p.sku),
+      barcode: primaryBarcode,
+      barcodes,
+      name: String(p.name || ''),
+      category: String(p.category || 'Abarrotes'),
+      location: String(p.location || 'Pasillo General'),
+      saleUnit,
+      salePrice: fromCentsInt(toCentsInt(Number(p.salePrice) || 0)),
+      historicCost: fromCentsInt(toCentsInt(Number(p.historicCost ?? p.unitCost) || 0)),
+      targetMargin: typeof p.targetMargin === 'number' && Number.isFinite(p.targetMargin) ? p.targetMargin : 20,
+      abcClass,
+      isBulk: Boolean(p.isBulk || saleUnit === 'Kg' || saleUnit === 'g' || saleUnit === 'L'),
+      isActive: p.isActive !== false,
+      approvalStatus,
+    });
+  }
+
+  const eligible = projected.filter(
+    (p) => p.isActive && p.approvalStatus === 'APROBADO'
+  );
+  const classA = eligible.filter((p) => p.abcClass === 'A').slice(0, 10);
+  const classB = eligible.filter((p) => p.abcClass === 'B').slice(0, 4);
+  const classC = eligible.filter((p) => p.abcClass === 'C').slice(0, 1);
+
+  const selected: MobileCatalogProduct[] = [...classA, ...classB, ...classC];
+  const seenSkus = new Set(selected.map((p) => p.sku));
+  if (selected.length < 15) {
+    for (const candidate of eligible) {
+      if (seenSkus.has(candidate.sku)) continue;
+      selected.push(candidate);
+      seenSkus.add(candidate.sku);
+      if (selected.length >= 15) break;
+    }
+  }
+
+  const auditMission: MobileAuditMissionItem[] = selected.map((p) => ({
+    sku: p.sku,
+    barcode: p.barcode,
+    name: p.name,
+    cls: p.abcClass,
+    loc: p.location || 'Pasillo General',
+    unit: formatMobileAuditUnit(p.saleUnit),
+    allowDecimal: Boolean(p.isBulk || p.saleUnit === 'Kg' || p.saleUnit === 'g' || p.saleUnit === 'L'),
+  }));
+
+  return {
+    type: 'CATALOG_SNAPSHOT',
+    version: safeVersion,
+    storeName: safeStoreName,
+    products: projected,
+    auditMission,
+    timestamp: nowIso,
+  };
+}
+
+/**
+ * Huella determinista del snapshot móvil (excluyendo versión y timestamp) para evitar
+ * reenvíos redundantes por WebSocket cuando solo cambia el `stock` tras una venta.
+ */
+export function computeMobileCatalogFingerprint(snapshot: MobileCatalogSnapshot): string {
+  return JSON.stringify({
+    storeName: snapshot.storeName,
+    products: snapshot.products,
+    auditMission: snapshot.auditMission,
+  });
+}

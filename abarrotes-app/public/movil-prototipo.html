@@ -152,7 +152,7 @@
       <div class="flex items-center gap-3">
         <span class="flex items-center gap-2 text-xs font-semibold text-brand-100">
           <span class="h-2 w-2 animate-pulse rounded-full bg-ok" id="lan-status-dot"></span>
-          <span id="lan-status-text">Modo local (LAN)</span>
+          <span id="lan-status-text">Sin conexión con PC</span>
         </span>
         <button type="button" onclick="toggleBeepVibro()" id="beep-vibro-toggle-btn"
           class="touch-btn grid h-9 w-9 place-items-center rounded-lg border border-white/25 text-white"
@@ -176,6 +176,7 @@
         <div class="mb-1">
           <h1 class="text-2xl font-bold text-slate-900">Terminal de Mostrador y Pasillo</h1>
           <p class="mt-0.5 text-sm text-slate-600">Selecciona una operación vinculada a la PC de caja</p>
+          <span id="mobile-catalog-sync-pill" class="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-slate-200/80 px-2.5 py-0.5 text-xs font-medium text-slate-700">Catálogo local</span>
         </div>
 
         <button type="button" onclick="goTo('screen-pos')" class="module-card touch-btn">
@@ -183,14 +184,14 @@
             <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
               <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8"/><path d="M12 8v8"/><path d="M17 8v8"/></svg>
             </span>
-            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Escáner EAN-13</span></span>
+            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Escáner</span></span>
           </div>
           <div class="w-full">
             <h2 class="text-xl font-bold leading-tight text-slate-900">Lector de Mostrador (POS)</h2>
             <p class="mt-1 text-sm text-slate-600">Escáner láser por cámara continua o foto para agregar artículos al ticket activo de la PC</p>
           </div>
           <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-            <span>Sincronización LAN en vivo</span>
+            <span>Conectado en vivo con la PC</span>
             <span class="inline-flex items-center gap-1 font-semibold text-emerald-700">Entrar <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
           </div>
         </button>
@@ -200,10 +201,10 @@
             <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-sky-100 text-sky-700">
               <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
             </span>
-            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">Remisión / OCR</span></span>
+            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">Foto de ticket</span></span>
           </div>
           <div class="w-full">
-            <h2 class="text-xl font-bold leading-tight text-slate-900">Recepción y Notas (OCR)</h2>
+            <h2 class="text-xl font-bold leading-tight text-slate-900">Recepción y Notas</h2>
             <p class="mt-1 text-sm text-slate-600">Captura facturas de proveedores para blindar márgenes y detectar alzas de costo</p>
           </div>
           <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
@@ -217,14 +218,14 @@
             <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
               <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6v4H9z"/><path d="M15 4h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1"/><path d="M9 14l2 2 4-4"/></svg>
             </span>
-            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Conteo físico ciego</span><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">15 Productos</span></span>
+            <span class="flex flex-wrap items-center justify-end gap-1.5"><span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Conteo físico ciego</span><span id="audit-card-count-badge" class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">15 Productos</span></span>
           </div>
           <div class="w-full">
             <h2 class="text-xl font-bold leading-tight text-slate-900">Auditoría Ciega de Pasillo</h2>
             <p class="mt-1 text-sm text-slate-600">Conteo físico sin sesgos ni stock visible. Teclado gigante en pantalla</p>
           </div>
           <div class="flex w-full items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-            <span>10 Clase A · 4 Clase B · 1 Clase C</span>
+            <span id="audit-card-abc-summary">10 Clase A · 4 Clase B · 1 Clase C</span>
             <span class="inline-flex items-center gap-1 font-semibold text-amber-700">Entrar <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
           </div>
         </button>
@@ -256,7 +257,7 @@
 
         <div class="flex items-center justify-between pb-1 border-b border-slate-200">
           <div>
-            <h1 class="text-lg font-black text-slate-900">Lector EAN-13 (Mostrador)</h1>
+            <h1 class="text-lg font-black text-slate-900">Lector de Códigos (Mostrador)</h1>
             <p class="text-[11px] text-slate-500 font-medium">Escanea códigos de barras para enviarlos al ticket activo en PC</p>
           </div>
         </div>
@@ -315,7 +316,7 @@
           <div class="flex items-start justify-between gap-2">
             <div>
               <span class="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">Código no registrado en catálogo</span>
-              <p id="pos-unknown-code-label" class="text-xs font-mono font-bold text-slate-900">EAN: ---</p>
+              <p id="pos-unknown-code-label" class="text-xs font-mono font-bold text-slate-900">Código: ---</p>
             </div>
             <button type="button" id="btn-show-create-product-form" onclick="toggleMobileCreateProductForm(true)"
               class="h-10 px-3 rounded-xl bg-brand-600 text-white text-xs font-bold touch-btn shrink-0">
@@ -398,7 +399,7 @@
             </button>
             <button type="button" onclick="simulateBarcode('7509998887776')"
               class="h-11 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-left flex items-center justify-between text-xs font-bold text-amber-900 touch-btn">
-              <span class="truncate">Código Nuevo (F1)</span>
+              <span class="truncate">Producto Nuevo</span>
               <span class="font-mono text-amber-700 font-black shrink-0 ml-1">+Alta</span>
             </button>
           </div>
@@ -445,7 +446,7 @@
               Leche Lala Entera 1L
             </h2>
             <div class="flex items-center justify-center gap-2 text-xs font-mono text-slate-500">
-              <span id="audit-item-sku">SKU: LAC-LAL-1L</span>
+              <span id="audit-item-sku">Clave: LAC-LAL-1L</span>
               <span>·</span>
               <span id="audit-item-barcode">7501020512111</span>
             </div>
@@ -493,7 +494,7 @@
         <div id="audit-summary-view" class="hidden flex-col gap-3">
           <div class="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-center">
             <span class="text-emerald-900 font-black text-sm uppercase block">¡Conteo Finalizado!</span>
-            <p class="text-xs text-emerald-800 mt-1">
+            <p id="audit-summary-desc" class="text-xs text-emerald-800 mt-1">
               Se completaron los 15 productos de la muestra ciega. Revisa o toca cualquiera para corregir antes de mandar a la PC.
             </p>
           </div>
@@ -519,7 +520,7 @@
 
         <div class="flex items-center justify-between pb-1 border-b border-slate-200">
           <div>
-            <h1 class="text-lg font-black text-slate-900">Captura OCR de Facturas</h1>
+            <h1 class="text-lg font-black text-slate-900">Foto de Notas y Facturas</h1>
             <p class="text-[11px] text-slate-500 font-medium">Digitaliza notas de proveedores para detectar aumentos de costo</p>
           </div>
         </div>
@@ -742,8 +743,11 @@
       window.scrollTo({ top: 0, behavior: 'instant' });
     }
 
-    // =========================== CATÁLOGO COMPLETO DE PRODUCTOS ===========================
-    const CATALOG = [
+    // =========================== CATÁLOGO DE PRODUCTOS (SINCRONIZADO DESDE PC) ===========================
+    let catalogSyncedFromPc = false;
+    let lastCatalogVersion = 0;
+
+    let CATALOG = [
       { sku: 'REF-COC-600', barcode: '7501055301072', altBarcode: '7501055300075', name: 'Coca Cola 600ml', category: 'Bebidas', saleUnit: 'Pieza', historicCost: 14.5, salePrice: 18.0, targetMargin: 20 },
       { sku: 'BOT-SAB-45', barcode: '7501011115682', name: 'Sabritas Sal 45g', category: 'Botanas', saleUnit: 'Pieza', historicCost: 14.0, salePrice: 18.0, targetMargin: 22 },
       { sku: 'LAC-LAL-1L', barcode: '7501020512111', altBarcode: '7501020515350', name: 'Leche Lala Entera 1L', category: 'Lácteos', saleUnit: 'Pieza', historicCost: 21.0, salePrice: 26.0, targetMargin: 20 },
@@ -763,9 +767,27 @@
       { sku: 'CHI-LAC-220', barcode: '7501017004200', name: 'Chiles Jalapeños La Costeña 220g', category: 'Enlatados', saleUnit: 'Lata', historicCost: 14.2, salePrice: 19.0, targetMargin: 20 }
     ];
 
+    function buildBarcodeCandidates(code) {
+      const clean = String(code || '').trim();
+      if (!clean) return [];
+      const candidates = [clean];
+      if (/^\d{12}$/.test(clean)) candidates.push('0' + clean);
+      else if (/^0\d{12}$/.test(clean)) candidates.push(clean.slice(1));
+      return candidates;
+    }
+
     function findProduct(codeOrSku) {
       const clean = String(codeOrSku || '').trim();
-      const prod = CATALOG.find(p => p.barcode === clean || p.sku === clean || p.altBarcode === clean) || null;
+      if (!clean) return null;
+      const candidates = buildBarcodeCandidates(clean);
+      const prod = CATALOG.find(p => {
+        if (!p || p.isActive === false) return false;
+        if (p.sku === clean) return true;
+        if (candidates.includes(String(p.barcode || '').trim())) return true;
+        if (p.altBarcode && candidates.includes(String(p.altBarcode).trim())) return true;
+        if (Array.isArray(p.barcodes) && p.barcodes.some(b => candidates.includes(String(b).trim()))) return true;
+        return false;
+      }) || null;
       if (prod && prod.approvalStatus === 'PENDIENTE_APROBACION') {
         return null;
       }
@@ -931,7 +953,7 @@
       triggerVibrate(80);
       const code = String(barcode).trim();
       const product = findProduct(code);
-      const title = product ? product.name : `Código EAN: ${code}`;
+      const title = product ? product.name : `Código: ${code}`;
       const sub = product
         ? `$${product.salePrice.toFixed(2)} · Enviado a PC al instante ✓`
         : 'Código desconocido · Pulsa "Crear producto" para registrarlo';
@@ -951,7 +973,7 @@
       const unknownLabel = document.getElementById('pos-unknown-code-label');
       if (!product) {
         lastUnknownBarcode = code;
-        if (unknownLabel) unknownLabel.textContent = `EAN: ${code}`;
+        if (unknownLabel) unknownLabel.textContent = `Código: ${code}`;
         if (unknownCard) {
           unknownCard.classList.remove('hidden');
           unknownCard.classList.add('flex');
@@ -1050,10 +1072,10 @@
       const lastName = document.getElementById('pos-last-name');
       const lastSub = document.getElementById('pos-last-sub');
       if (lastName) lastName.textContent = name;
-      if (lastSub) lastSub.textContent = `$${salePrice.toFixed(2)} · PRODUCT_CREATE_REQUEST enviado a PC ✓`;
+      if (lastSub) lastSub.textContent = `$${salePrice.toFixed(2)} · Solicitud enviada a la PC ✓`;
 
       if (sent) {
-        showScanToast(`Producto creado: ${name}`, `EAN ${code} · $${salePrice.toFixed(2)} (${saleUnit})`);
+        showScanToast(`Producto creado: ${name}`, `Código ${code} · $${salePrice.toFixed(2)} (${saleUnit})`);
       }
     }
 
@@ -1062,9 +1084,9 @@
     }
 
     // =========================================================================
-    //  MODO 2: CONTEO CIEGO DE PASILLO (AUDITORÍA EXPRÉS 15 PRODUCTOS)
+    //  MODO 2: CONTEO CIEGO DE PASILLO (AUDITORÍA EXPRÉS HASTA 15 PRODUCTOS)
     // =========================================================================
-    const AUDIT_15_ITEMS = [
+    let AUDIT_ITEMS = [
       // 10 Clase A (Alta Rotación)
       { sku: 'LAC-LAL-1L', barcode: '7501020512111', name: 'Leche Lala Entera 1L', cls: 'A', loc: 'Refrigerador 1 · Puerta 1', unit: 'pzas', allowDecimal: false },
       { sku: 'ACE-NUT-850', barcode: '7501039121122', name: 'Aceite Nutrioli 850ml', cls: 'A', loc: 'Anaquel B · Repisa 2', unit: 'pzas', allowDecimal: false },
@@ -1086,19 +1108,93 @@
     ];
 
     let auditCurrentIndex = 0;
-    let auditCounts = new Array(AUDIT_15_ITEMS.length).fill(null);
+    let auditCounts = new Array(AUDIT_ITEMS.length).fill(null);
     let auditCurrentInputStr = '';
 
+    function formatAuditUnitLabel(saleUnit) {
+      if (saleUnit === 'Kg') return 'kg';
+      if (saleUnit === 'g') return 'g';
+      if (saleUnit === 'L') return 'L';
+      if (saleUnit === 'Lata') return 'latas';
+      if (saleUnit === 'Paquete') return 'paq';
+      return 'pzas';
+    }
+
+    function buildAuditMissionFromCatalog(catalog) {
+      const eligible = (catalog || []).filter(p => p && p.sku && p.isActive !== false && p.approvalStatus !== 'PENDIENTE_APROBACION');
+      const clsA = eligible.filter(p => p.abcClass === 'A').slice(0, 10);
+      const clsB = eligible.filter(p => p.abcClass === 'B').slice(0, 4);
+      const clsC = eligible.filter(p => p.abcClass === 'C').slice(0, 1);
+      const picked = [...clsA, ...clsB, ...clsC];
+      const seen = new Set(picked.map(p => p.sku));
+      if (picked.length < 15) {
+        for (const p of eligible) {
+          if (seen.has(p.sku)) continue;
+          picked.push(p);
+          seen.add(p.sku);
+          if (picked.length >= 15) break;
+        }
+      }
+      return picked.map(p => ({
+        sku: p.sku,
+        barcode: p.barcode || '',
+        name: p.name,
+        cls: p.abcClass || 'B',
+        loc: p.location || 'Pasillo General',
+        unit: formatAuditUnitLabel(p.saleUnit),
+        allowDecimal: Boolean(p.isBulk || p.saleUnit === 'Kg' || p.saleUnit === 'g' || p.saleUnit === 'L')
+      }));
+    }
+
+    function updateAuditMenuCardSummary() {
+      const total = AUDIT_ITEMS.length;
+      const badgeEl = document.getElementById('audit-card-count-badge');
+      const abcEl = document.getElementById('audit-card-abc-summary');
+      const descEl = document.getElementById('audit-summary-desc');
+      if (badgeEl) {
+        badgeEl.textContent = total === 1 ? '1 Producto' : `${total} Productos`;
+      }
+      if (abcEl) {
+        if (total === 0) {
+          abcEl.textContent = 'En espera del catálogo de la PC';
+        } else {
+          const cA = AUDIT_ITEMS.filter(i => i.cls === 'A').length;
+          const cB = AUDIT_ITEMS.filter(i => i.cls === 'B').length;
+          const cC = AUDIT_ITEMS.filter(i => i.cls === 'C').length;
+          abcEl.textContent = `${cA} Clase A · ${cB} Clase B · ${cC} Clase C`;
+        }
+      }
+      if (descEl) {
+        descEl.textContent = `Se completaron los ${total} producto${total === 1 ? '' : 's'} de la muestra ciega. Revisa o toca cualquiera para corregir antes de mandar a la PC.`;
+      }
+    }
+
     function renderAuditCurrentItem() {
-      const it = AUDIT_15_ITEMS[auditCurrentIndex];
-      const total = AUDIT_15_ITEMS.length;
+      const total = AUDIT_ITEMS.length;
+      if (total === 0) {
+        document.getElementById('audit-class-chip').textContent = 'SIN MISIÓN';
+        document.getElementById('audit-step-label').textContent = '0 de 0';
+        document.getElementById('audit-progress-fill').style.width = '0%';
+        document.getElementById('audit-item-location').textContent = 'En espera del catálogo';
+        document.getElementById('audit-item-name').textContent = 'Agrega productos en la PC para iniciar conteos';
+        document.getElementById('audit-item-sku').textContent = 'Clave: —';
+        document.getElementById('audit-item-barcode').textContent = '—';
+        document.getElementById('audit-item-category').textContent = 'Conteo físico en anaquel';
+        document.getElementById('audit-display-unit').textContent = '';
+        auditCurrentInputStr = '';
+        updateAuditDisplay();
+        document.getElementById('audit-next-text').textContent = 'Esperando catálogo';
+        return;
+      }
+      if (auditCurrentIndex >= total) auditCurrentIndex = 0;
+      const it = AUDIT_ITEMS[auditCurrentIndex];
 
       document.getElementById('audit-class-chip').textContent = `CLASE ${it.cls}`;
       document.getElementById('audit-step-label').textContent = `Producto ${auditCurrentIndex + 1} de ${total}`;
       document.getElementById('audit-progress-fill').style.width = `${((auditCurrentIndex + 1) / total) * 100}%`;
       document.getElementById('audit-item-location').textContent = it.loc;
       document.getElementById('audit-item-name').textContent = it.name;
-      document.getElementById('audit-item-sku').textContent = `SKU: ${it.sku}`;
+      document.getElementById('audit-item-sku').textContent = `Clave: ${it.sku}`;
       document.getElementById('audit-item-barcode').textContent = it.barcode;
       document.getElementById('audit-item-category').textContent = `Conteo físico · Registrar existencias en ${it.unit}`;
       document.getElementById('audit-display-unit').textContent = it.unit;
@@ -1115,8 +1211,10 @@
     }
 
     function auditKeyPress(key) {
+      if (!AUDIT_ITEMS.length) return;
       triggerVibrate(25);
-      const it = AUDIT_15_ITEMS[auditCurrentIndex];
+      const it = AUDIT_ITEMS[auditCurrentIndex];
+      if (!it) return;
       if (key === 'CLEAR') {
         auditCurrentInputStr = '';
       } else if (key === 'BACK') {
@@ -1133,11 +1231,12 @@
     }
 
     function auditSkipCurrentItem() {
+      if (!AUDIT_ITEMS.length) return;
       triggerVibrate(30);
       if (auditCounts[auditCurrentIndex] === null) {
         auditCounts[auditCurrentIndex] = 0;
       }
-      if (auditCurrentIndex < AUDIT_15_ITEMS.length - 1) {
+      if (auditCurrentIndex < AUDIT_ITEMS.length - 1) {
         auditCurrentIndex++;
         renderAuditCurrentItem();
       } else {
@@ -1146,11 +1245,12 @@
     }
 
     function auditConfirmCurrentItem() {
+      if (!AUDIT_ITEMS.length) return;
       triggerVibrate(50);
       const val = auditCurrentInputStr === '' ? 0 : parseFloat(auditCurrentInputStr);
       auditCounts[auditCurrentIndex] = isNaN(val) ? 0 : val;
 
-      if (auditCurrentIndex < AUDIT_15_ITEMS.length - 1) {
+      if (auditCurrentIndex < AUDIT_ITEMS.length - 1) {
         auditCurrentIndex++;
         renderAuditCurrentItem();
       } else {
@@ -1166,7 +1266,7 @@
       const wrap = document.getElementById('audit-summary-rows');
       wrap.innerHTML = '';
 
-      AUDIT_15_ITEMS.forEach((it, idx) => {
+      AUDIT_ITEMS.forEach((it, idx) => {
         const count = auditCounts[idx] !== null ? auditCounts[idx] : 0;
         const row = document.createElement('div');
         row.className = 'p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50 cursor-pointer rounded-lg transition-colors';
@@ -1195,13 +1295,14 @@
     }
 
     function submitAuditToPC() {
+      if (!AUDIT_ITEMS.length) return;
       triggerVibrate(100);
       const auditId = 'AUD-' + Date.now();
-      const counts = AUDIT_15_ITEMS.map((it, idx) => ({
+      const counts = AUDIT_ITEMS.map((it, idx) => ({
         sku: it.sku,
         countedQty: auditCounts[idx] !== null ? auditCounts[idx] : 0
       }));
-      const results = AUDIT_15_ITEMS.map((it, idx) => ({
+      const results = AUDIT_ITEMS.map((it, idx) => ({
         sku: it.sku,
         barcode: it.barcode,
         physicalQty: auditCounts[idx] !== null ? auditCounts[idx] : 0
@@ -1216,9 +1317,12 @@
 
       if (!sent) return;
 
-      showScanToast('Auditoría Ciega Enviada', 'Los 15 conteos ya están en la PC ✓');
+      showScanToast('Auditoría Ciega Enviada', `Los ${AUDIT_ITEMS.length} conteos ya están en la PC ✓`);
       setTimeout(() => {
         alert('¡Auditoría enviada con éxito a la PC! El encargado podrá autorizar o dictaminar las diferencias en la pantalla de Auditoría.');
+        auditCounts = new Array(AUDIT_ITEMS.length).fill(null);
+        auditCurrentIndex = 0;
+        returnToAuditItem(0);
         goTo('screen-menu');
       }, 300);
     }
@@ -1254,7 +1358,7 @@
       progressBox.classList.remove('hidden');
       progressBar.style.width = '10%';
       progressPct.textContent = '10%';
-      statusMsg.textContent = 'Inicializando Tesseract.js (Español)...';
+      statusMsg.textContent = 'Preparando lectura de foto...';
 
       try {
         const result = await Tesseract.recognize(file, 'spa', {
@@ -1273,8 +1377,8 @@
         parseOcrText(result.data.text);
       } catch (err) {
         console.error(err);
-        statusMsg.textContent = 'Error al procesar imagen con OCR.';
-        alert('Hubo un problema al procesar la foto con OCR. Intenta con mejor iluminación o usa el ticket de ejemplo.');
+        statusMsg.textContent = 'Error al leer la foto del ticket.';
+        alert('Hubo un problema al leer la foto del ticket. Intenta con mejor iluminación o usa el ticket de ejemplo.');
       }
     }
 
@@ -1293,28 +1397,72 @@
       parseOcrText(SAMPLE_TICKET_TEXT);
     }
 
+    function normalizeOcrText(s) {
+      return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function matchCatalogProductInOcrLine(normLine) {
+      if (!normLine || !Array.isArray(CATALOG) || CATALOG.length === 0) return null;
+      const active = CATALOG.filter(p => p && p.isActive !== false && p.approvalStatus !== 'PENDIENTE_APROBACION');
+      for (const p of active) {
+        if (p.sku && normLine.includes(normalizeOcrText(p.sku))) return p;
+        const codes = Array.isArray(p.barcodes) ? p.barcodes : (p.barcode ? [p.barcode] : []);
+        if (codes.some(c => c && normLine.includes(String(c).toLowerCase()))) return p;
+      }
+      const stopWords = new Set(['con', 'para', 'del', 'las', 'los', 'una', 'uno', 'granel', 'pz', 'pza', 'kg', 'ml', 'lt', 'l']);
+      let bestProd = null;
+      let bestScore = 0;
+      for (const p of active) {
+        const normName = normalizeOcrText(p.name);
+        if (normName && normLine.includes(normName)) return p;
+        const tokens = normName.split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !stopWords.has(t));
+        let hits = 0;
+        for (const t of tokens) {
+          if (normLine.includes(t)) hits++;
+        }
+        if (hits >= 2 || (hits === 1 && tokens.length === 1) || (hits === 1 && tokens.some(t => t.length >= 6 && normLine.includes(t)))) {
+          if (hits > bestScore) {
+            bestScore = hits;
+            bestProd = p;
+          }
+        }
+      }
+      return bestProd;
+    }
+
     function parseOcrText(raw) {
-      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      const lines = String(raw || '').split('\n').map(l => l.trim()).filter(Boolean);
       const parsed = [];
 
       for (const line of lines) {
-        const norm = line.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const norm = normalizeOcrText(line);
         let found = null;
         if (norm.includes('lala')) found = findProduct('LAC-LAL-1L');
         else if (norm.includes('nutrioli') || norm.includes('aceite')) found = findProduct('ACE-NUT-850');
         else if (norm.includes('dolores') || norm.includes('atun')) found = findProduct('ATU-DOL-140');
         else if (norm.includes('frijol')) found = findProduct('FRI-NEG-50K');
         else if (norm.includes('queso')) found = findProduct('QUE-FRE-1K');
+        if (!found) {
+          found = matchCatalogProductInOcrLine(norm);
+        }
 
         if (found) {
-          const numMatch = line.match(/(\d+[.,]?\d*)/g);
+          let numericLine = line;
+          let prevLine;
+          do {
+            prevLine = numericLine;
+            numericLine = numericLine.replace(/(\d)[Oo]/g, '$10');
+          } while (numericLine !== prevLine);
+          const numMatch = numericLine.match(/(\d+[.,]?\d*)/g);
           let cost = found.historicCost;
-          let qty = 10;
+          let qty = 1;
           if (numMatch && numMatch.length >= 2) {
-            qty = parseFloat(numMatch[0].replace('O', '0')) || 10;
-            cost = parseFloat(numMatch[numMatch.length - 1].replace(',', '.').replace('O', '0')) || found.historicCost;
+            qty = parseFloat(numMatch[0].replace(',', '.')) || 1;
+            cost = parseFloat(numMatch[numMatch.length - 1].replace(',', '.')) || found.historicCost;
+          } else if (numMatch && numMatch.length === 1) {
+            qty = parseFloat(numMatch[0].replace(',', '.')) || 1;
           }
-          const margin = ((found.salePrice - cost) / found.salePrice) * 100;
+          const margin = found.salePrice > 0 ? ((found.salePrice - cost) / found.salePrice) * 100 : 0;
           parsed.push({
             sku: found.sku,
             barcode: found.barcode,
@@ -1395,7 +1543,7 @@
 
       if (!sent) return;
 
-      showScanToast('Nota OCR Transmitida', `Folio #${folio} enviado a Recepción en PC`);
+      showScanToast('Nota Enviada a la PC', `Folio #${folio} enviado a Recepción en PC`);
       setTimeout(() => {
         alert(`¡Nota #${folio} enviada a la computadora! Puedes revisar y autorizar los precios en el módulo de Recepción.`);
         goTo('screen-menu');
@@ -1527,7 +1675,7 @@
       }
 
       triggerVibrate(80);
-      const prod = findProduct(selectedMermaSku) || { name: 'Producto', saleUnit: 'Pieza', historicCost: 20 };
+      const prod = findProduct(selectedMermaSku) || { sku: selectedMermaSku || 'GEN', name: 'Producto', saleUnit: 'Pieza', historicCost: 20 };
       const record = {
         id: 'M-' + String(Date.now()).slice(-4),
         date: new Date().toLocaleDateString('es-MX'),
@@ -1571,9 +1719,147 @@
       }, 300);
     }
 
+    function updateMobileStoreName(name) {
+      if (!name) return;
+      const el = document.getElementById('mobile-store-name');
+      if (el) el.textContent = name;
+      document.title = 'Terminal Móvil · ' + name;
+    }
+
+    function updateMobileCatalogSyncPill() {
+      const pill = document.getElementById('mobile-catalog-sync-pill');
+      if (!pill) return;
+      const activeCount = (CATALOG || []).filter(p => p && p.isActive !== false && p.approvalStatus !== 'PENDIENTE_APROBACION').length;
+      if (catalogSyncedFromPc) {
+        pill.textContent = `Catálogo al día · ${activeCount} productos`;
+        pill.className = 'mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800';
+      } else if (activeCount > 0) {
+        pill.textContent = `Catálogo inicial · ${activeCount} productos`;
+        pill.className = 'mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-slate-200/80 px-2.5 py-0.5 text-xs font-medium text-slate-700';
+      } else {
+        pill.textContent = 'Esperando catálogo de la PC…';
+        pill.className = 'mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800';
+      }
+    }
+
+    function populateMermaProductSelect() {
+      const sel = document.getElementById('merma-prod-select');
+      if (!sel) return;
+      const prev = selectedMermaSku || sel.value;
+      const items = (CATALOG || [])
+        .filter(p => p && p.sku && p.isActive !== false && p.approvalStatus !== 'PENDIENTE_APROBACION')
+        .slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
+
+      sel.innerHTML = '';
+      if (items.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Esperando catálogo de la PC…';
+        opt.disabled = true;
+        opt.selected = true;
+        sel.appendChild(opt);
+        selectedMermaSku = '';
+        return;
+      }
+
+      for (const p of items) {
+        const opt = document.createElement('option');
+        opt.value = p.sku;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      }
+
+      if (prev && items.some(p => p.sku === prev)) {
+        sel.value = prev;
+        selectedMermaSku = prev;
+      } else {
+        sel.value = items[0].sku;
+        selectedMermaSku = items[0].sku;
+      }
+    }
+
+    function applyCatalogSnapshot(msg) {
+      if (!msg || msg.type !== 'CATALOG_SNAPSHOT' || !Array.isArray(msg.products)) return;
+      CATALOG = msg.products.map(p => ({
+        sku: String(p.sku || ''),
+        barcode: String(p.barcode || (Array.isArray(p.barcodes) ? p.barcodes[0] : '') || ''),
+        barcodes: Array.isArray(p.barcodes) ? p.barcodes : (p.barcode ? [p.barcode] : []),
+        altBarcode: Array.isArray(p.barcodes) && p.barcodes.length > 1 ? p.barcodes[1] : undefined,
+        name: String(p.name || ''),
+        category: String(p.category || 'Abarrotes'),
+        location: String(p.location || 'Pasillo General'),
+        saleUnit: p.saleUnit || 'Pieza',
+        historicCost: Number(p.historicCost) || 0,
+        salePrice: Number(p.salePrice) || 0,
+        targetMargin: typeof p.targetMargin === 'number' ? p.targetMargin : 20,
+        abcClass: p.abcClass === 'A' || p.abcClass === 'C' ? p.abcClass : 'B',
+        isBulk: Boolean(p.isBulk),
+        isActive: p.isActive !== false,
+        approvalStatus: p.approvalStatus || 'APROBADO'
+      }));
+
+      catalogSyncedFromPc = true;
+      lastCatalogVersion = Number(msg.version) || (lastCatalogVersion + 1);
+      if (msg.storeName) updateMobileStoreName(msg.storeName);
+
+      populateMermaProductSelect();
+      updateMobileCatalogSyncPill();
+
+      const hasAuditInProgress = auditCounts.some(c => c !== null);
+      if (AUDIT_ITEMS.length === 0 || !hasAuditInProgress) {
+        AUDIT_ITEMS = Array.isArray(msg.auditMission) && msg.auditMission.length > 0
+          ? msg.auditMission.slice(0, 15)
+          : buildAuditMissionFromCatalog(CATALOG);
+        auditCounts = new Array(AUDIT_ITEMS.length).fill(null);
+        auditCurrentIndex = 0;
+        renderAuditCurrentItem();
+      }
+      updateAuditMenuCardSummary();
+    }
+
+    function handleAuditRecountRequest(msg) {
+      if (!msg || msg.type !== 'AUDIT_RECOUNT' || !msg.sku) return;
+      const item = {
+        sku: String(msg.sku),
+        barcode: String(msg.barcode || ''),
+        name: String(msg.name || msg.sku),
+        cls: msg.cls || 'B',
+        loc: String(msg.loc || 'Pasillo General'),
+        unit: String(msg.unit || 'pzas'),
+        allowDecimal: Boolean(msg.allowDecimal)
+      };
+      const existingIdx = AUDIT_ITEMS.findIndex(i => i.sku === item.sku);
+      if (existingIdx >= 0) {
+        AUDIT_ITEMS[existingIdx] = item;
+        auditCounts[existingIdx] = null;
+        auditCurrentIndex = existingIdx;
+      } else {
+        AUDIT_ITEMS.unshift(item);
+        auditCounts.unshift(null);
+        auditCurrentIndex = 0;
+      }
+      updateAuditMenuCardSummary();
+      renderAuditCurrentItem();
+      showScanToast('Reconteo solicitado desde PC', `${item.name} · revisar en anaquel`);
+    }
+
+    function requestCatalogSync() {
+      if (!syncChannel) return;
+      const status = window.LanSync ? window.LanSync.status : 'unavailable';
+      if (status === 'open' || status === 'unavailable') {
+        try {
+          syncChannel.postMessage({ type: 'CATALOG_SYNC_REQUEST', timestamp: new Date().toISOString() });
+        } catch (e) {}
+      }
+    }
+
     // Inicializar estado por defecto y conexión LAN real
     window.addEventListener('DOMContentLoaded', () => {
       setMermaReason('Envase Roto en Piso');
+      populateMermaProductSelect();
+      updateAuditMenuCardSummary();
+      updateMobileCatalogSyncPill();
       renderAuditCurrentItem();
       goTo('screen-menu');
       updateSimulatePhotoUI();
@@ -1610,6 +1896,14 @@
         updateLanStatusBadge(window.LanSync.status);
         window.LanSync.on('status', function(snap) {
           updateLanStatusBadge(snap.status);
+          if (snap.status === 'open') {
+            requestCatalogSync();
+          }
+        });
+        window.LanSync.on('peers', function(snap) {
+          if (snap && snap.pc && !catalogSyncedFromPc) {
+            requestCatalogSync();
+          }
         });
       } else {
         updateLanStatusBadge('unavailable');
@@ -1621,41 +1915,21 @@
         }
       });
 
-      function updateMobileStoreName(name) {
-        if (!name) return;
-        const el = document.getElementById('mobile-store-name');
-        if (el) el.textContent = name;
-        document.title = 'Terminal Móvil · ' + name;
-      }
-
-      try {
-        const v4 = localStorage.getItem('binnitech_pos_state_v4');
-        if (v4) {
-          const parsed = JSON.parse(v4);
-          if (parsed && parsed.settings && parsed.settings.storeName) {
-            updateMobileStoreName(parsed.settings.storeName);
-          }
-        }
-      } catch (e) {}
-
       if (syncChannel) {
         syncChannel.addEventListener('message', function(ev) {
-          if (ev && ev.data && (ev.data.type === 'STORE_NAME' || ev.data.storeName)) {
-            updateMobileStoreName(ev.data.storeName);
+          const data = ev && ev.data;
+          if (!data || typeof data !== 'object') return;
+          if (data.type === 'CATALOG_SNAPSHOT') {
+            applyCatalogSnapshot(data);
+          } else if (data.type === 'AUDIT_RECOUNT') {
+            handleAuditRecountRequest(data);
+          } else if (data.type === 'STORE_NAME' || data.storeName) {
+            updateMobileStoreName(data.storeName);
           }
         });
       }
 
-      window.addEventListener('storage', function(ev) {
-        if (ev && ev.key === 'binnitech_pos_state_v4' && ev.newValue) {
-          try {
-            const parsed = JSON.parse(ev.newValue);
-            if (parsed && parsed.settings && parsed.settings.storeName) {
-              updateMobileStoreName(parsed.settings.storeName);
-            }
-          } catch (e) {}
-        }
-      });
+      requestCatalogSync();
     });
   </script>
 </body>
