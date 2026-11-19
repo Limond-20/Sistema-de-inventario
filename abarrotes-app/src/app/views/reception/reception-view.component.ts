@@ -149,13 +149,13 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
       );
       return;
     }
-    const folio = 'OCR-' + String(Date.now()).slice(-4);
-    this.inv.setCustomOcrNote(parsed, folio, 'Lectura OCR en PC');
+    const folio = 'REC-' + String(Date.now()).slice(-4);
+    this.inv.setCustomOcrNote(parsed, folio, 'Lectura de ticket en PC');
     this.ocrLines.set(structuredClone(parsed));
     this.mode.set('ocr');
     this.savedSummary.set(null);
     this.lastSyncBanner.set(
-      `Se cargaron ${parsed.length} productos en la tabla de recepción (Folio #${folio}).`,
+      `🧾 Lectura de ticket completada: se cargaron ${parsed.length} productos en la tabla de recepción (Folio #${folio}).`,
     );
   }
 
@@ -165,13 +165,13 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
     if (!file) return;
 
     if (typeof Tesseract === 'undefined') {
-      this.lastSyncBanner.set('⚠️ La librería Tesseract.js aún no termina de cargar desde el CDN.');
+      this.lastSyncBanner.set('⚠️ El lector de fotos de tickets aún se está preparando. Espera unos segundos e intenta de nuevo.');
       return;
     }
 
     this.ocrRunning.set(true);
     this.ocrProgress.set(5);
-    this.ocrStatusText.set('🔎 Iniciando reconocimiento óptico (Tesseract Español)...');
+    this.ocrStatusText.set('🔎 Leyendo texto y precios de la foto...');
 
     try {
       const res = await Tesseract.recognize(file, 'spa', {
@@ -196,7 +196,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
       });
     } catch {
       this.zone.run(() => {
-        this.lastSyncBanner.set('⚠️ Ocurrió un error al leer la imagen con Tesseract.');
+        this.lastSyncBanner.set('⚠️ No se pudo leer la foto del ticket. Intenta con una foto más clara o captura manual.');
       });
     } finally {
       this.zone.run(() => {
@@ -223,7 +223,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
         this.mode.set('ocr');
         this.savedSummary.set(null);
         this.lastSyncBanner.set(
-          `📡 Recibido desde movil-prototipo.html a las ${time}: Ticket #${folio} con ${incomingLines.length} productos.`,
+          `📡 Recibido desde el celular a las ${time}: Ticket #${folio} con ${incomingLines.length} productos.`,
         );
       }
     } else if (data['type'] === 'BARCODE_SCANNED') {
@@ -278,7 +278,7 @@ export class ReceptionViewComponent implements OnInit, OnDestroy {
         }
 
         this.lastSyncBanner.set(
-          `📡 Código EAN-13 recibido (${code}): ${catalogProduct.emoji} ${catalogProduct.name} · Precio Venta: $${catalogProduct.salePrice.toFixed(2)}`,
+          `📡 Código escaneado (${code}): ${catalogProduct.emoji} ${catalogProduct.name} · Precio Venta: $${catalogProduct.salePrice.toFixed(2)}`,
         );
       }
     }

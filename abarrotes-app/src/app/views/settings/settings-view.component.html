@@ -631,16 +631,16 @@
               </h2>
               <p class="text-xs text-slate-600 mt-0.5">
                 @if (inv.storageCryptoStatus() === 'unlocked') {
-                  Protegidos con el PIN de administrador. Administradores con llave de acceso: {{ inv.storageCryptoSlotCount() }}.
+                  Los datos en el navegador (IndexedDB) y en la base de datos local de la computadora (`inventory.sqlite3`) están cifrados con AES-256-GCM y protegidos con el PIN de administrador. Administradores con llave de acceso: {{ inv.storageCryptoSlotCount() }}.
                 } @else {
-                  Sin IndexedDB (por ejemplo, en pruebas o en Node) no hay nada que cifrar en el navegador.
+                  En entornos de prueba sin almacenamiento persistente no se activa el cifrado de navegador; en el servidor local de escritorio la base SQLite sigue cifrada en reposo.
                 }
               </p>
             </div>
           </div>
           <ul class="text-xs text-slate-700 list-disc pl-5 space-y-1">
-            <li>Al abrir la app se pide el PIN de un administrador; sin él los datos guardados no se pueden leer.</li>
-            <li>Cambiar el PIN de un administrador en "Seguridad y PIN" actualiza su llave automáticamente.</li>
+            <li>Al abrir la app se pide el PIN de un administrador para descifrar tanto el navegador como la base local de la computadora (`inventory.sqlite3`).</li>
+            <li>Cambiar el PIN de un administrador en "Seguridad y PIN" actualiza su llave automáticamente en ambos almacenes.</li>
             <li><b>Si se olvida el PIN no hay puerta trasera.</b> La recuperación es con un respaldo .bak y su frase de respaldo
               (pantalla de inicio → "¿Olvidaste el PIN?"). Por eso conviene tener respaldos recientes en una memoria USB.</li>
             <li>Usa un PIN de 8 dígitos o más: un PIN de 6 dígitos es más fácil de adivinar si alguien se roba la computadora.</li>

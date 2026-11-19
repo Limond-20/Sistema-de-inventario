@@ -10,6 +10,7 @@ import {
   DebouncedStorageSaver,
   MemoryStateStorageAdapter,
   ServerStateStorageAdapter,
+  findServerAdapter,
   type PersistedAppState,
 } from './persistence.ts';
 import { createKardexEntry, verifyKardexChain, verifyProductContinuity, type KardexEntry } from './kardex.ts';
@@ -841,4 +842,103 @@ test('Migración v5 a v6 (Bloque I): inicializa bitácora de uso y encuestas de 
   assert.ok(Array.isArray(migration.state.usageActivityLog));
   assert.ok(Array.isArray(migration.state.satisfactionSurveys));
   assert.equal(validateStoredState(migration.state).valid, true);
+});
+
+test('ServerStateStorageAdapter (4A): coordina estado y ciclo de cifrado SQLite vía API REST local', async () => {
+  const fallback = new MemoryStateStorageAdapter();
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const originalFetch = globalThis.fetch;
+  let mode: 'local-key' | 'pin' = 'local-key';
+  let unlocked = true;
+  const slots = new Map<string, { slotId: string; pin: string; iterations: number }>();
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { hostname: '127.0.0.1', port: '8443' } },
+  });
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), 'https://localhost:8443');
+    const path = url.pathname;
+    const method = init?.method || 'GET';
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+
+    if (path === '/api/estado/cifrado' && method === 'GET') {
+      return new Response(
+        JSON.stringify({
+          mode,
+          configured: mode === 'pin',
+          unlocked,
+          slots: Array.from(slots.values()).map(({ slotId, iterations }) => ({ slotId, iterations })),
+        }),
+        { status: 200 }
+      );
+    }
+    if (path === '/api/estado/cifrado/configurar' && method === 'POST') {
+      mode = 'pin';
+      unlocked = true;
+      slots.set(body.slotId, { slotId: body.slotId, pin: body.pin, iterations: 600_000 });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (path === '/api/estado/cifrado/desbloquear' && method === 'POST') {
+      const matched = Array.from(slots.values()).find((s) => s.pin === body.pin);
+      if (!matched) {
+        return new Response(JSON.stringify({ detail: 'PIN incorrecto' }), { status: 403 });
+      }
+      unlocked = true;
+      return new Response(JSON.stringify({ ok: true, slotId: matched.slotId }), { status: 200 });
+    }
+    if (path === '/api/estado/cifrado/ranura' && method === 'POST') {
+      slots.set(body.slotId, { slotId: body.slotId, pin: body.pin, iterations: 600_000 });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (path.startsWith('/api/estado/cifrado/ranura/') && method === 'DELETE') {
+      const slotId = decodeURIComponent(path.split('/').pop() || '');
+      slots.delete(slotId);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (path === '/api/estado/cifrado/reiniciar' && method === 'POST') {
+      slots.clear();
+      slots.set(body.slotId, { slotId: body.slotId, pin: body.pin, iterations: 600_000 });
+      mode = 'pin';
+      unlocked = true;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    throw new Error(`Ruta inesperada: ${method} ${path}`);
+  }) as typeof fetch;
+
+  try {
+    const adapter = new ServerStateStorageAdapter(fallback);
+    assert.equal(findServerAdapter(adapter), adapter);
+    assert.equal(findServerAdapter({ outer: adapter }), null);
+
+    const initialStatus = await adapter.getServerCryptoStatus();
+    assert.equal(initialStatus?.mode, 'local-key');
+    assert.equal(initialStatus?.unlocked, true);
+
+    assert.equal(await adapter.configureServerCrypto('USR-ADMIN', '984312'), true);
+    unlocked = false;
+
+    const wrongUnlock = await adapter.unlockServerCrypto('000000');
+    assert.equal(wrongUnlock?.ok, false);
+
+    const goodUnlock = await adapter.unlockServerCrypto('984312');
+    assert.equal(goodUnlock?.ok, true);
+    assert.equal(goodUnlock?.slotId, 'USR-ADMIN');
+
+    assert.equal(await adapter.setServerCryptoSlot('USR-ADMIN-2', '748291'), true);
+    assert.equal((await adapter.getServerCryptoStatus())?.slots.length, 2);
+
+    assert.equal(await adapter.removeServerCryptoSlot('USR-ADMIN-2'), true);
+    assert.equal((await adapter.getServerCryptoStatus())?.slots.length, 1);
+
+    assert.equal(await adapter.resetServerCryptoWithPin('USR-ADMIN', '592837'), true);
+    unlocked = false;
+    assert.equal((await adapter.unlockServerCrypto('984312'))?.ok, false);
+    assert.equal((await adapter.unlockServerCrypto('592837'))?.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+    else delete (globalThis as any).window;
+  }
 });

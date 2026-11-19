@@ -824,6 +824,111 @@ export class ServerStateStorageAdapter implements StateStorageAdapter {
     return this.fallback;
   }
 
+  get isServerEnabled(): boolean {
+    return this.enabled;
+  }
+
+  async getServerCryptoStatus(): Promise<{
+    mode: 'local-key' | 'pin';
+    configured: boolean;
+    unlocked: boolean;
+    slots: Array<{ slotId: string; iterations: number }>;
+  } | null> {
+    if (!this.enabled) return null;
+    try {
+      const res = await fetch(this.endpoint('/api/estado/cifrado'), { cache: 'no-store' });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async configureServerCrypto(slotId: string, pin: string): Promise<boolean> {
+    if (!this.enabled) return false;
+    try {
+      const res = await fetch(this.endpoint('/api/estado/cifrado/configurar'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slotId, pin }),
+        cache: 'no-store',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async unlockServerCrypto(
+    pin: string
+  ): Promise<{ ok: boolean; slotId?: string; message?: string } | null> {
+    if (!this.enabled) return null;
+    try {
+      const res = await fetch(this.endpoint('/api/estado/cifrado/desbloquear'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+        cache: 'no-store',
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        return { ok: true, slotId: body?.slotId };
+      }
+      if (res.status === 403 || res.status === 400) {
+        return { ok: false, message: body?.detail || 'PIN de administrador incorrecto.' };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async setServerCryptoSlot(slotId: string, pin: string): Promise<boolean> {
+    if (!this.enabled) return false;
+    try {
+      const res = await fetch(this.endpoint('/api/estado/cifrado/ranura'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slotId, pin }),
+        cache: 'no-store',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async removeServerCryptoSlot(slotId: string): Promise<boolean> {
+    if (!this.enabled) return false;
+    try {
+      const res = await fetch(
+        this.endpoint(`/api/estado/cifrado/ranura/${encodeURIComponent(slotId)}`),
+        {
+          method: 'DELETE',
+          cache: 'no-store',
+        }
+      );
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async resetServerCryptoWithPin(slotId: string, pin: string): Promise<boolean> {
+    if (!this.enabled) return false;
+    try {
+      const res = await fetch(this.endpoint('/api/estado/cifrado/reiniciar'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slotId, pin }),
+        cache: 'no-store',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   private get enabled(): boolean {
     if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
     const hostname = window.location?.hostname?.toLowerCase().replace(/^\[|\]$/g, '') || '';
@@ -1036,6 +1141,10 @@ export async function backupCorruptedState(
   }
 
   return backupKey;
+}
+
+export function findServerAdapter(adapter: unknown): ServerStateStorageAdapter | null {
+  return adapter instanceof ServerStateStorageAdapter ? adapter : null;
 }
 
 /**

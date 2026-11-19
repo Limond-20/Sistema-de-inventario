@@ -33,7 +33,7 @@ export const routes: Routes = [
     path: 'catalogo',
     loadComponent: () =>
       import('./views/catalog/catalog-view.component').then((m) => m.CatalogViewComponent),
-    title: 'Catálogo ABC, ROP y Precios',
+    title: 'Catálogo y Precios',
   },
   {
     path: 'mermas',
@@ -46,7 +46,7 @@ export const routes: Routes = [
     path: 'fefo',
     loadComponent: () => import('./views/fefo/fefo-view.component').then((m) => m.FefoViewComponent),
     canActivate: [authGuard],
-    title: 'Caducidades y Cambio Físico (FEFO)',
+    title: 'Caducidades y Cambio Físico',
   },
   {
     path: 'ajustes',

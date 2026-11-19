@@ -112,9 +112,26 @@ test('PC y celular se hablan por el canal, sin eco, y los demás canales siguen 
   await until(() => phGot.length === 1, 4000, 'mensaje PC->celular');
   assert.deepEqual(phGot[0], ocr);
 
+  const syncReq = { type: 'CATALOG_SYNC_REQUEST', timestamp: '2026-11-18T12:00:00Z' };
+  phCh.postMessage(syncReq);
+  await until(() => pcGot.length === 2, 4000, 'CATALOG_SYNC_REQUEST celular->PC');
+  assert.deepEqual(pcGot[1], syncReq);
+
+  const catalogSnap = {
+    type: 'CATALOG_SNAPSHOT',
+    version: 1,
+    storeName: 'La Esquina',
+    products: [{ sku: 'LAC-LAL-1L', barcode: '7501020512111', barcodes: ['7501020512111'], name: 'Leche Lala 1L', salePrice: 26 }],
+    auditMission: [{ sku: 'LAC-LAL-1L', barcode: '7501020512111', name: 'Leche Lala 1L', cls: 'A', loc: 'Refri 1', unit: 'pzas', allowDecimal: false }],
+    timestamp: '2026-11-18T12:00:01Z'
+  };
+  pcCh.postMessage(catalogSnap);
+  await until(() => phGot.length === 2, 4000, 'CATALOG_SNAPSHOT PC->celular');
+  assert.deepEqual(phGot[1], catalogSnap);
+
   await sleep(300);
-  assert.equal(pcGot.length, 1, 'la PC no debe recibir su propio mensaje');
-  assert.equal(phGot.length, 1, 'el celular no debe recibir su propio mensaje');
+  assert.equal(pcGot.length, 2, 'la PC no debe recibir su propio mensaje');
+  assert.equal(phGot.length, 2, 'el celular no debe recibir su propio mensaje');
 
   const other = new pc.BroadcastChannel('otro-canal');
   assert.ok(other instanceof BroadcastChannel, 'los demás canales usan el BroadcastChannel nativo');

@@ -13,6 +13,13 @@
         class="h-11 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-2xs flex items-center gap-2 transition-all">
         <span>Alta de Producto</span>
       </button>
+      <button
+        type="button"
+        data-testid="btn-open-bulk-import"
+        (click)="openBulkImportModal()"
+        class="h-11 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 text-xs font-bold shadow-2xs flex items-center gap-2 transition-all">
+        <span>Importar Excel / CSV</span>
+      </button>
     } @else {
       <span data-testid="catalog-readonly-badge"
         class="h-11 px-4 rounded-xl border border-slate-300 bg-slate-100 text-slate-700 text-xs font-bold flex items-center">
@@ -1266,6 +1273,211 @@
           class="h-10 px-5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-xs">
           {{ prod.hasMovements ? 'Confirmar Desactivación' : 'Confirmar Eliminación' }}
         </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =====================================================================
+     MODAL DE IMPORTACIÓN MASIVA DESDE EXCEL / CSV
+     ===================================================================== -->
+@if (importModalOpen()) {
+  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:hidden"
+    role="dialog" aria-modal="true" data-testid="modal-bulk-import">
+    <div class="bg-white rounded-2xl border border-slate-300 shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+        <div>
+          <h2 class="text-base font-bold">Importar Catálogo desde Excel o CSV</h2>
+          <p class="text-xs text-slate-300 mt-0.5">Agrega o actualiza varios productos en lote usando tu hoja de cálculo.</p>
+        </div>
+        <button type="button" (click)="closeBulkImportModal()" class="text-xs font-bold text-slate-300 hover:text-white">
+          Cerrar
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4 overflow-y-auto flex-1">
+        <!-- Paso 1: Plantilla, archivo y política de duplicados -->
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-bold text-slate-900">1. Descarga la plantilla o elige tu archivo (.xlsx o .csv)</p>
+              <p class="text-xs text-slate-600 mt-0.5">Las columnas mínimas requeridas son <b>Nombre</b> y <b>Precio de venta</b>.</p>
+            </div>
+            <button
+              type="button"
+              data-testid="btn-download-import-template"
+              (click)="downloadImportTemplate()"
+              class="h-9 px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-800 shadow-2xs shrink-0">
+              Descargar plantilla (CSV)
+            </button>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-3 pt-1">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs font-bold text-slate-800">Archivo de productos (.xlsx o .csv)</span>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                data-testid="input-import-file"
+                (change)="onImportFileSelected($event)"
+                class="block w-full text-xs text-slate-700 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border file:border-slate-300 file:text-xs file:font-bold file:bg-white file:text-slate-800 hover:file:bg-slate-100 cursor-pointer" />
+              @if (importFileName()) {
+                <span class="text-xs text-slate-600">Seleccionado: <b>{{ importFileName() }}</b></span>
+              }
+            </label>
+
+            <label class="flex flex-col gap-1">
+              <span class="text-xs font-bold text-slate-800">Si un producto ya existe en tu catálogo</span>
+              <select
+                data-testid="select-import-duplicate-mode"
+                [ngModel]="importDuplicateMode()"
+                (ngModelChange)="importDuplicateMode.set($event)"
+                class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-900">
+                <option value="SKIP">Omitir existentes (conservar catálogo actual)</option>
+                <option value="UPDATE">Actualizar datos{{ importIsAdmin() ? ' y precios' : ' (solo Administrador cambia precios)' }}</option>
+              </select>
+              <span class="text-xs text-slate-500">Las existencias en anaquel de productos existentes nunca se sobrescriben al importar.</span>
+            </label>
+          </div>
+        </div>
+
+        @if (importParseError(); as parseErr) {
+          <div role="alert" data-testid="import-parse-error"
+            class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-900">
+            {{ parseErr }}
+          </div>
+        }
+
+        <!-- Paso 2: Vista previa -->
+        @if (importPreview(); as preview) {
+          @if (preview.headerError) {
+            <div role="alert" data-testid="import-header-error"
+              class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-900">
+              {{ preview.headerError }}
+            </div>
+          } @else {
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5" data-testid="import-preview-summary">
+              <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <span class="block text-xs text-emerald-700 font-semibold">Nuevos</span>
+                <span class="text-lg font-black text-emerald-900 tabular-nums">{{ preview.toCreateCount }}</span>
+              </div>
+              <div class="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+                <span class="block text-xs text-sky-700 font-semibold">Por actualizar</span>
+                <span class="text-lg font-black text-sky-900 tabular-nums">{{ preview.toUpdateCount }}</span>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <span class="block text-xs text-slate-600 font-semibold">Omitidos</span>
+                <span class="text-lg font-black text-slate-800 tabular-nums">{{ preview.skippedCount }}</span>
+              </div>
+              <div class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+                <span class="block text-xs text-rose-700 font-semibold">Con error</span>
+                <span class="text-lg font-black text-rose-900 tabular-nums">{{ preview.errorCount }}</span>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 overflow-x-auto max-h-64 overflow-y-auto">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead class="bg-slate-100 text-slate-700 font-bold sticky top-0">
+                  <tr>
+                    <th class="px-3 py-2">Fila</th>
+                    <th class="px-3 py-2">Acción</th>
+                    <th class="px-3 py-2">Producto</th>
+                    <th class="px-3 py-2">Código</th>
+                    <th class="px-3 py-2 text-right">Costo</th>
+                    <th class="px-3 py-2 text-right">Precio</th>
+                    <th class="px-3 py-2 text-right">Stock inicial</th>
+                    <th class="px-3 py-2">Observaciones</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 bg-white">
+                  @for (r of preview.rows; track r.rowNumber) {
+                    <tr [class]="r.status === 'ERROR' ? 'bg-rose-50/70' : (r.status === 'WARNING' ? 'bg-amber-50/40' : '')">
+                      <td class="px-3 py-2 font-mono text-slate-500">#{{ r.rowNumber }}</td>
+                      <td class="px-3 py-2 font-bold">
+                        @if (r.status === 'ERROR') {
+                          <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800">Error</span>
+                        } @else if (r.action === 'CREATE') {
+                          <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">Nuevo</span>
+                        } @else if (r.action === 'UPDATE') {
+                          <span class="px-2 py-0.5 rounded bg-sky-100 text-sky-800">Actualizar</span>
+                        } @else {
+                          <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">Omitir</span>
+                        }
+                      </td>
+                      <td class="px-3 py-2 font-semibold text-slate-900">
+                        {{ r.rawName || '—' }}
+                        @if (r.normalized.category) {
+                          <span class="block text-[11px] font-normal text-slate-500">{{ r.normalized.category }} · {{ r.normalized.saleUnit }}</span>
+                        }
+                      </td>
+                      <td class="px-3 py-2 font-mono text-slate-700">
+                        {{ r.normalized.barcodes[0] || 'Interno automático' }}
+                      </td>
+                      <td class="px-3 py-2 text-right font-mono">${{ r.normalized.cost | number:'1.2-2' }}</td>
+                      <td class="px-3 py-2 text-right font-mono font-bold text-slate-900">${{ r.normalized.salePrice | number:'1.2-2' }}</td>
+                      <td class="px-3 py-2 text-right font-mono">{{ r.action === 'CREATE' ? r.normalized.initialStock : '—' }}</td>
+                      <td class="px-3 py-2">
+                        @for (err of r.errors; track err) {
+                          <span class="block text-rose-700 font-semibold">{{ err }}</span>
+                        }
+                        @for (w of r.warnings; track w) {
+                          <span class="block text-amber-800">{{ w }}</span>
+                        }
+                        @if (r.errors.length === 0 && r.warnings.length === 0) {
+                          <span class="text-emerald-700">Listo</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Paso 3: PIN de autorización -->
+            <div class="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 space-y-2">
+              <label class="block space-y-1">
+                <span class="block text-xs font-bold text-slate-900">PIN de Encargado o Administrador *</span>
+                <input
+                  type="password"
+                  maxlength="32"
+                  inputmode="numeric"
+                  data-testid="input-import-pin"
+                  [ngModel]="importPin()"
+                  (ngModelChange)="importPin.set($event)"
+                  (keydown.enter)="confirmBulkImport()"
+                  placeholder="Ingresa el PIN para autorizar la importación"
+                  class="w-full sm:w-80 h-10 px-3 rounded-lg border border-slate-300 bg-white text-center text-sm tracking-widest font-mono font-bold text-slate-900 focus:border-slate-900 focus:outline-none" />
+              </label>
+            </div>
+          }
+        }
+
+        @if (importFeedback(); as fb) {
+          <div role="alert" data-testid="import-feedback"
+            class="rounded-xl border px-4 py-3 text-xs font-bold"
+            [class]="fb.ok ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-rose-300 bg-rose-50 text-rose-900'">
+            {{ fb.message }}
+          </div>
+        }
+      </div>
+
+      <div class="shrink-0 border-t border-slate-200 bg-slate-50 px-5 py-3.5 flex justify-end gap-2.5">
+        <button
+          type="button"
+          (click)="closeBulkImportModal()"
+          class="h-10 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold">
+          Cancelar
+        </button>
+        @if (importPreview(); as preview) {
+          <button
+            type="button"
+            data-testid="btn-confirm-bulk-import"
+            [disabled]="importBusy() || !!preview.headerError || (preview.toCreateCount + preview.toUpdateCount) === 0"
+            (click)="confirmBulkImport()"
+            class="h-10 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold shadow-xs">
+            Importar {{ preview.toCreateCount + preview.toUpdateCount }} producto(s)
+          </button>
+        }
       </div>
     </div>
   </div>

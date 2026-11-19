@@ -79,6 +79,10 @@ export function isTrivialPin(pin: string): boolean {
   const clean = pin.trim();
   if (clean.length < 6) return true;
   if (new Set(clean.split('')).size === 1) return true;
+  if (clean.length % 2 === 0) {
+    const pair = clean.slice(0, 2);
+    if (pair.repeat(clean.length / 2) === clean) return true;
+  }
   let isAscending = true;
   for (let i = 1; i < clean.length; i++) {
     const prev = parseInt(clean[i - 1], 10);
@@ -185,6 +189,28 @@ export interface UserPinVerifyResult {
   isLocked: boolean;
   lockedRemainingSeconds: number;
   updatedUser: AppUser;
+}
+
+export interface PinAuthState {
+  failedAttempts: number;
+  lockedUntil: number | null;
+  lockoutCount: number;
+}
+
+export function createInitialPinState(): PinAuthState {
+  return { failedAttempts: 0, lockedUntil: null, lockoutCount: 0 };
+}
+
+export interface PinVerificationResult {
+  success: boolean;
+  message: string;
+  remainingAttempts: number;
+  isLocked: boolean;
+  lockedRemainingSeconds: number;
+  nextState: PinAuthState;
+  authorizedBy?: string;
+  isFirstUseRequired?: boolean;
+  verificationDurationMs?: number;
 }
 
 let userSeq = 0;
