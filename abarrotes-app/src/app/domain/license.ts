@@ -43,8 +43,8 @@ export const DEFAULT_INSTALLATION_ID = 'BT-DEMO-TIENDA-0001';
 export const DEFAULT_EMBEDDED_PUBLIC_KEY_JWK: JsonWebKey = {
   kty: 'EC',
   crv: 'P-256',
-  x: 'Bj7nM2YECOhCjAYN8qaRHERB4AWhS8rPEi1cwwbPPMk',
-  y: 'GTfYmvmsv8D60kLgTagtR9fZOoakZiB5YAYEE2DMTfw',
+  x: 'jLm3mVfrHbp2RSaAqfre8IF4hwJvd5G2lTej73ke6rs',
+  y: 'qp3-QNSh7L7zASh6vqzjbwM6n8Je6rpfda_tOF6c-D8',
 };
 
 /**
@@ -53,7 +53,7 @@ export const DEFAULT_EMBEDDED_PUBLIC_KEY_JWK: JsonWebKey = {
  * Payload: {"idInstalación":"BT-DEMO-TIENDA-0001","plan":"ANUAL","emitida":"2026-01-01","vence":"2028-12-31"}
  */
 export const DEFAULT_DEMO_LICENSE_CODE =
-  'BT1.eyJpZEluc3RhbGFjacOzbiI6IkJULURFTU8tVElFTkRBLTAwMDEiLCJwbGFuIjoiQU5VQUwiLCJlbWl0aWRhIjoiMjAyNi0wMS0wMSIsInZlbmNlIjoiMjAyOC0xMi0zMSJ9.i4zJW-qoGFAtJs-DWDqSGEal4ZkS7varnjZJl3RBQInKeJnVGurRYgx2gPhXb4HJ93yCXyHC3w4RfAkxiWiy7Q';
+  'BT1.eyJpZEluc3RhbGFjacOzbiI6IkJULURFTU8tVElFTkRBLTAwMDEiLCJwbGFuIjoiQU5VQUwiLCJlbWl0aWRhIjoiMjAyNi0wMS0wMSIsInZlbmNlIjoiMjAyOC0xMi0zMSJ9.XmgLXLmmMn67V_h_6CXWyhvfNmSYjQ85O4M7DrmG1y83QwAC_xW0an4ZDmsdrBDMA8ktN_Zp7DPbyO0m9jZGPw';
 
 export const CLIENT_LICENSE_HONEST_DISCLOSURE = {
   title: 'Nota de transparencia técnica: la licencia en el cliente disuade, no es infalible',
