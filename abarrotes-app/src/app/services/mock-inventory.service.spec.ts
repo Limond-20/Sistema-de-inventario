@@ -4918,7 +4918,7 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
 
     const hostEl: HTMLElement = fixture.nativeElement;
     expect(hostEl.querySelector('[data-testid="license-installation-id"]')?.textContent?.trim()).toBe(myId);
-    expect(hostEl.querySelector('[data-testid="license-honest-disclosure"]')?.textContent).toContain('no es infalible');
+    expect(hostEl.querySelector('[data-testid="license-honest-disclosure"]')).toBeNull();
 
     // Generar código nuevo vigente hasta 2028-12-31 y activarlo desde el componente
     const newValidCode = await signLicensePayload(

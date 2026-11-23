@@ -262,7 +262,7 @@
                 <span class="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Granel</span>
               }
               @if (p.hasInternalBarcode || p.barcode.startsWith('200')) {
-                <span class="rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Código Propio</span>
+                <span class="rounded bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-800">Código Propio</span>
               }
               @if (p.isActive === false) {
                 <span class="rounded bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">Desactivado</span>
@@ -1361,9 +1361,9 @@
                 <span class="block text-xs text-emerald-700 font-semibold">Nuevos</span>
                 <span class="text-lg font-black text-emerald-900 tabular-nums">{{ preview.toCreateCount }}</span>
               </div>
-              <div class="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
-                <span class="block text-xs text-sky-700 font-semibold">Por actualizar</span>
-                <span class="text-lg font-black text-sky-900 tabular-nums">{{ preview.toUpdateCount }}</span>
+              <div class="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
+                <span class="block text-xs text-brand-700 font-semibold">Por actualizar</span>
+                <span class="text-lg font-black text-brand-900 tabular-nums">{{ preview.toUpdateCount }}</span>
               </div>
               <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                 <span class="block text-xs text-slate-600 font-semibold">Omitidos</span>
@@ -1399,7 +1399,7 @@
                         } @else if (r.action === 'CREATE') {
                           <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">Nuevo</span>
                         } @else if (r.action === 'UPDATE') {
-                          <span class="px-2 py-0.5 rounded bg-sky-100 text-sky-800">Actualizar</span>
+                          <span class="px-2 py-0.5 rounded bg-brand-100 text-brand-800">Actualizar</span>
                         } @else {
                           <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">Omitir</span>
                         }
