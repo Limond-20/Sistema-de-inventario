@@ -821,17 +821,25 @@
               type="text"
               data-testid="input-product-barcode"
               [ngModel]="formNewBarcodeInput()"
-              (ngModelChange)="formNewBarcodeInput.set($event)"
+              (ngModelChange)="onNewBarcodeInputChange($event)"
+              (keydown.enter)="$event.preventDefault(); addBarcodeToList()"
               placeholder="Escanea o escribe el código de barras del empaque y presiona Agregar..."
               class="flex-1 h-11 px-3 rounded-xl border border-slate-300 text-sm font-mono"
             />
             <button
               type="button"
               (click)="addBarcodeToList()"
-              class="h-11 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold">
+              class="h-11 px-4 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold transition-colors">
               Agregar Código
             </button>
           </div>
+
+          @if (barcodeAutofillHint(); as hint) {
+            <div data-testid="barcode-autofill-hint"
+              class="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-900">
+              {{ hint }}
+            </div>
+          }
 
           @if (formBarcodes().length > 0) {
             <div class="flex flex-wrap gap-2">

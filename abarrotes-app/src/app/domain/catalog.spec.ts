@@ -25,6 +25,10 @@ import {
   buildMobileCatalogSnapshot,
   computeMobileCatalogFingerprint,
 } from './catalog.ts';
+import {
+  KNOWN_MEXICAN_GROCERY_BARCODES,
+  lookupKnownGroceryBarcode,
+} from './mexican-barcodes.ts';
 
 test('Catálogo (F1): autogeneración de SKU interno editable y códigos internos EAN-13 sin colisiones', () => {
   const existingSkus = ['LAC-LEC-ENT', 'LAC-LEC-001'];
@@ -664,4 +668,23 @@ test('Sincronización móvil: buildMobileCatalogSnapshot omite stock/minStock/ro
   // Cambiar catálogo o storeName sí altera la huella
   const snap3 = buildMobileCatalogSnapshot(withDifferentStock, 'Tienda Nueva', 5, '2026-11-18T12:05:00.000Z');
   assert.notEqual(computeMobileCatalogFingerprint(snap1), computeMobileCatalogFingerprint(snap3));
+});
+
+test('Diccionario silencioso: lookupKnownGroceryBarcode reconoce productos mexicanos frecuentes y rechaza desconocidos', () => {
+  assert.ok(KNOWN_MEXICAN_GROCERY_BARCODES.length >= 100);
+  const uniqueCodes = new Set(KNOWN_MEXICAN_GROCERY_BARCODES.map((x) => x.barcode));
+  assert.equal(uniqueCodes.size, KNOWN_MEXICAN_GROCERY_BARCODES.length);
+
+  const coca = lookupKnownGroceryBarcode('7501055300075');
+  assert.ok(coca);
+  assert.equal(coca.category, 'Bebidas');
+  assert.equal(coca.saleUnit, 'Pieza');
+
+  const atun = lookupKnownGroceryBarcode('  7501045403014  ');
+  assert.ok(atun);
+  assert.equal(atun.category, 'Enlatados');
+  assert.equal(atun.saleUnit, 'Lata');
+
+  assert.equal(lookupKnownGroceryBarcode('7509999999999'), null);
+  assert.equal(lookupKnownGroceryBarcode(''), null);
 });

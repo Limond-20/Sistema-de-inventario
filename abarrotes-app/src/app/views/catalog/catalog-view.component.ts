@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -16,6 +16,7 @@ import {
   getAllProductBarcodes,
   normalizePriceTiers,
 } from '../../domain/catalog';
+import { lookupKnownGroceryBarcode } from '../../domain/mexican-barcodes';
 import {
   generateCatalogImportCsvTemplate,
   parseCsvText,
@@ -34,8 +35,20 @@ export type AbcFilter = 'ALL' | AbcClass;
   imports: [CommonModule, CurrencyPipe, DecimalPipe, FormsModule, RouterModule],
   templateUrl: './catalog-view.component.html',
 })
-export class CatalogViewComponent {
+export class CatalogViewComponent implements OnInit, OnDestroy {
   protected readonly inv = inject(MockInventoryService);
+  private readonly zone = inject(NgZone);
+  private syncChannel: BroadcastChannel | null = null;
+  private readonly storageListener = (ev: StorageEvent) => {
+    if (ev.key === 'abarrotes_lan_last_event' && ev.newValue) {
+      try {
+        const data = JSON.parse(ev.newValue);
+        this.zone.run(() => this.handleIncomingBarcodeEvent(data));
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   protected readonly search = signal('');
   protected readonly category = signal<string>('Todos');
@@ -120,6 +133,7 @@ export class CatalogViewComponent {
   protected readonly formBarcodes = signal<string[]>([]);
   protected readonly formNewBarcodeInput = signal<string>('');
   protected readonly formUseInternalBarcode = signal<boolean>(false);
+  protected readonly barcodeAutofillHint = signal<string | null>(null);
 
   // Precios escalonados (Menudeo, Medio Mayoreo, Mayoreo)
   protected readonly formMedioMayoreoMinQty = signal<number>(6);
@@ -246,6 +260,39 @@ export class CatalogViewComponent {
     );
   }
 
+  ngOnInit(): void {
+    if (typeof BroadcastChannel !== 'undefined') {
+      this.syncChannel = new BroadcastChannel('abarrotes_lan_sync');
+      this.syncChannel.onmessage = (event) => {
+        this.zone.run(() => this.handleIncomingBarcodeEvent(event.data));
+      };
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', this.storageListener);
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (this.syncChannel) {
+      this.syncChannel.close();
+      this.syncChannel = null;
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', this.storageListener);
+    }
+  }
+
+  private handleIncomingBarcodeEvent(data: any): void {
+    if (!this.productModalOpen() || this.editingOriginalSku()) return;
+    if (!data || (data.type !== 'BARCODE_SCANNED' && data.type !== 'BARCODE_SCAN')) return;
+    const code = String(data.barcode || data.product?.barcode || '').trim();
+    if (!code) return;
+    if (!this.formBarcodes().includes(code)) {
+      this.formBarcodes.update((list) => [...list, code]);
+    }
+    this.tryAutofillFromBarcode(code);
+  }
+
   @HostListener('document:keydown.escape')
   protected onEscapeKey(): void {
     if (this.pendingDeactivateProduct()) { this.closeDeactivateModal(); return; }
@@ -356,6 +403,7 @@ export class CatalogViewComponent {
     this.formBarcodes.set([]);
     this.formNewBarcodeInput.set('');
     this.formUseInternalBarcode.set(false);
+    this.barcodeAutofillHint.set(null);
     this.formMedioMayoreoMinQty.set(6);
     this.formMedioMayoreoPrice.set(19);
     this.formMayoreoMinQty.set(12);
@@ -391,6 +439,7 @@ export class CatalogViewComponent {
     this.formBarcodes.set([...getAllProductBarcodes(p)]);
     this.formNewBarcodeInput.set('');
     this.formUseInternalBarcode.set(Boolean(p.hasInternalBarcode));
+    this.barcodeAutofillHint.set(null);
 
     const tiers = normalizePriceTiers(p.salePrice, p.priceTiers);
     const medio = tiers.find((t) => t.tier === 'MEDIO_MAYOREO');
@@ -405,6 +454,7 @@ export class CatalogViewComponent {
   protected closeProductModal(): void {
     this.productModalOpen.set(false);
     this.formFeedback.set(null);
+    this.barcodeAutofillHint.set(null);
   }
 
   protected onNameOrCategoryChange(): void {
@@ -445,12 +495,36 @@ export class CatalogViewComponent {
     }
   }
 
+  protected onNewBarcodeInputChange(rawValue: string): void {
+    this.formNewBarcodeInput.set(rawValue);
+    const clean = String(rawValue || '').trim();
+    if (clean.length >= 12) {
+      this.tryAutofillFromBarcode(clean);
+    }
+  }
+
+  protected tryAutofillFromBarcode(rawCode: string): void {
+    if (this.editingOriginalSku()) return;
+    const match = lookupKnownGroceryBarcode(rawCode);
+    if (!match) return;
+    if (this.formName().trim() === '') {
+      this.formName.set(match.name);
+      this.formCategory.set(match.category);
+      this.onSaleUnitChange(match.saleUnit);
+      this.onNameOrCategoryChange();
+    }
+    this.barcodeAutofillHint.set(
+      `Código reconocido: ${match.name} (${match.category}) — datos autocompletados.`,
+    );
+  }
+
   protected addBarcodeToList(): void {
     const code = this.formNewBarcodeInput().trim();
     if (!code) return;
     if (!this.formBarcodes().includes(code)) {
       this.formBarcodes.update((list) => [...list, code]);
     }
+    this.tryAutofillFromBarcode(code);
     this.formNewBarcodeInput.set('');
   }
 
