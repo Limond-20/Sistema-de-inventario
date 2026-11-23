@@ -186,6 +186,8 @@ def create_app(
     pairing: PairingStore | None = None,
     max_message_bytes: int = MAX_MESSAGE_BYTES,
     data_dir: Path | None = None,
+    respaldos_dir: Path | None = None,
+    evidencias_dir: Path | None = None,
     usb_enabled: bool = False,
     usb_dir: Path | None = None,
     usb_poll_seconds: float | None = None,
@@ -221,10 +223,11 @@ def create_app(
     if data_dir is None:
         data_dir = Path(__file__).resolve().parents[1] / "data"
     st.data_dir = Path(data_dir)
-    st.evidencias_dir = st.data_dir / "evidencias"
+    st.data_dir.mkdir(parents=True, exist_ok=True)
+    st.evidencias_dir = Path(evidencias_dir) if evidencias_dir is not None else (st.data_dir / "evidencias")
     st.evidencias_dir.mkdir(parents=True, exist_ok=True)
     cleanup_stale_temp_evidencias(st.evidencias_dir, max_age_seconds=3600.0)
-    st.respaldos_dir = st.data_dir / "respaldos"
+    st.respaldos_dir = Path(respaldos_dir) if respaldos_dir is not None else (st.data_dir / "respaldos")
     st.respaldos_dir.mkdir(parents=True, exist_ok=True)
     st.backups = BackupStore(st.respaldos_dir)
     st.usb = UsbBackupCopier(
@@ -788,6 +791,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--static", default=str(root / "abarrotes-app" / "dist" / "abarrotes-app" / "browser"))
     ap.add_argument("--cert-dir", default=str(root / "local-server" / "certs"))
     ap.add_argument("--data-dir", default=str(root / "local-server" / "data"), help="donde se guarda el código de vinculación")
+    ap.add_argument("--respaldos-dir", default=None, help="carpeta independiente para respaldos (.bak)")
+    ap.add_argument("--evidencias-dir", default=None, help="carpeta independiente para fotos de evidencia")
     ap.add_argument("--no-tls", action="store_true", help="HTTP simple (la cámara en vivo del celular no funcionará)")
     ap.add_argument(
         "--usb-dir",
@@ -806,6 +811,8 @@ def main(argv: list[str] | None = None) -> None:
         ips=ips,
         pairing=pairing,
         data_dir=Path(args.data_dir),
+        respaldos_dir=Path(args.respaldos_dir) if args.respaldos_dir else None,
+        evidencias_dir=Path(args.evidencias_dir) if args.evidencias_dir else None,
         usb_enabled=not args.sin_usb,
         usb_dir=Path(args.usb_dir) if args.usb_dir else None,
         usb_poll_seconds=300.0,
