@@ -346,6 +346,8 @@
                 <select id="mob-prod-unit"
                   class="w-full h-10 px-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900">
                   <option value="Pieza">Pieza</option>
+                  <option value="Lata">Lata</option>
+                  <option value="Paquete">Paquete</option>
                   <option value="Kg">Kg</option>
                   <option value="g">g</option>
                   <option value="L">L</option>
@@ -946,17 +948,173 @@
       }
     }
 
+    const KNOWN_MEXICAN_BARCODE_LIST = [
+      ['7501055300075', 'Coca-Cola Original 600ml', 'Bebidas', 'Pieza'],
+      ['7501055320639', 'Coca-Cola Sin Azúcar 600ml', 'Bebidas', 'Pieza'],
+      ['7501055300594', 'Coca-Cola Original 1.5L', 'Bebidas', 'Pieza'],
+      ['7501055302925', 'Coca-Cola Original 2L', 'Bebidas', 'Pieza'],
+      ['7501055305247', 'Coca-Cola Original 2.5L', 'Bebidas', 'Pieza'],
+      ['7501055321681', 'Coca-Cola Sin Azúcar 2.5L', 'Bebidas', 'Pieza'],
+      ['7501055313068', 'Coca-Cola Retornable', 'Bebidas', 'Pieza'],
+      ['7501031311682', 'Pepsi 1.5L', 'Bebidas', 'Pieza'],
+      ['7501022013861', 'Pepsi Black 355ml', 'Bebidas', 'Lata'],
+      ['7501055307906', 'Agua Purificada Ciel 600ml', 'Bebidas', 'Pieza'],
+      ['7501086801015', 'Agua Purificada Epura 1.5L', 'Bebidas', 'Pieza'],
+      ['7501055352388', 'Ciel Exprim Mandarina 600ml', 'Bebidas', 'Pieza'],
+      ['7501055352395', 'Ciel Exprim Mandarina 1L', 'Bebidas', 'Pieza'],
+      ['7501055352456', 'Ciel Exprim Limón 600ml', 'Bebidas', 'Pieza'],
+      ['7501055358885', 'Fuze Tea Té Negro 600ml', 'Bebidas', 'Pieza'],
+      ['7501055351237', 'Del Valle Naranja & Nada 600ml', 'Bebidas', 'Pieza'],
+      ['7501055351213', 'Del Valle Limón & Nada 600ml', 'Bebidas', 'Pieza'],
+      ['7501055356737', 'Néctar Del Valle Manzana 946ml', 'Bebidas', 'Pieza'],
+      ['7501055381463', 'Jugo Del Valle Piña 1L', 'Bebidas', 'Pieza'],
+      ['7501055360093', 'Jugo Del Valle Mango 200ml', 'Bebidas', 'Pieza'],
+      ['7501055360079', 'Jugo Del Valle Naranja 200ml', 'Bebidas', 'Pieza'],
+      ['7501013106930', 'Jugo Jumex Naranja 960ml', 'Bebidas', 'Pieza'],
+      ['7501013105469', 'Jugo Jumex Naranja 960ml Clásico', 'Bebidas', 'Pieza'],
+      ['7501013102765', 'Néctar Jumex Mango 475ml', 'Bebidas', 'Pieza'],
+      ['7501013104714', 'Néctar Jumex Durazno 475ml', 'Bebidas', 'Pieza'],
+      ['7501013100143', 'Jugo Jumex Único Fresco Manzana 200ml', 'Bebidas', 'Pieza'],
+      ['7501031307210', 'Jumex Fresh Citrus 600ml', 'Bebidas', 'Pieza'],
+      ['7501022010860', 'Jumex Frutzzo Mandarina 600ml', 'Bebidas', 'Pieza'],
+      ['7501125104411', 'Suero Electrolit Coco 625ml', 'Bebidas', 'Pieza'],
+      ['7501125144851', 'Suero Electrolit Uva 625ml', 'Bebidas', 'Pieza'],
+      ['7501125174797', 'Suero Electrolit 625ml', 'Bebidas', 'Pieza'],
+      ['7501020515350', 'Leche Lala Entera 1L', 'Lácteos', 'Pieza'],
+      ['7501020565935', 'Leche Lala Entera 1L Clásica', 'Lácteos', 'Pieza'],
+      ['7501020565959', 'Leche Lala Semidescremada 1L', 'Lácteos', 'Pieza'],
+      ['7501020548556', 'Leche Lala 100 Sin Lactosa 1L', 'Lácteos', 'Pieza'],
+      ['7501020548495', 'Leche Lala 100 Proteína Deslactosada 1L', 'Lácteos', 'Pieza'],
+      ['7501020550955', 'Leche Lala Deslactosada Light 1L', 'Lácteos', 'Pieza'],
+      ['7501020553444', 'Leche Lala Deslactosada Light 1.5L', 'Lácteos', 'Pieza'],
+      ['7501020547047', 'Leche Lala 1.8L', 'Lácteos', 'Pieza'],
+      ['7501020547061', 'Leche Lala Deslactosada 1.8L', 'Lácteos', 'Pieza'],
+      ['7501055900022', 'Leche Alpura Clásica 1L', 'Lácteos', 'Pieza'],
+      ['7501055901425', 'Leche Alpura Deslactosada 1L', 'Lácteos', 'Pieza'],
+      ['7501055904143', 'Leche Alpura Deslactosada Light 1L', 'Lácteos', 'Pieza'],
+      ['7501055900800', 'Leche Alpura Light 1L', 'Lácteos', 'Pieza'],
+      ['7501055909520', 'Crema Ácida Alpura 200ml', 'Lácteos', 'Pieza'],
+      ['7501055905287', 'Media Crema Alpura 250ml', 'Lácteos', 'Pieza'],
+      ['7501020513134', 'Crema Fresca Lala 200ml', 'Lácteos', 'Pieza'],
+      ['7501020532258', 'Crema Lala Reducida en Grasa 900ml', 'Lácteos', 'Pieza'],
+      ['7501020537970', 'Mantequilla Lala Sin Sal 90g', 'Lácteos', 'Pieza'],
+      ['7501058611062', 'Leche Evaporada Carnation Clavel 360g', 'Lácteos', 'Lata'],
+      ['7501032394820', 'Yoghurt Yoplait Fresa 1kg', 'Lácteos', 'Pieza'],
+      ['7501032398439', 'Yoghurt Danone 900g', 'Lácteos', 'Pieza'],
+      ['7501020563702', 'Yoghurt Lala Zero Natural 900g', 'Lácteos', 'Pieza'],
+      ['7501040083617', 'Queso Panela Rebanado FUD 300g', 'Lácteos', 'Pieza'],
+      ['7501040083709', 'Queso Panela en Bloque FUD 400g', 'Lácteos', 'Pieza'],
+      ['7501040083884', 'Queso Manchego Rebanado FUD 190g', 'Lácteos', 'Pieza'],
+      ['7501040005831', 'Jamón de Pavo Virginia FUD 290g', 'Embutidos', 'Pieza'],
+      ['7501040003844', 'Jamón Virginia FUD 450g', 'Embutidos', 'Pieza'],
+      ['7501040023491', 'Pechuga de Pavo San Rafael Balance 200g', 'Embutidos', 'Pieza'],
+      ['7501020556445', 'Salchicha de Pavo Lala Plenia 500g', 'Embutidos', 'Pieza'],
+      ['7441029502004', 'Pan Blanco Bimbo Grande 680g', 'Panadería', 'Pieza'],
+      ['7501000111206', 'Pan Blanco Bimbo 620g', 'Panadería', 'Pieza'],
+      ['7501030478409', 'Pan Integral Bimbo con Ajonjolí 567g', 'Panadería', 'Pieza'],
+      ['7501000111503', 'Medias Noches Bimbo 340g', 'Panadería', 'Paquete'],
+      ['7501030462293', 'Pan Tostado Bimbo Cero Cero 250g', 'Panadería', 'Paquete'],
+      ['7501000112784', 'Nito Bimbo 62g', 'Panadería', 'Pieza'],
+      ['7501030418399', 'Donitas Espolvoreadas Bimbo 140g', 'Panadería', 'Paquete'],
+      ['7501030486664', 'Tortillinas Tía Rosa 561g', 'Panadería', 'Paquete'],
+      ['7500810036624', 'Tortillas de Harina Tía Rosa 382g', 'Panadería', 'Paquete'],
+      ['7501000157075', 'Tostadas Onduladas Milpa Real 360g', 'Panadería', 'Paquete'],
+      ['7501000153107', 'Gansito Marinela 50g', 'Panadería', 'Pieza'],
+      ['7501030480723', 'Choco Roles Marinela 160g', 'Panadería', 'Paquete'],
+      ['7503029445126', 'Pingüinos Marinela 200g', 'Panadería', 'Paquete'],
+      ['7501030474722', 'Barritas de Fresa Marinela 55g', 'Panadería', 'Paquete'],
+      ['7501030490920', 'Polvorones Marinela 250g', 'Panadería', 'Paquete'],
+      ['7500810003114', 'Canelitas Marinela 300g', 'Panadería', 'Paquete'],
+      ['7500810011126', 'Galletas Príncipe Chocolate Marinela 126g', 'Panadería', 'Paquete'],
+      ['7501011101456', 'Sabritas Originales 42g', 'Botanas', 'Pieza'],
+      ['7501011101463', 'Sabritas Adobadas 42g', 'Botanas', 'Pieza'],
+      ['7501011101678', 'Sabritas Limón 46g', 'Botanas', 'Pieza'],
+      ['7501011137431', 'Sabritas Habanero 42g', 'Botanas', 'Pieza'],
+      ['7501011116252', 'Fritos Sabritas 53g', 'Botanas', 'Pieza'],
+      ['7501011143999', 'Cheetos Nacho 52g', 'Botanas', 'Pieza'],
+      ['7501011130272', 'Doritos Flamin Hot 61g', 'Botanas', 'Pieza'],
+      ['7500478001620', 'Rancheritos Sabritas 40g', 'Botanas', 'Pieza'],
+      ['7501030424536', 'Takis Fuego Barcel 56g', 'Botanas', 'Pieza'],
+      ['7500810003671', 'Takis Fuego Barcel 70g', 'Botanas', 'Pieza'],
+      ['7500810027837', 'Runners Chile Limón Barcel 72g', 'Botanas', 'Pieza'],
+      ['7501000658923', 'Galletas Marías Gamesa 170g', 'Botanas', 'Paquete'],
+      ['7501000655380', 'Galletas Marías Gamesa 510g', 'Botanas', 'Paquete'],
+      ['7501000664221', 'Galletas Saladitas Gamesa 186g', 'Botanas', 'Paquete'],
+      ['7500478014569', 'Galletas Chokis Clásica Gamesa 76g', 'Botanas', 'Paquete'],
+      ['7501000140855', 'Galletas Triki Trakes Marinela 85g', 'Botanas', 'Paquete'],
+      ['7506105606053', 'Chicles Trident Menta', 'Botanas', 'Paquete'],
+      ['7506174512200', 'Chocolate Milky Way 48g', 'Botanas', 'Pieza'],
+      ['7501039121122', 'Aceite Nutrioli 850ml', 'Abarrotes', 'Pieza'],
+      ['7501039121610', 'Aceite de Soya Nutrioli 850ml', 'Abarrotes', 'Pieza'],
+      ['7501039120149', 'Aceite Nutrioli 946ml', 'Abarrotes', 'Pieza'],
+      ['7501039122099', 'Aceite Sabrosano 850ml', 'Abarrotes', 'Pieza'],
+      ['7501048103010', 'Aceite Puro de Canola Canoil 946ml', 'Abarrotes', 'Pieza'],
+      ['7501052410012', 'Arroz SOS Súper Extra 900g', 'Granos', 'Pieza'],
+      ['7501018310103', 'Pasta La Moderna Fideo 200g', 'Abarrotes', 'Pieza'],
+      ['7501018310530', 'Pasta La Moderna Spaghetti 200g', 'Abarrotes', 'Pieza'],
+      ['7501018310257', 'Pasta La Moderna Letras 200g', 'Abarrotes', 'Pieza'],
+      ['7501018310578', 'Pasta La Moderna Caracol 200g', 'Abarrotes', 'Pieza'],
+      ['7501045403014', 'Atún Dolores en Agua 140g', 'Enlatados', 'Lata'],
+      ['7501046401423', 'Atún Dolores en Aceite 140g', 'Enlatados', 'Lata'],
+      ['7501045402970', 'Sardinas Dolores Salsa de Tomate 120g', 'Enlatados', 'Lata'],
+      ['7501003789792', 'Atún Herdez en Agua 130g', 'Enlatados', 'Lata'],
+      ['7501003129192', 'Atún Herdez en Agua 295g', 'Enlatados', 'Lata'],
+      ['7501017004200', 'Chiles Jalapeños La Costeña 220g', 'Enlatados', 'Lata'],
+      ['7501017004270', 'Frijoles Bayos Refritos La Costeña 580g', 'Enlatados', 'Lata'],
+      ['7501017004423', 'Frijoles Negros Refritos La Costeña 580g', 'Enlatados', 'Lata'],
+      ['7501071307782', 'Frijoles Refritos Bayos Isadora 430g', 'Abarrotes', 'Pieza'],
+      ['7501071307799', 'Frijoles Refritos Negros Isadora 430g', 'Abarrotes', 'Pieza'],
+      ['7501017005611', 'Puré de Tomate La Costeña 210g', 'Abarrotes', 'Pieza'],
+      ['7501003105868', 'Puré de Tomate Herdez 1kg', 'Abarrotes', 'Pieza'],
+      ['7501003124234', 'Granos de Elote Herdez 220g', 'Enlatados', 'Lata'],
+      ['7501003124319', 'Ensalada de Verduras Herdez 225g', 'Enlatados', 'Lata'],
+      ['7501003303387', 'Mayonesa McCormick con Limón 468g', 'Abarrotes', 'Pieza'],
+      ['7501052472133', 'Catsup Clemente Jacques 970g', 'Abarrotes', 'Pieza'],
+      ['7501052474069', 'Mermelada de Fresa Clemente Jacques 270g', 'Abarrotes', 'Pieza'],
+      ['7501005180658', 'Caldo de Pollo Knorr 100g', 'Abarrotes', 'Pieza'],
+      ['7501058620101', 'Café Soluble Nescafé Clásico 120g', 'Abarrotes', 'Pieza'],
+      ['7501058628466', 'Café Soluble Nescafé Decaf 40g', 'Abarrotes', 'Pieza'],
+      ['7506205802157', 'Alimento en Polvo Choco Milk 400g', 'Abarrotes', 'Pieza'],
+      ['7501008057346', 'Cereal Zucaritas Kellogg’s 620g', 'Abarrotes', 'Pieza'],
+      ['7501008041000', 'Cereal Corn Flakes Kellogg’s 500g', 'Abarrotes', 'Pieza'],
+      ['7501026006012', 'Jabón Zote Rosa 400g', 'Limpieza', 'Pieza'],
+      ['7501026005985', 'Jabón Zote Rosa 100g', 'Limpieza', 'Pieza'],
+      ['7501026005374', 'Jabón Zote Blanco 400g', 'Limpieza', 'Pieza'],
+      ['7501035910041', 'Limpiador Fabuloso Mar Fresco 1L', 'Limpieza', 'Pieza'],
+      ['7501025403058', 'Limpiador Multiusos Pinol 3.78L', 'Limpieza', 'Pieza'],
+      ['7509546054650', 'Pasta Dental Colgate Luminous White 75ml', 'Higiene', 'Pieza'],
+      ['7509546059723', 'Jabón Líquido Palmolive 700ml', 'Higiene', 'Pieza'],
+      ['7509546074979', 'Jabón Corporal Palmolive Neutro Balance 150g', 'Higiene', 'Pieza'],
+    ];
+    const KNOWN_MEXICAN_BARCODE_MAP = new Map(
+      KNOWN_MEXICAN_BARCODE_LIST.map(([barcode, name, category, saleUnit]) => [barcode, { barcode, name, category, saleUnit }])
+    );
+
+    function lookupKnownGroceryBarcode(rawCode) {
+      const clean = String(rawCode || '').trim().replace(/\s+/g, '');
+      if (!clean) return null;
+      if (KNOWN_MEXICAN_BARCODE_MAP.has(clean)) return KNOWN_MEXICAN_BARCODE_MAP.get(clean);
+      if (/^\d{12}$/.test(clean) && KNOWN_MEXICAN_BARCODE_MAP.has('0' + clean)) return KNOWN_MEXICAN_BARCODE_MAP.get('0' + clean);
+      if (/^0\d{12}$/.test(clean) && KNOWN_MEXICAN_BARCODE_MAP.has(clean.slice(1))) return KNOWN_MEXICAN_BARCODE_MAP.get(clean.slice(1));
+      return null;
+    }
+
     let lastUnknownBarcode = '';
+    let lastUnknownCategory = 'Abarrotes';
+    let lastUnknownSuggested = false;
 
     function handleBarcodeScanned(barcode) {
       playScannerBeep();
       triggerVibrate(80);
       const code = String(barcode).trim();
       const product = findProduct(code);
-      const title = product ? product.name : `Código: ${code}`;
+      const known = !product ? lookupKnownGroceryBarcode(code) : null;
+      const title = product ? product.name : (known ? known.name : `Código: ${code}`);
       const sub = product
         ? `$${product.salePrice.toFixed(2)} · Enviado a PC al instante ✓`
-        : 'Código desconocido · Pulsa "Crear producto" para registrarlo';
+        : (known
+          ? `Sugerido (${known.category}) · Escribe el precio para registrarlo`
+          : 'Código desconocido · Pulsa "Crear producto" para registrarlo');
 
       // Actualizar tarjeta inferior blanca fija
       const lastName = document.getElementById('pos-last-name');
@@ -971,16 +1129,40 @@
 
       const unknownCard = document.getElementById('pos-unknown-barcode-card');
       const unknownLabel = document.getElementById('pos-unknown-code-label');
+      const nameInput = document.getElementById('mob-prod-name');
+      const unitSelect = document.getElementById('mob-prod-unit');
+      const priceInput = document.getElementById('mob-prod-price');
+      const costInput = document.getElementById('mob-prod-cost');
       if (!product) {
         lastUnknownBarcode = code;
-        if (unknownLabel) unknownLabel.textContent = `Código: ${code}`;
+        lastUnknownCategory = known ? known.category : 'Abarrotes';
+        lastUnknownSuggested = Boolean(known);
+        if (unknownLabel) {
+          unknownLabel.textContent = known
+            ? `Código ${code} · Sugerido: ${known.name}`
+            : `Código: ${code}`;
+        }
         if (unknownCard) {
           unknownCard.classList.remove('hidden');
           unknownCard.classList.add('flex');
         }
-        toggleMobileCreateProductForm(false);
+        if (known) {
+          if (nameInput) nameInput.value = known.name;
+          if (unitSelect) unitSelect.value = known.saleUnit || 'Pieza';
+          if (priceInput) priceInput.value = '';
+          if (costInput) costInput.value = '';
+          toggleMobileCreateProductForm(true, 'mob-prod-price');
+        } else {
+          if (nameInput) nameInput.value = '';
+          if (unitSelect) unitSelect.value = 'Pieza';
+          if (priceInput) priceInput.value = '';
+          if (costInput) costInput.value = '';
+          toggleMobileCreateProductForm(false);
+        }
       } else {
         lastUnknownBarcode = '';
+        lastUnknownCategory = 'Abarrotes';
+        lastUnknownSuggested = false;
         if (unknownCard) {
           unknownCard.classList.add('hidden');
           unknownCard.classList.remove('flex');
@@ -991,7 +1173,7 @@
         type: 'BARCODE_SCANNED',
         altType: 'BARCODE_SCAN',
         barcode: code,
-        product: product || { barcode: code, name: 'Producto Escaneado', salePrice: 0 }
+        product: product || { barcode: code, name: known ? known.name : 'Producto Escaneado', salePrice: 0 }
       });
 
       if (sent) {
@@ -999,7 +1181,7 @@
       }
     }
 
-    function toggleMobileCreateProductForm(show) {
+    function toggleMobileCreateProductForm(show, focusId) {
       const form = document.getElementById('pos-create-product-form');
       const err = document.getElementById('mob-prod-error');
       if (err) {
@@ -1010,8 +1192,9 @@
       if (show) {
         form.classList.remove('hidden');
         form.classList.add('flex');
-        const nameInput = document.getElementById('mob-prod-name');
-        if (nameInput) nameInput.focus();
+        const targetId = focusId || (lastUnknownSuggested ? 'mob-prod-price' : 'mob-prod-name');
+        const focusEl = document.getElementById(targetId);
+        if (focusEl) focusEl.focus();
       } else {
         form.classList.add('hidden');
         form.classList.remove('flex');
@@ -1030,6 +1213,7 @@
       const salePrice = priceEl ? parseFloat(priceEl.value) : NaN;
       const cost = costEl && costEl.value !== '' ? parseFloat(costEl.value) : 0;
       const saleUnit = unitEl ? unitEl.value : 'Pieza';
+      const category = lastUnknownCategory || 'Abarrotes';
 
       if (!code || !name || !Number.isFinite(salePrice) || salePrice <= 0 || !Number.isFinite(cost) || cost < 0) {
         if (errEl) {
@@ -1044,6 +1228,7 @@
         requestId: `REQ-${code}`,
         barcode: code,
         name: name,
+        category: category,
         salePrice: salePrice,
         cost: cost,
         saleUnit: saleUnit
@@ -1054,6 +1239,7 @@
         barcode: code,
         sku: 'MOB-' + code.slice(-4),
         name: name,
+        category: category,
         salePrice: salePrice,
         unit: saleUnit,
         unitCost: cost,
@@ -1068,6 +1254,9 @@
       if (nameEl) nameEl.value = '';
       if (priceEl) priceEl.value = '';
       if (costEl) costEl.value = '';
+      lastUnknownBarcode = '';
+      lastUnknownCategory = 'Abarrotes';
+      lastUnknownSuggested = false;
 
       const lastName = document.getElementById('pos-last-name');
       const lastSub = document.getElementById('pos-last-sub');
