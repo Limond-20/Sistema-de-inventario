@@ -138,11 +138,11 @@
             </p>
           }
           <div class="grid grid-cols-2 gap-2">
-            <button type="button" (click)="applySquare(r.sku, 'MERMA_OPERATIVA')"
+            <button type="button" (click)="requestSquareAdjustment(r.sku, 'MERMA_OPERATIVA')"
               class="min-h-12 rounded-xl border border-brand-200 bg-brand-100 px-3 py-2 text-sm font-semibold text-brand-800 transition-colors hover:bg-brand-200">
               {{ r.isWithinNaturalTolerance ? 'Autorizar Merma Natural' : 'Merma Normal Granel/Corte' }}
             </button>
-            <button type="button" (click)="applySquare(r.sku, 'FALTANTE_INJUSTIFICADO')"
+            <button type="button" (click)="requestSquareAdjustment(r.sku, 'FALTANTE_INJUSTIFICADO')"
               class="min-h-12 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-800 transition-colors hover:bg-rose-50">
               Faltante Injustificado
             </button>
@@ -184,6 +184,33 @@
   }
 </section>
 
+@if (adjustment()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="audit-pin-title" data-testid="audit-pin-dialog">
+    <div class="w-full max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-2xl">
+      <div>
+        <h2 id="audit-pin-title" class="text-lg font-bold text-slate-900">Autorizar ajuste de auditoría</h2>
+        <p class="mt-1 text-sm text-slate-600">Ingresa el PIN de administrador para cuadrar existencias y registrar el movimiento en Kardex.</p>
+      </div>
+      @if (adjustmentError()) {
+        <p class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800" role="alert" data-testid="audit-pin-error">{{ adjustmentError() }}</p>
+      }
+      <label class="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+        PIN de autorización
+        <input type="password" inputmode="numeric" maxlength="32" autocomplete="one-time-code" data-testid="input-audit-adjustment-pin"
+          [value]="adjustmentPin()" (input)="adjustmentPin.set($any($event.target).value)"
+          (keydown.enter)="authorizeSquareAdjustment()" class="h-11 rounded-lg border border-slate-300 px-3 font-mono focus:border-brand-700 focus:outline-none" />
+      </label>
+      <div class="flex justify-end gap-2">
+        <button type="button" (click)="cancelSquareAdjustment()" class="h-10 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancelar</button>
+        <button type="button" (click)="authorizeSquareAdjustment()" [disabled]="adjustmentSubmitting() || adjustmentPin().length < 6"
+          data-testid="btn-authorize-audit-adjustment" class="h-10 rounded-lg bg-brand-700 hover:bg-brand-800 px-4 text-sm font-semibold text-white disabled:opacity-50 transition-colors">
+          {{ adjustmentSubmitting() ? 'Verificando…' : 'Autorizar ajuste' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
 @if (allDone()) {
   <section class="rounded-xl border border-emerald-300 bg-emerald-50/80 p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
     <div>
@@ -191,7 +218,7 @@
       <p class="text-xs text-slate-600">Los ajustes autorizados ya actualizaron las existencias y el historial de movimientos.</p>
     </div>
     <a routerLink="/"
-      class="h-11 px-5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center justify-center shrink-0 transition-colors">
+      class="h-11 px-5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold flex items-center justify-center shrink-0 transition-colors">
       Volver al Inicio
     </a>
   </section>

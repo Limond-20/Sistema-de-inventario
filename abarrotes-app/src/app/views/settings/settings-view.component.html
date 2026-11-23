@@ -21,8 +21,8 @@
         <span class="block text-xs font-bold text-slate-800">{{ inv.currentUser()?.name || inv.activeUser() }}</span>
         <span class="inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
           [class]="inv.currentUser()?.role === 'ADMINISTRADOR'
-            ? 'bg-purple-100 text-purple-900'
-            : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-800')">
+            ? 'bg-brand-100 text-brand-800'
+            : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-slate-200 text-slate-800' : 'bg-slate-100 text-slate-800')">
           Rol: {{ inv.currentUser()?.role || 'ADMINISTRADOR' }}
         </span>
       </div>
@@ -660,21 +660,21 @@
                 @if (inv.storageCryptoStatus() === 'unlocked') {
                   Datos protegidos bajo llave en este equipo
                 } @else {
-                  Cifrado en reposo no disponible en este entorno
+                  Protección con llave no activada en esta sesión
                 }
               </h2>
               <p class="text-xs text-slate-600 mt-0.5">
                 @if (inv.storageCryptoStatus() === 'unlocked') {
-                  Los datos en el navegador (IndexedDB) y en la base de datos local de la computadora (`inventory.sqlite3`) están cifrados con AES-256-GCM y protegidos con el PIN de administrador. Administradores con llave de acceso: {{ inv.storageCryptoSlotCount() }}.
+                  Toda la información de tu tienda se guarda protegida en esta computadora con el PIN de administrador. Administradores con llave de acceso: {{ inv.storageCryptoSlotCount() }}.
                 } @else {
-                  En entornos de prueba sin almacenamiento persistente no se activa el cifrado de navegador; en el servidor local de escritorio la base SQLite sigue cifrada en reposo.
+                  Los datos locales de la tienda se mantienen resguardados en este equipo.
                 }
               </p>
             </div>
           </div>
           <ul class="text-xs text-slate-700 list-disc pl-5 space-y-1">
-            <li>Al abrir la app se pide el PIN de un administrador para descifrar tanto el navegador como la base local de la computadora (`inventory.sqlite3`).</li>
-            <li>Cambiar el PIN de un administrador en "Seguridad y PIN" actualiza su llave automáticamente en ambos almacenes.</li>
+            <li>Al abrir el sistema se solicita el PIN de un administrador para desbloquear los datos de la tienda en esta computadora.</li>
+            <li>Cambiar el PIN de un administrador en "Seguridad y PIN" actualiza su llave de acceso automáticamente.</li>
             <li><b>Si se olvida el PIN no hay puerta trasera.</b> La recuperación es con un respaldo .bak y su frase de respaldo
               (pantalla de inicio → "¿Olvidaste el PIN?"). Por eso conviene tener respaldos recientes en una memoria USB.</li>
             <li>Usa un PIN de 8 dígitos o más: un PIN de 6 dígitos es más fácil de adivinar si alguien se roba la computadora.</li>

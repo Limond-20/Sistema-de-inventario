@@ -66,8 +66,8 @@
       </span>
       <span class="hidden sm:inline-block rounded px-1.5 py-0.5 text-[11px] font-bold"
         [class]="inv.currentUser()?.role === 'ADMINISTRADOR'
-          ? 'bg-purple-400/25 text-purple-200 border border-purple-400/40'
-          : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-blue-400/25 text-blue-200 border border-blue-400/40' : 'bg-slate-700 text-slate-200')">
+          ? 'bg-brand-100 text-brand-900 border border-brand-200'
+          : (inv.currentUser()?.role === 'ENCARGADO' ? 'bg-white/15 text-brand-100 border border-white/25' : 'bg-slate-700 text-slate-200')">
         {{ inv.currentUser()?.role || 'CAJERO' }}
       </span>
       <button
@@ -183,10 +183,9 @@
       <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
 
       @if (lanSync.isUnavailable()) {
-        <!-- Modo demostración (ng serve sin servidor local) -->
         <div class="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-7 py-2.5 text-xs font-semibold text-amber-800">
           <span class="h-2 w-2 rounded-full bg-amber-500"></span>
-          <span>Modo demostración (sin servidor local). Abre el archivo HTML móvil en otra pestaña para probar.</span>
+          <span>Servidor local no detectado. Asegúrate de abrir el sistema desde el acceso principal de la tienda para vincular celulares.</span>
         </div>
         <div class="grid items-center gap-8 p-8 md:grid-cols-2">
           <div class="flex flex-col items-center">
@@ -431,7 +430,7 @@
                 @if (shiftCutSummary().status === 'CUADRADA') {
                   <span class="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800">{{ shiftCutSummary().statusLabel }}</span>
                 } @else if (shiftCutSummary().status === 'SOBRANTE') {
-                  <span class="px-2.5 py-1 rounded-md bg-blue-100 text-blue-800">{{ shiftCutSummary().statusLabel }}</span>
+                  <span class="px-2.5 py-1 rounded-md bg-brand-100 text-brand-800">{{ shiftCutSummary().statusLabel }}</span>
                 } @else {
                   <span class="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800">{{ shiftCutSummary().statusLabel }}</span>
                 }

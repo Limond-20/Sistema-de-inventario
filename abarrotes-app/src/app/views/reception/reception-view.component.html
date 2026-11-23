@@ -898,7 +898,7 @@
             </button>
             <button type="button" (click)="paymentSource.set('FONDO_EXTERNO')"
               class="h-12 px-3 rounded-lg border text-xs font-bold transition-all text-center flex flex-col items-center justify-center cursor-pointer"
-              [class]="paymentSource() === 'FONDO_EXTERNO' ? 'bg-indigo-900 border-indigo-900 text-white shadow-xs' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'">
+              [class]="paymentSource() === 'FONDO_EXTERNO' ? 'bg-brand-700 border-brand-800 text-white shadow-xs' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'">
               <span>Bolsillo del Dueño</span>
               <span class="text-[10px] font-normal opacity-90">(Fondo Externo)</span>
             </button>
@@ -906,9 +906,9 @@
         </div>
 
         @if (paymentTargetDebtId(); as debtId) {
-          <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-lg text-xs text-blue-900 flex justify-between items-center">
+          <div class="bg-brand-50 border border-brand-200 p-2.5 rounded-lg text-xs text-brand-900 flex justify-between items-center">
             <span>Amortizando nota específica: <b>{{ paymentTargetDebtFolio() || debtId }}</b></span>
-            <button type="button" (click)="paymentTargetDebtId.set(null); paymentTargetDebtFolio.set(null)" class="text-blue-700 underline text-[11px] font-semibold cursor-pointer">Abonar primero a las notas más antiguas</button>
+            <button type="button" (click)="paymentTargetDebtId.set(null); paymentTargetDebtFolio.set(null)" class="text-brand-700 underline text-[11px] font-semibold cursor-pointer">Abonar primero a las notas más antiguas</button>
           </div>
         }
 
@@ -932,7 +932,7 @@
             <b>Coordinación con caja:</b> Este pago descuenta el efectivo del cajón actual y queda guardado en el historial de movimientos de la tienda.
           </div>
         } @else {
-          <div class="bg-indigo-50 border border-indigo-200 p-2.5 rounded-lg text-xs text-indigo-900">
+          <div class="bg-brand-50 border border-brand-200 p-2.5 rounded-lg text-xs text-brand-900">
             <b>Fondo externo:</b> Amortiza la deuda del proveedor sin alterar el arqueo ni retirar dinero del cajón de la tienda.
           </div>
         }

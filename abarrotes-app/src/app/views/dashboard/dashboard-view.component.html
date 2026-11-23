@@ -1,5 +1,5 @@
 <!-- ===================== INICIO: MÓDULOS OPERATIVOS ===================== -->
-<div class="flex min-h-[calc(100dvh-6.5rem)] flex-col gap-5 select-none">
+<div class="flex flex-col gap-4 select-none">
 
   <!-- Alertas visibles de stock negativo / faltantes en sistema -->
   @if (shortageAlerts().length > 0) {
@@ -60,25 +60,25 @@
   }
 
   @if (priceHikeAlerts().length > 0) {
-    <section class="rounded-2xl border border-sky-200 bg-sky-50/70 p-5 shadow-xs flex flex-col gap-3 shrink-0">
+    <section class="rounded-2xl border border-brand-200 bg-brand-50/70 p-5 shadow-xs flex flex-col gap-3 shrink-0">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
-          <span class="grid h-8 w-8 place-items-center rounded-lg bg-sky-100 text-sky-800">
+          <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand-100 text-brand-700">
             <app-icon name="alert" [size]="18" />
           </span>
           <span>Alzas de Costo de Proveedor Detectadas ({{ priceHikeAlerts().length }})</span>
         </div>
-        <a routerLink="/catalogo" class="text-xs text-sky-900 font-bold underline">Revisar Catálogo</a>
+        <a routerLink="/catalogo" class="text-xs text-brand-800 font-bold underline">Revisar Catálogo</a>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         @for (alert of priceHikeAlerts(); track alert.id) {
-          <div class="bg-white rounded-xl border border-sky-200 p-3.5 flex items-center justify-between gap-3">
+          <div class="bg-white rounded-xl border border-brand-200 p-3.5 flex items-center justify-between gap-3">
             <div>
               <p class="font-bold text-xs text-slate-900">{{ alert.title }}</p>
               <p class="text-[11px] text-slate-600 mt-0.5">{{ alert.detail }}</p>
             </div>
             <a routerLink="/catalogo"
-              class="h-9 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shrink-0 grid place-items-center">
+              class="h-9 px-3 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-semibold shrink-0 grid place-items-center">
               Revisar
             </a>
           </div>
@@ -87,118 +87,157 @@
     </section>
   }
 
-  <div class="grid flex-1 grid-cols-1 gap-5 md:grid-cols-2 md:auto-rows-fr xl:grid-cols-3">
-
-    <!-- 1. PUNTO DE VENTA -->
-    <a routerLink="/pos" class="module-card btn justify-center gap-4 min-h-[160px]">
-      <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-emerald-100 text-emerald-700"><app-icon name="cart" [size]="28" /></span>
+  <!-- Banner Principal Protagonista: Punto de venta -->
+  <a routerLink="/pos"
+    class="btn flex flex-wrap items-center justify-between gap-5 rounded-2xl border border-brand-800 bg-brand-700 p-6 text-white shadow-md hover:bg-brand-800 transition-all">
+    <div class="flex items-center gap-4 min-w-0">
+      <span class="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-white/15 text-amber-400">
+        <app-icon name="cart" [size]="28" />
+      </span>
+      <div class="min-w-0">
+        <h2 class="text-2xl font-bold leading-tight text-white">Punto de venta</h2>
+        <p class="mt-1 text-sm text-brand-100">Cobrar en mostrador, ventas a granel y fiados</p>
       </div>
-      <h2 class="text-2xl font-bold leading-tight text-slate-900">Punto de venta</h2>
-    </a>
+    </div>
+    <span class="inline-flex shrink-0 items-center gap-2 rounded-xl bg-amber-400 px-5 py-3 text-sm font-bold text-slate-900 shadow-xs">
+      <span>Abrir caja</span>
+      <app-icon name="arrow" [size]="16" />
+    </span>
+  </a>
 
-    <!-- 2. RECEPCIÓN DE MERCANCÍA -->
-    <a routerLink="/recepcion" class="module-card btn justify-center gap-4 min-h-[160px]">
-      @if (marginAlertsCount() > 0) {
-        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
-          {{ marginAlertsCount() }}
-        </span>
-      }
-      <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-sky-100 text-sky-700"><app-icon name="inbox" [size]="28" /></span>
-        @if (inv.hasPendingOcrMarginIssue()) {
-          <span class="module-tag bg-red-100 text-red-800">{{ inv.brokenMarginLinesCount() }} con Margen Caído</span>
-        } @else if (inv.ocrNote()) {
-          <span class="module-tag bg-sky-100 text-sky-800">1 Nota Pendiente</span>
-        }
-      </div>
-      <h2 class="text-2xl font-bold leading-tight text-slate-900">Recepción de mercancía</h2>
-    </a>
+  <!-- Otros 5 módulos en tarjetas horizontales compactas y homogéneas -->
+  <section class="flex flex-col gap-2.5">
+    <p class="px-1 text-xs font-semibold text-slate-500">Administración y control</p>
 
-    <!-- 3. AUDITORÍA DE PASILLO -->
-    <a routerLink="/auditoria" class="module-card btn justify-center gap-4 min-h-[160px]">
-      @if (pendingAuditMissionCount() > 0) {
-        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
-          {{ pendingAuditMissionCount() }}
-        </span>
-      }
-      <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-amber-100 text-amber-700"><app-icon name="clipboard" [size]="28" /></span>
-        @if (inv.pendingAuditCount() > 0) {
-          <span class="module-tag bg-amber-200 text-amber-950">{{ inv.pendingAuditCount() }} Diferencias por Dictaminar</span>
-        }
-      </div>
-      <h2 class="text-2xl font-bold leading-tight text-slate-900">Auditoría de pasillo</h2>
-    </a>
+    <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
 
-    <!-- 4. LIBRETA DE FIADOS -->
-    <button type="button" (click)="goToFiados()" class="module-card btn justify-center gap-4 min-h-[160px]">
-      <div class="flex w-full items-start justify-between gap-3">
-        <span class="module-icon bg-purple-100 text-purple-700"><app-icon name="book" [size]="28" /></span>
-        @if (inv.overdueCustomersCount() > 0) {
-          <span class="module-tag bg-red-100 text-red-800">{{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)</span>
-        }
-      </div>
-      <h2 class="w-full text-2xl font-bold leading-tight text-slate-900">Libreta de fiados</h2>
-    </button>
+      <!-- 1. CATÁLOGO Y PRECIOS -->
+      <a routerLink="/catalogo" class="module-card-compact btn">
+        <div class="flex items-center gap-3.5 min-w-0">
+          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700">
+            <app-icon name="box" [size]="22" />
+          </span>
+          <div class="min-w-0">
+            <h2 class="text-base font-bold leading-snug text-slate-900">Catálogo y precios</h2>
+            <p class="text-xs text-slate-600 truncate">Productos, códigos de barras y precios</p>
+          </div>
+        </div>
+        <span class="text-slate-400 shrink-0"><app-icon name="arrow" [size]="16" /></span>
+      </a>
 
-    <!-- 5. CATÁLOGO Y PRECIOS -->
-    <a routerLink="/catalogo" class="module-card btn justify-center gap-4 min-h-[160px]">
-      <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-brand-100 text-brand-700"><app-icon name="box" [size]="28" /></span>
-      </div>
-      <h2 class="text-2xl font-bold leading-tight text-slate-900">Catálogo y precios</h2>
-    </a>
-
-    <!-- 6. MERMAS Y CONSUMOS -->
-    <a routerLink="/mermas" class="module-card btn justify-center gap-4 min-h-[160px]">
-      @if (urgentFefoCount() > 0) {
-        <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md"
-          title="Productos próximos a caducar">
-          {{ urgentFefoCount() }}
-        </span>
-      }
-      <div class="flex items-start justify-between gap-3">
-        <span class="module-icon bg-rose-100 text-rose-700"><app-icon name="trash" [size]="28" /></span>
-        @if (urgentFefoCount() > 0 || inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
-          <span class="module-tag bg-red-100 text-red-800">
-            @if (urgentFefoCount() > 0) { {{ urgentFefoCount() }} Por caducar · }{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos
+      <!-- 2. RECEPCIÓN DE MERCANCÍA -->
+      <a routerLink="/recepcion" class="module-card-compact btn">
+        @if (marginAlertsCount() > 0) {
+          <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
+            {{ marginAlertsCount() }}
           </span>
         }
-      </div>
-      <h2 class="text-2xl font-bold leading-tight text-slate-900">Mermas y consumos</h2>
-    </a>
+        <div class="flex items-center gap-3.5 min-w-0">
+          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700">
+            <app-icon name="inbox" [size]="22" />
+          </span>
+          <div class="min-w-0">
+            <h2 class="text-base font-bold leading-snug text-slate-900">Recepción de mercancía</h2>
+            <p class="text-xs text-slate-600 truncate">Entradas de proveedor y control de costos</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          @if (inv.hasPendingOcrMarginIssue()) {
+            <span class="module-tag bg-red-100 text-red-800">{{ inv.brokenMarginLinesCount() }} con Margen Caído</span>
+          } @else if (inv.ocrNote()) {
+            <span class="module-tag bg-brand-100 text-brand-800">1 Nota Pendiente</span>
+          } @else {
+            <span class="text-slate-400"><app-icon name="arrow" [size]="16" /></span>
+          }
+        </div>
+      </a>
 
-  </div>
+      <!-- 3. LIBRETA DE FIADOS -->
+      <button type="button" (click)="goToFiados()" class="module-card-compact btn">
+        <div class="flex items-center gap-3.5 min-w-0">
+          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700">
+            <app-icon name="book" [size]="22" />
+          </span>
+          <div class="min-w-0">
+            <h2 class="text-base font-bold leading-snug text-slate-900">Libreta de fiados</h2>
+            <p class="text-xs text-slate-600 truncate">Cuentas por cobrar y abonos de clientes</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          @if (inv.overdueCustomersCount() > 0) {
+            <span class="module-tag bg-red-100 text-red-800">{{ inv.overdueCustomersCount() }} Vecino(s) Vencido(s)</span>
+          } @else {
+            <span class="text-slate-400"><app-icon name="arrow" [size]="16" /></span>
+          }
+        </div>
+      </button>
 
-  <!-- ===================== RESUMEN DE CAJA ===================== -->
-  <footer class="flex shrink-0 flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm shadow-xs">
-    <dl class="flex flex-wrap items-baseline gap-x-9 gap-y-2">
-      <div class="flex items-baseline gap-2">
-        <dt class="text-slate-500">Cajón:</dt>
-        <dd class="text-base font-bold text-emerald-700 tabular-nums">{{ inv.getRealDrawerCash() | currency:'MXN':'symbol-narrow' }}</dd>
-      </div>
-      <div class="flex items-baseline gap-2">
-        <dt class="text-slate-500">Crédito Colocado:</dt>
-        <dd class="text-base font-bold text-slate-900 tabular-nums">{{ inv.cashShift().creditSalesTotal | currency:'MXN':'symbol-narrow' }}</dd>
-      </div>
-      <div class="flex items-baseline gap-2">
-        <dt class="text-slate-500">Consumo Interno:</dt>
-        <dd class="text-base font-bold text-slate-900 tabular-nums">{{ inv.cashShift().internalConsumptionTotalCost | currency:'MXN':'symbol-narrow' }}</dd>
-      </div>
-      <div class="flex items-baseline gap-2">
-        <dt class="text-slate-500">Fondo Inicial:</dt>
-        <dd class="text-base font-bold text-slate-700 tabular-nums">{{ inv.cashShift().openingCash | currency:'MXN':'symbol-narrow' }}</dd>
-      </div>
-    </dl>
+      <!-- 4. AUDITORÍA DE PASILLO -->
+      <a routerLink="/auditoria" class="module-card-compact btn">
+        @if (pendingAuditMissionCount() > 0) {
+          <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
+            {{ pendingAuditMissionCount() }}
+          </span>
+        }
+        <div class="flex items-center gap-3.5 min-w-0">
+          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700">
+            <app-icon name="clipboard" [size]="22" />
+          </span>
+          <div class="min-w-0">
+            <h2 class="text-base font-bold leading-snug text-slate-900">Auditoría de pasillo</h2>
+            <p class="text-xs text-slate-600 truncate">Revisión de conteo físico ciego</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          @if (inv.pendingAuditCount() > 0) {
+            <span class="module-tag bg-amber-100 text-amber-900">{{ inv.pendingAuditCount() }} Diferencias por Dictaminar</span>
+          } @else {
+            <span class="text-slate-400"><app-icon name="arrow" [size]="16" /></span>
+          }
+        </div>
+      </a>
 
-    @if (pendingAbcCount() > 0) {
+      <!-- 5. MERMAS Y CONSUMOS -->
+      <a routerLink="/mermas" class="module-card-compact btn md:col-span-2">
+        @if (urgentFefoCount() > 0) {
+          <span class="absolute -right-2 -top-2 z-10 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-md"
+            title="Productos próximos a caducar">
+            {{ urgentFefoCount() }}
+          </span>
+        }
+        <div class="flex items-center gap-3.5 min-w-0">
+          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700">
+            <app-icon name="trash" [size]="22" />
+          </span>
+          <div class="min-w-0">
+            <h2 class="text-base font-bold leading-snug text-slate-900">Mermas y consumos</h2>
+            <p class="text-xs text-slate-600 truncate">Caducidades, cambio físico con proveedor y bajas de mercancía</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          @if (urgentFefoCount() > 0 || inv.pendingShrinkCount() > 0 || inv.internalConsumptionRecords().length > 0) {
+            <span class="module-tag bg-red-100 text-red-800">
+              @if (urgentFefoCount() > 0) { {{ urgentFefoCount() }} Por caducar · }{{ inv.pendingShrinkCount() }} Mermas · {{ inv.internalConsumptionRecords().length }} Consumos
+            </span>
+          } @else {
+            <span class="text-slate-400"><app-icon name="arrow" [size]="16" /></span>
+          }
+        </div>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- ===================== AVISO DE RECLASIFICACIÓN MENSUAL ===================== -->
+  @if (pendingAbcCount() > 0) {
+    <footer class="flex shrink-0 items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm shadow-xs">
+      <span class="font-semibold text-slate-700">Tienes {{ pendingAbcCount() }} producto(s) con cambio sugerido de clasificación mensual.</span>
       <button type="button" (click)="openAbcModal()"
         class="h-11 rounded-xl bg-brand-700 px-5 text-sm font-semibold text-white hover:bg-brand-800">
         Revisar clasificación mensual de productos ({{ pendingAbcCount() }})
       </button>
-    }
-  </footer>
+    </footer>
+  }
 
 </div>
 
@@ -257,14 +296,14 @@
 
                 <td class="p-3 text-center">
                   <span class="px-2.5 py-1 rounded-lg text-xs font-black border"
-                    [class]="item.currentClass === 'A' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : (item.currentClass === 'B' ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-slate-100 text-slate-700 border-slate-300')">
+                    [class]="item.currentClass === 'A' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : (item.currentClass === 'B' ? 'bg-brand-100 text-brand-800 border-brand-200' : 'bg-slate-100 text-slate-700 border-slate-300')">
                     Clase {{ item.currentClass }}
                   </span>
                 </td>
 
                 <td class="p-3 text-center">
                   <span class="px-2.5 py-1 rounded-lg text-xs font-black border-2"
-                    [class]="item.proposedClass === 'A' ? 'bg-emerald-600 text-white border-emerald-800' : (item.proposedClass === 'B' ? 'bg-blue-600 text-white border-blue-800' : 'bg-amber-500 text-slate-950 border-amber-700')">
+                    [class]="item.proposedClass === 'A' ? 'bg-emerald-600 text-white border-emerald-800' : (item.proposedClass === 'B' ? 'bg-brand-700 text-white border-brand-900' : 'bg-amber-500 text-slate-950 border-amber-700')">
                     ➔ Clase {{ item.proposedClass }}
                   </span>
                 </td>
