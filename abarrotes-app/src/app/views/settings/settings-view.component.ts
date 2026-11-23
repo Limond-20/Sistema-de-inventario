@@ -5,7 +5,7 @@ import { MockInventoryService } from '../../services/mock-inventory.service';
 import { IconComponent } from '../../components/icon/icon.component';
 import { hasPermission, ROLE_PERMISSIONS, type AppUser, type UserRole } from '../../domain/auth';
 import { verifySecurityAuditChain } from '../../domain/audit-log';
-import { DEFAULT_PRIVACY_NOTICE_TEMPLATE } from '../../domain/privacy';
+import { DEFAULT_PRIVACY_NOTICE_TEMPLATE, renderPrivacyNotice } from '../../domain/privacy';
 
 type SettingsTab = 'parametros' | 'usuarios' | 'seguridad' | 'privacidad' | 'bitacora';
 
@@ -66,7 +66,15 @@ export class SettingsViewComponent implements OnInit {
   protected readonly privacyFeedback = signal<string>('');
   protected readonly privacyError = signal<string>('');
   protected readonly privacyBusy = signal<boolean>(false);
+  protected readonly privacyPreviewOpen = signal<boolean>(false);
   protected readonly privacyPlaceholders = '{{negocio}}, {{responsable}} y {{contacto}}';
+  protected readonly renderedPrivacyPreview = computed(() =>
+    renderPrivacyNotice(this.privacyTemplate() || DEFAULT_PRIVACY_NOTICE_TEMPLATE, {
+      storeName: this.inv.businessSettings().storeName,
+      responsibleName: this.privacyResponsible(),
+      contact: this.privacyContact(),
+    })
+  );
   protected readonly privacyVersionsDesc = computed(() =>
     [...(this.inv.privacyNotice()?.versions || [])].sort((a, b) => b.version - a.version)
   );
@@ -129,6 +137,10 @@ export class SettingsViewComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   protected onEscapeKey(): void {
+    if (this.privacyPreviewOpen()) {
+      this.closePrivacyPreview();
+      return;
+    }
     if (this.userModalOpen()) {
       this.closeNewUserModal();
     }
@@ -157,6 +169,80 @@ export class SettingsViewComponent implements OnInit {
 
   resetPrivacyTemplate(): void {
     this.privacyTemplate.set(DEFAULT_PRIVACY_NOTICE_TEMPLATE);
+  }
+
+  openPrivacyPreview(): void {
+    this.privacyPreviewOpen.set(true);
+  }
+
+  closePrivacyPreview(): void {
+    this.privacyPreviewOpen.set(false);
+  }
+
+  printPrivacyNotice(): void {
+    if (typeof document === 'undefined') return;
+    const text = this.renderedPrivacyPreview();
+    const escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const storeTitle = (this.inv.businessSettings().storeName || 'Tienda')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc || !iframe.contentWindow) {
+      iframe.remove();
+      return;
+    }
+
+    doc.open();
+    doc.write(`<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Aviso de privacidad - ${storeTitle}</title>
+<style>
+  @page { margin: 18mm; }
+  body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #0f172a; line-height: 1.6; max-width: 720px; margin: 0 auto; padding: 12px; }
+  pre { white-space: pre-wrap; font-family: inherit; font-size: 13px; margin: 0; }
+</style>
+</head>
+<body>
+<pre>${escaped}</pre>
+</body>
+</html>`);
+    doc.close();
+
+    const cleanup = () => {
+      try {
+        iframe.remove();
+      } catch {
+        // ignore
+      }
+    };
+
+    const win = iframe.contentWindow;
+    win.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(() => {
+      try {
+        win.focus();
+        win.print();
+      } finally {
+        setTimeout(cleanup, 60_000);
+      }
+    }, 60);
   }
 
   async publishPrivacyNotice(): Promise<void> {

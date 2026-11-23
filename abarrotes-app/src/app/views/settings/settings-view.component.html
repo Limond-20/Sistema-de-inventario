@@ -646,8 +646,8 @@
          ========================================================================= -->
     @if (activeTab() === 'privacidad') {
       <div class="space-y-6" data-testid="panel-privacidad">
-        <!-- Cifrado en reposo -->
-        <div class="rounded-2xl border p-5 space-y-3"
+        <!-- Protección con llave -->
+        <div class="rounded-2xl border p-5 space-y-2.5"
           [class]="inv.storageCryptoStatus() === 'unlocked' ? 'border-emerald-300 bg-emerald-50/60' : 'border-amber-300 bg-amber-50'"
           data-testid="storage-crypto-status-card">
           <div class="flex items-center gap-3">
@@ -665,7 +665,7 @@
               </h2>
               <p class="text-xs text-slate-600 mt-0.5">
                 @if (inv.storageCryptoStatus() === 'unlocked') {
-                  Toda la información de tu tienda se guarda protegida en esta computadora con el PIN de administrador. Administradores con llave de acceso: {{ inv.storageCryptoSlotCount() }}.
+                  Toda la información de tu tienda está protegida en esta computadora con el PIN de administrador (administradores con acceso: {{ inv.storageCryptoSlotCount() }}).
                 } @else {
                   Los datos locales de la tienda se mantienen resguardados en este equipo.
                 }
@@ -673,11 +673,8 @@
             </div>
           </div>
           <ul class="text-xs text-slate-700 list-disc pl-5 space-y-1">
-            <li>Al abrir el sistema se solicita el PIN de un administrador para desbloquear los datos de la tienda en esta computadora.</li>
-            <li>Cambiar el PIN de un administrador en "Seguridad y PIN" actualiza su llave de acceso automáticamente.</li>
-            <li><b>Si se olvida el PIN no hay puerta trasera.</b> La recuperación es con un respaldo .bak y su frase de respaldo
-              (pantalla de inicio → "¿Olvidaste el PIN?"). Por eso conviene tener respaldos recientes en una memoria USB.</li>
-            <li>Usa un PIN de 8 dígitos o más: un PIN de 6 dígitos es más fácil de adivinar si alguien se roba la computadora.</li>
+            <li>Al abrir el sistema se pide el PIN de un administrador para desbloquear la tienda (recomendamos usar 8 dígitos o más).</li>
+            <li><b>Si se olvida el PIN no hay puerta trasera:</b> la única recuperación es con un respaldo .bak y su frase guardada en una memoria USB.</li>
           </ul>
         </div>
 
@@ -687,8 +684,7 @@
             <div>
               <h2 class="text-base font-bold text-slate-900">Aviso de privacidad para clientes de crédito</h2>
               <p class="text-xs text-slate-500 mt-0.5">
-                Se le lee o muestra al cliente antes de abrirle cuenta de fiado. Cada publicación crea una versión nueva y
-                los clientes con una versión anterior deben aceptarla otra vez. Es una plantilla: revísenla antes de usarla.
+                Se le muestra o lee al cliente antes de abrirle una cuenta de crédito. Cada actualización genera una nueva versión y los clientes con una versión anterior deberán aceptarla de nuevo.
               </p>
             </div>
             @if (inv.currentPrivacyNoticeVersion(); as current) {
@@ -698,29 +694,40 @@
             }
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid sm:grid-cols-2 gap-4">
             <label class="flex flex-col gap-1">
-              <span class="text-xs font-bold text-slate-700">Responsable de los datos (dueño o encargado)</span>
+              <span class="text-xs font-bold text-slate-700">Dueño o responsable de la tienda</span>
               <input type="text" [ngModel]="privacyResponsible()" (ngModelChange)="privacyResponsible.set($event)"
                 placeholder="Ej. Guadalupe Martínez" data-testid="privacy-responsible"
-                class="h-10 rounded-lg border border-slate-300 px-3 text-sm" />
+                class="h-10 rounded-lg border border-slate-300 px-3 text-sm focus:border-brand-700 focus:outline-none" />
             </label>
             <label class="flex flex-col gap-1">
-              <span class="text-xs font-bold text-slate-700">Contacto para solicitudes ARCO</span>
+              <span class="text-xs font-bold text-slate-700">Teléfono o medio de contacto para clientes (dudas y privacidad)</span>
               <input type="text" [ngModel]="privacyContact()" (ngModelChange)="privacyContact.set($event)"
-                placeholder="Teléfono, WhatsApp, correo o domicilio" data-testid="privacy-contact"
-                class="h-10 rounded-lg border border-slate-300 px-3 text-sm" />
+                placeholder="Teléfono, WhatsApp o dirección de la tienda" data-testid="privacy-contact"
+                class="h-10 rounded-lg border border-slate-300 px-3 text-sm focus:border-brand-700 focus:outline-none" />
             </label>
           </div>
 
-          <label class="flex flex-col gap-1">
-            <span class="text-xs font-bold text-slate-700">
-              Texto del aviso (puedes usar {{ privacyPlaceholders }})
-            </span>
-            <textarea rows="14" [ngModel]="privacyTemplate()" (ngModelChange)="privacyTemplate.set($event)"
-              data-testid="privacy-template"
-              class="rounded-lg border border-slate-300 p-3 text-xs leading-relaxed font-mono"></textarea>
-          </label>
+          <details class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <summary class="cursor-pointer text-xs font-bold text-slate-700 select-none">
+              Personalizar texto del aviso (opcional)
+            </summary>
+            <div class="mt-3 space-y-2.5">
+              <p class="text-[11px] text-slate-500">
+                Puedes ajustar el texto a las prácticas de tu negocio. Etiquetas automáticas: <span class="font-mono">{{ privacyPlaceholders }}</span>.
+              </p>
+              <textarea rows="12" [ngModel]="privacyTemplate()" (ngModelChange)="privacyTemplate.set($event)"
+                data-testid="privacy-template"
+                class="w-full rounded-lg border border-slate-300 bg-white p-3 text-xs leading-relaxed text-slate-800 focus:border-brand-700 focus:outline-none"></textarea>
+              <div class="flex justify-end">
+                <button type="button" (click)="resetPrivacyTemplate()"
+                  class="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                  Restaurar texto predeterminado
+                </button>
+              </div>
+            </div>
+          </details>
 
           @if (privacyError()) {
             <div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800" data-testid="privacy-error">{{ privacyError() }}</div>
@@ -730,13 +737,13 @@
           }
 
           <div class="flex flex-wrap justify-end gap-3">
-            <button type="button" (click)="resetPrivacyTemplate()"
+            <button type="button" (click)="openPrivacyPreview()" data-testid="btn-preview-privacy"
               class="h-10 rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              Restaurar plantilla
+              Ver o imprimir aviso
             </button>
             <button type="button" [disabled]="privacyBusy()" (click)="publishPrivacyNotice()" data-testid="btn-publish-privacy"
-              class="h-10 rounded-xl bg-brand-700 px-5 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
-              {{ privacyBusy() ? 'Publicando…' : 'Publicar nueva versión' }}
+              class="h-10 rounded-xl bg-brand-700 px-5 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-60 transition-colors">
+              {{ privacyBusy() ? 'Guardando…' : 'Guardar y actualizar aviso' }}
             </button>
           </div>
 
@@ -747,7 +754,6 @@
                 <details class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <summary class="cursor-pointer text-xs font-semibold text-slate-800">
                     Versión {{ v.version }} · {{ v.publishedAt | date:'dd/MM/yyyy HH:mm' }} · {{ v.publishedBy }}
-                    <span class="font-mono text-slate-500">· Sello {{ v.textHash.slice(0, 8) }}</span>
                   </summary>
                   <pre class="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-slate-700">{{ v.text }}</pre>
                 </details>
@@ -760,8 +766,7 @@
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-3" data-testid="privacy-pending-consents">
           <h2 class="text-base font-bold text-slate-900">Clientes de crédito sin consentimiento vigente</h2>
           <p class="text-xs text-slate-500">
-            El consentimiento se registra desde Caja → ficha del cliente. Ahí también están Acceso (exportar), Rectificación,
-            Cancelación (anonimizar) y Oposición.
+            Puedes registrar que el cliente aceptó el aviso y consultar o corregir sus datos desde Punto de venta → Créditos.
           </p>
           @if (inv.customersPendingConsent().length === 0) {
             <p class="text-sm font-semibold text-emerald-700">Todos los clientes activos tienen el aviso vigente aceptado.</p>
@@ -769,7 +774,7 @@
             <ul class="divide-y divide-slate-100 rounded-xl border border-slate-200">
               @for (c of inv.customersPendingConsent(); track c.id) {
                 <li class="flex items-center justify-between px-4 py-2 text-sm">
-                  <span class="font-semibold text-slate-800">{{ c.name }} <span class="text-xs text-slate-500">({{ c.id }})</span></span>
+                  <span class="font-semibold text-slate-800">{{ c.name }}</span>
                   <span class="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
                     {{ inv.getCustomerConsentStatus(c) === 'VERSION_ANTERIOR' ? 'Aceptó una versión anterior' : 'Sin consentimiento' }}
                   </span>
@@ -951,6 +956,42 @@
             data-testid="modal-btn-create-user"
             class="h-10 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-white transition-colors shadow-xs">
             Crear Usuario
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- =========================================================================
+       MODAL: VISTA PREVIA E IMPRESIÓN DE AVISO DE PRIVACIDAD
+       ========================================================================= -->
+  @if (privacyPreviewOpen()) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" data-testid="privacy-preview-modal">
+      <div class="w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 shrink-0">
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Vista previa del aviso de privacidad</h3>
+            <p class="text-xs text-slate-500">Así lo verá el cliente o impreso para mostrar en mostrador.</p>
+          </div>
+          <button type="button" (click)="closePrivacyPreview()" class="text-slate-400 hover:text-slate-600 font-bold text-sm">
+            Cerrar
+          </button>
+        </div>
+
+        <div class="p-6 overflow-y-auto flex-1 bg-slate-50">
+          <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
+            <pre class="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-800">{{ renderedPrivacyPreview() }}</pre>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2.5 border-t border-slate-200 px-6 py-4 shrink-0 bg-white">
+          <button type="button" (click)="closePrivacyPreview()"
+            class="h-10 px-4 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50">
+            Cerrar
+          </button>
+          <button type="button" (click)="printPrivacyNotice()" data-testid="btn-print-privacy-preview"
+            class="h-10 px-5 rounded-xl bg-brand-700 hover:bg-brand-800 text-xs font-bold text-white transition-colors shadow-xs">
+            Imprimir aviso
           </button>
         </div>
       </div>
