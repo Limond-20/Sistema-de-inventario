@@ -44,7 +44,9 @@ from lansync.server import main as lansync_main
 
 MB_YESNO = 0x00000004
 MB_ICONQUESTION = 0x00000020
+MB_ICONEXCLAMATION = 0x00000030
 MB_DEFBUTTON2 = 0x00000100
+MB_SYSTEMMODAL = 0x00001000
 MB_SETFOREGROUND = 0x00010000
 MB_TOPMOST = 0x00040000
 IDYES = 6
@@ -52,8 +54,10 @@ IDYES = 6
 FILE_ATTRIBUTE_HIDDEN = 0x02
 INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF
 
+WH_CBT = 5
 WH_KEYBOARD_LL = 13
 WH_MOUSE_LL = 14
+HCBT_ACTIVATE = 5
 WM_LBUTTONDOWN = 0x0201
 WM_LBUTTONUP = 0x0202
 WM_KEYDOWN = 0x0100
@@ -61,6 +65,13 @@ WM_SYSKEYDOWN = 0x0104
 VK_F4 = 0x73
 VK_MENU = 0x12
 GA_ROOT = 2
+
+SW_SHOWNORMAL = 1
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_SHOWWINDOW = 0x0040
+HWND_TOPMOST = ctypes.c_void_p(-1)
+ASFW_ANY = 0xFFFFFFFF
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
@@ -92,6 +103,44 @@ user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
 user32.GetAsyncKeyState.restype = ctypes.c_short
 user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, WPARAM, LPARAM]
 user32.PostMessageW.restype = wintypes.BOOL
+user32.MessageBoxW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.UINT]
+user32.MessageBoxW.restype = ctypes.c_int
+user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+user32.SetWindowPos.restype = wintypes.BOOL
+user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+user32.ShowWindow.restype = wintypes.BOOL
+user32.BringWindowToTop.argtypes = [wintypes.HWND]
+user32.BringWindowToTop.restype = wintypes.BOOL
+user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+user32.SetForegroundWindow.restype = wintypes.BOOL
+user32.SwitchToThisWindow.argtypes = [wintypes.HWND, wintypes.BOOL]
+user32.SwitchToThisWindow.restype = None
+user32.SetActiveWindow.argtypes = [wintypes.HWND]
+user32.SetActiveWindow.restype = wintypes.HWND
+user32.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
+user32.AllowSetForegroundWindow.restype = wintypes.BOOL
+user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+user32.AttachThreadInput.restype = wintypes.BOOL
+user32.IsWindow.argtypes = [wintypes.HWND]
+user32.IsWindow.restype = wintypes.BOOL
+user32.IsZoomed.argtypes = [wintypes.HWND]
+user32.IsZoomed.restype = wintypes.BOOL
+user32.MessageBeep.argtypes = [wintypes.UINT]
+user32.MessageBeep.restype = wintypes.BOOL
+if hasattr(user32, "GetDpiForWindow"):
+    user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+    user32.GetDpiForWindow.restype = wintypes.UINT
+if hasattr(user32, "SetProcessDpiAwarenessContext"):
+    user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    user32.SetProcessDpiAwarenessContext.restype = wintypes.BOOL
+if hasattr(user32, "SetProcessDPIAware"):
+    user32.SetProcessDPIAware.argtypes = []
+    user32.SetProcessDPIAware.restype = wintypes.BOOL
+
+kernel32.GetCurrentThreadId.argtypes = []
+kernel32.GetCurrentThreadId.restype = wintypes.DWORD
 kernel32.GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
 kernel32.GetFileAttributesW.restype = wintypes.DWORD
 kernel32.SetFileAttributesW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
@@ -118,6 +167,83 @@ class KBDLLHOOKSTRUCT(ctypes.Structure):
     ]
 
 
+def enable_dpi_awareness() -> None:
+    """Habilita conciencia DPI para que GetWindowRect coincida exactamente con el hook del mouse."""
+    try:
+        if hasattr(user32, "SetProcessDpiAwarenessContext"):
+            if user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+                return
+        if hasattr(user32, "SetProcessDPIAware"):
+            user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+def get_window_dpi_scale(hwnd: int) -> float:
+    try:
+        if hwnd and hasattr(user32, "GetDpiForWindow"):
+            dpi = int(user32.GetDpiForWindow(hwnd))
+            if dpi > 0:
+                return dpi / 96.0
+    except Exception:
+        pass
+    return 1.0
+
+
+def force_window_to_front(hwnd: int, center_on_hwnd: int = 0) -> None:
+    """Trae el diálogo nativo al primer plano sobre Chrome/Edge y le devuelve el foco."""
+    try:
+        if not hwnd or not user32.IsWindow(hwnd):
+            return
+
+        cur_tid = kernel32.GetCurrentThreadId()
+        fg_hwnd = user32.GetForegroundWindow()
+        fg_tid = user32.GetWindowThreadProcessId(fg_hwnd, None) if fg_hwnd else 0
+        dlg_tid = user32.GetWindowThreadProcessId(hwnd, None)
+
+        attached_fg = False
+        attached_dlg = False
+        try:
+            if fg_tid and fg_tid != cur_tid:
+                attached_fg = bool(user32.AttachThreadInput(cur_tid, fg_tid, True))
+            if dlg_tid and dlg_tid != cur_tid and dlg_tid != fg_tid:
+                attached_dlg = bool(user32.AttachThreadInput(cur_tid, dlg_tid, True))
+
+            user32.AllowSetForegroundWindow(ASFW_ANY)
+            user32.ShowWindow(hwnd, SW_SHOWNORMAL)
+
+            flags = SWP_NOSIZE | SWP_SHOWWINDOW
+            x = 0
+            y = 0
+            if center_on_hwnd and user32.IsWindow(center_on_hwnd):
+                app_rect = wintypes.RECT()
+                dlg_rect = wintypes.RECT()
+                if user32.GetWindowRect(center_on_hwnd, ctypes.byref(app_rect)) and user32.GetWindowRect(
+                    hwnd, ctypes.byref(dlg_rect)
+                ):
+                    dlg_w = max(1, dlg_rect.right - dlg_rect.left)
+                    dlg_h = max(1, dlg_rect.bottom - dlg_rect.top)
+                    x = max(0, app_rect.left + ((app_rect.right - app_rect.left - dlg_w) // 2))
+                    y = max(0, app_rect.top + ((app_rect.bottom - app_rect.top - dlg_h) // 2))
+                else:
+                    flags |= SWP_NOMOVE
+            else:
+                flags |= SWP_NOMOVE
+
+            user32.SetWindowPos(hwnd, HWND_TOPMOST, x, y, 0, 0, flags)
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+            user32.SetActiveWindow(hwnd)
+            user32.SwitchToThisWindow(hwnd, True)
+        finally:
+            if attached_dlg:
+                user32.AttachThreadInput(cur_tid, dlg_tid, False)
+            if attached_fg:
+                user32.AttachThreadInput(cur_tid, fg_tid, False)
+    except Exception:
+        pass
+
+
 def hide_windows_directory(path: Path) -> None:
     """Marca un directorio con el atributo Hidden (0x02) de Windows."""
     try:
@@ -131,10 +257,30 @@ def hide_windows_directory(path: Path) -> None:
         pass
 
 
-def ask_confirm_close() -> bool:
-    """Muestra únicamente la alerta nativa de Windows preguntando si desea cerrar la aplicación."""
+def ask_confirm_close(state: dict | None = None, app_hwnd: int = 0) -> bool:
+    """Muestra únicamente la alerta nativa de Windows siempre al frente sobre la ventana de la app."""
+    h_cbt = None
+    tid = kernel32.GetCurrentThreadId()
+
+    def ensure_front(dlg_hwnd: int) -> None:
+        if state is not None and not state.get("dialog_active"):
+            return
+        force_window_to_front(dlg_hwnd, app_hwnd)
+
+    def cbt_proc(nCode: int, wParam: int, lParam: int) -> int:
+        if nCode == HCBT_ACTIVATE and wParam:
+            dlg_hwnd = int(wParam)
+            if state is not None:
+                state["dialog_hwnd"] = dlg_hwnd
+            threading.Timer(0.015, ensure_front, args=(dlg_hwnd,)).start()
+            threading.Timer(0.08, ensure_front, args=(dlg_hwnd,)).start()
+            threading.Timer(0.20, ensure_front, args=(dlg_hwnd,)).start()
+        return user32.CallNextHookEx(h_cbt, nCode, wParam, lParam)
+
+    cbt_cb = HOOKPROC(cbt_proc)
     try:
-        flags = MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST
+        h_cbt = user32.SetWindowsHookExW(WH_CBT, cbt_cb, None, tid)
+        flags = MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SYSTEMMODAL | MB_SETFOREGROUND | MB_TOPMOST
         res = user32.MessageBoxW(
             0,
             "¿Realmente deseas cerrar la aplicación?\n\n"
@@ -146,6 +292,11 @@ def ask_confirm_close() -> bool:
         return res == IDYES
     except Exception:
         return True
+    finally:
+        if state is not None:
+            state["dialog_hwnd"] = 0
+        if h_cbt:
+            user32.UnhookWindowsHookEx(h_cbt)
 
 
 def is_app_window(hwnd: int) -> bool:
@@ -180,14 +331,24 @@ def is_port_in_use(port: int) -> bool:
 def start_win32_close_hook(state: dict) -> None:
     """Intercepta clic en la X y Alt+F4 sobre la ventana de la app sin tocar el contenido web."""
     prompt_lock = threading.Lock()
-    swallow_next_up = {"flag": False}
+    swallow_next_up = {"flag": False, "close_hwnd": 0}
+
+    def notify_and_focus_dialog(dlg_hwnd: int, app_hwnd: int) -> None:
+        try:
+            user32.MessageBeep(MB_ICONEXCLAMATION)
+        except Exception:
+            pass
+        force_window_to_front(dlg_hwnd, app_hwnd)
 
     def trigger_close_dialog(hwnd: int) -> None:
         if not prompt_lock.acquire(blocking=False):
+            dlg_hwnd = int(state.get("dialog_hwnd") or 0)
+            if dlg_hwnd:
+                notify_and_focus_dialog(dlg_hwnd, hwnd)
             return
         try:
             state["dialog_active"] = True
-            if ask_confirm_close():
+            if ask_confirm_close(state, hwnd):
                 state["confirmed_exit"] = True
                 WM_CLOSE = 0x0010
                 if hwnd:
@@ -200,29 +361,51 @@ def start_win32_close_hook(state: dict) -> None:
                         pass
                 time.sleep(0.15)
                 os._exit(0)
+            elif hwnd and user32.IsWindow(hwnd):
+                user32.SetForegroundWindow(hwnd)
         finally:
             state["dialog_active"] = False
+            state["dialog_hwnd"] = 0
             prompt_lock.release()
 
     def mouse_proc(nCode: int, wParam: int, lParam: int) -> int:
         if nCode >= 0 and not state.get("confirmed_exit"):
             if wParam == WM_LBUTTONUP and swallow_next_up["flag"]:
+                close_hwnd = int(swallow_next_up.get("close_hwnd") or 0)
                 swallow_next_up["flag"] = False
+                swallow_next_up["close_hwnd"] = 0
+                if close_hwnd:
+                    threading.Thread(
+                        target=trigger_close_dialog, args=(close_hwnd,), daemon=True
+                    ).start()
                 return 1
             if wParam == WM_LBUTTONDOWN:
                 info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
                 hwnd = user32.WindowFromPoint(info.pt)
                 root_hwnd = user32.GetAncestor(hwnd, GA_ROOT) or hwnd
                 if is_app_window(root_hwnd):
+                    # Si el diálogo ya está abierto, bloquear clic en la app y traerlo al frente
+                    if state.get("dialog_active"):
+                        swallow_next_up["flag"] = True
+                        swallow_next_up["close_hwnd"] = 0
+                        dlg_hwnd = int(state.get("dialog_hwnd") or 0)
+                        if dlg_hwnd:
+                            threading.Thread(
+                                target=notify_and_focus_dialog, args=(dlg_hwnd, root_hwnd), daemon=True
+                            ).start()
+                        return 1
+
                     rect = wintypes.RECT()
                     if user32.GetWindowRect(root_hwnd, ctypes.byref(rect)):
                         x, y = info.pt.x, info.pt.y
+                        scale = get_window_dpi_scale(root_hwnd)
+                        zoomed = bool(user32.IsZoomed(root_hwnd))
+                        close_w = int(round((62 if zoomed else 56) * scale))
+                        title_h = int(round((50 if zoomed else 46) * scale))
                         # Área del botón cerrar (X) en la esquina superior derecha de la barra de título
-                        if (rect.right - 52) <= x <= rect.right and rect.top <= y <= (rect.top + 42):
+                        if (rect.right - close_w) <= x <= rect.right and rect.top <= y <= (rect.top + title_h):
                             swallow_next_up["flag"] = True
-                            threading.Thread(
-                                target=trigger_close_dialog, args=(root_hwnd,), daemon=True
-                            ).start()
+                            swallow_next_up["close_hwnd"] = int(root_hwnd)
                             return 1
         return user32.CallNextHookEx(None, nCode, wParam, lParam)
 
@@ -234,6 +417,13 @@ def start_win32_close_hook(state: dict) -> None:
                 if info.vkCode == VK_F4 and alt_down:
                     fg = user32.GetForegroundWindow()
                     if is_app_window(fg):
+                        if state.get("dialog_active"):
+                            dlg_hwnd = int(state.get("dialog_hwnd") or 0)
+                            if dlg_hwnd:
+                                threading.Thread(
+                                    target=notify_and_focus_dialog, args=(dlg_hwnd, fg), daemon=True
+                                ).start()
+                            return 1
                         threading.Thread(
                             target=trigger_close_dialog, args=(fg,), daemon=True
                         ).start()
@@ -278,7 +468,13 @@ def supervise_application_window(url: str, profile_dir: Path) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
     create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
-    state = {"confirmed_exit": False, "dialog_active": False, "stop_hooks": False, "proc": None}
+    state = {
+        "confirmed_exit": False,
+        "dialog_active": False,
+        "dialog_hwnd": 0,
+        "stop_hooks": False,
+        "proc": None,
+    }
     threading.Thread(target=start_win32_close_hook, args=(state,), daemon=True).start()
 
     while True:
@@ -312,9 +508,14 @@ def supervise_application_window(url: str, profile_dir: Path) -> None:
 
         # Si el usuario cerró la ventana desde la barra de tareas o menú del sistema, confirmar aquí:
         if not state.get("dialog_active"):
-            if ask_confirm_close():
-                state["stop_hooks"] = True
-                os._exit(0)
+            state["dialog_active"] = True
+            try:
+                if ask_confirm_close(state, 0):
+                    state["stop_hooks"] = True
+                    os._exit(0)
+            finally:
+                state["dialog_active"] = False
+                state["dialog_hwnd"] = 0
         # Si eligió "No", el ciclo vuelve a abrir la ventana conservando la sesión.
 
 
@@ -346,6 +547,8 @@ def _resolve_requested_port(argv: list[str], default: int = 8443) -> int:
 
 
 def run() -> None:
+    enable_dpi_awareness()
+
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
         bundle_dir = Path(getattr(sys, "_MEIPASS", exe_dir))
