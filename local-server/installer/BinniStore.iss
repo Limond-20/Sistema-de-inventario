@@ -18,6 +18,18 @@
   #define AppExeName "BinniStore.exe"
 #endif
 
+#ifndef AppFolderName
+  #define AppFolderName "BinniStore"
+#endif
+
+#ifndef OutputPrefix
+  #define OutputPrefix "Instalador-BinniStore"
+#endif
+
+#ifndef AppIdGuid
+  #define AppIdGuid "B7E49C21-6F8A-4D3E-9A1C-4E5F8B2D1A90"
+#endif
+
 #ifndef SourceDistDir
   #define SourceDistDir "..\dist\BinniStore"
 #endif
@@ -31,20 +43,20 @@
 #endif
 
 [Setup]
-; Identificador fijo para permitir actualizaciones limpias sobre instalaciones previas
-AppId={{B7E49C21-6F8A-4D3E-9A1C-4E5F8B2D1A90}}
+; Identificador único por variante (Cliente Final vs Demo) para permitir ambas instalaciones a la vez
+AppId={{{#AppIdGuid}}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
 ; Se instala en el perfil del usuario sin exigir permisos de administrador (UAC),
 ; garantizando escritura directa en las carpetas Respaldos y Evidencias junto al ejecutable.
-DefaultDirName={localappdata}\Programs\BinniStore
+DefaultDirName={localappdata}\Programs\{#AppFolderName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=salida-instalador
-OutputBaseFilename=Instalador-BinniStore-{#AppVersion}
+OutputBaseFilename={#OutputPrefix}-{#AppVersion}
 SetupIconFile={#IconPath}
 UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2/max
@@ -63,7 +75,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [InstallDelete]
 ; Limpia _internal en actualizaciones para evitar DLLs o scripts obsoletos.
-; NO toca {app}\Respaldos, {app}\Evidencias ni %LOCALAPPDATA%\BinniStore (base SQLite y certificados).
+; NO toca {app}\Respaldos, {app}\Evidencias ni %LOCALAPPDATA%\{#AppFolderName} (base SQLite y certificados).
 Type: filesandordirs; Name: "{app}\_internal"
 
 [Dirs]
@@ -85,6 +97,6 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-; Nota de seguridad: No se define [UninstallDelete] sobre %LOCALAPPDATA%\BinniStore,
+; Nota de seguridad: No se define [UninstallDelete] sobre %LOCALAPPDATA%\{#AppFolderName},
 ; {app}\Respaldos ni {app}\Evidencias para proteger la base de datos SQLite y respaldos
 ; del comercio ante desinstalaciones o reinstalaciones accidentales.
