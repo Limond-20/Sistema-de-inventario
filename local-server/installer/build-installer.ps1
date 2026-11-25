@@ -3,9 +3,10 @@
     Compila BinniStore (Angular + PyInstaller + Inno Setup 6) en un solo paso.
 
 .DESCRIPTION
-    Genera la aplicacion autonoma (local-server\dist\BinniStore\BinniStore.exe)
-    y, si Inno Setup 6 esta instalado, el instalador de Windows listo para distribuir
-    (local-server\installer\salida-instalador\Instalador-BinniStore-<Version>.exe).
+    Genera la aplicacion autonoma y el instalador de Windows listo para distribuir:
+    - Desde 'cliente-final': salida-instalador\Instalador-BinniStore-<Version>.exe (%LOCALAPPDATA%\BinniStore)
+    - Desde 'main' (Demo):   salida-instalador\Instalador-BinniStore-Demo-<Version>.exe (%LOCALAPPDATA%\BinniStore-Demo)
+    Al finalizar el empaquetado limpia automaticamente las carpetas temporales (build/ y dist/).
 
 .PARAMETER Version
     Version semantica del instalador (por defecto: 1.0.0).
@@ -19,6 +20,9 @@
 .PARAMETER SkipInnoSetup
     Omite la creacion del instalador con Inno Setup y entrega solo la carpeta portable.
 
+.PARAMETER KeepPortable
+    Conserva local-server\build, local-server\dist y abarrotes-app\dist despues de generar el instalador.
+
 .PARAMETER PythonExe
     Ruta explicita a python.exe (opcional; por defecto detecta local-server\.venv o PATH).
 
@@ -31,6 +35,7 @@ param(
     [switch]$SkipFrontend,
     [switch]$RebuildVendor,
     [switch]$SkipInnoSetup,
+    [switch]$KeepPortable,
     [string]$PythonExe = ""
 )
 
@@ -95,7 +100,8 @@ $InstallerDir = $PSScriptRoot
 $LocalServerDir = Split-Path -Parent $InstallerDir
 $RepoRoot = Split-Path -Parent $LocalServerDir
 $FrontendDir = Join-Path $RepoRoot "abarrotes-app"
-$BrowserDistDir = Join-Path $FrontendDir "dist\abarrotes-app\browser"
+$FrontendDistDir = Join-Path $FrontendDir "dist"
+$BrowserDistDir = Join-Path $FrontendDistDir "abarrotes-app\browser"
 $VendorDir = Join-Path $FrontendDir "public\vendor"
 $ToolsDir = Join-Path $LocalServerDir "tools"
 $SpecFile = Join-Path $InstallerDir "BinniStore.spec"
@@ -109,22 +115,35 @@ $OutputDir = Join-Path $InstallerDir "salida-instalador"
 
 Write-Host "BinniStore - Generador de instalador Windows (v$Version)" -ForegroundColor Green
 
-# 0. Mostrar rama de Git para evitar empaquetar datos de prueba por accidente
+# 0. Detectar rama Git y configurar variante aislada (Demo vs Cliente Final)
+$branch = "desconocida"
 $gitCmd = Get-Command git -ErrorAction SilentlyContinue
 if ($gitCmd) {
     Push-Location $RepoRoot
     try {
-        $branch = (& git rev-parse --abbrev-ref HEAD 2>$null)
-        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($branch)) {
-            Write-Host "Rama Git actual: $branch" -ForegroundColor Gray
-            if ($branch -eq "main") {
-                Write-Warning "Estas compilando desde la rama 'main' (incluye datos de demostracion). Para entregar a una tienda real, cambia antes a 'cliente-final' (git checkout cliente-final)."
-            }
+        $detected = (& git rev-parse --abbrev-ref HEAD 2>$null)
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($detected)) {
+            $branch = $detected.Trim()
         }
     }
     finally {
         Pop-Location
     }
+}
+
+if ($branch -eq "main") {
+    $AppName = "BinniStore Demo"
+    $AppFolderName = "BinniStore-Demo"
+    $OutputPrefix = "Instalador-BinniStore-Demo"
+    $AppIdGuid = "D4A18F92-3C7E-4B9A-8E2D-9F1C6A5B3E71"
+    Write-Host "Modo DEMO (rama 'main'): Se generara '$OutputPrefix-$Version.exe' con datos de prueba precargados y carpeta aislada (%LOCALAPPDATA%\BinniStore-Demo)." -ForegroundColor Yellow
+}
+else {
+    $AppName = "BinniStore"
+    $AppFolderName = "BinniStore"
+    $OutputPrefix = "Instalador-BinniStore"
+    $AppIdGuid = "B7E49C21-6F8A-4D3E-9A1C-4E5F8B2D1A90"
+    Write-Host "Modo CLIENTE FINAL (rama '$branch'): Se generara '$OutputPrefix-$Version.exe' limpio para tienda real (%LOCALAPPDATA%\BinniStore)." -ForegroundColor Cyan
 }
 
 # 1. Verificar librerias offline (vendor)
@@ -206,7 +225,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $BundleDir "_internal\browser\index.
     throw "No se incluyo el frontend compilado dentro de _internal\browser."
 }
 
-Write-Host "Paquete portable listo en: $BundleDir" -ForegroundColor Green
+Write-Host "Paquete portable intermedio listo en: $BundleDir" -ForegroundColor Green
 
 # 5. Generar instalador .exe con Inno Setup 6
 if ($SkipInnoSetup) {
@@ -230,12 +249,19 @@ if (-not $IsccExe) {
 }
 
 Write-Host "Inno Setup detectado: $IsccExe" -ForegroundColor Gray
-& $IsccExe "/DAppVersion=$Version" $IssFile
+& $IsccExe `
+    "/DAppVersion=$Version" `
+    "/DAppName=$AppName" `
+    "/DAppFolderName=$AppFolderName" `
+    "/DOutputPrefix=$OutputPrefix" `
+    "/DAppIdGuid=$AppIdGuid" `
+    $IssFile
+
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup fallo al compilar el instalador."
 }
 
-$InstallerExe = Join-Path $OutputDir "Instalador-BinniStore-$Version.exe"
+$InstallerExe = Join-Path $OutputDir "$OutputPrefix-$Version.exe"
 if (-not (Test-Path -LiteralPath $InstallerExe)) {
     throw "No se encontro el instalador generado en: $InstallerExe"
 }
@@ -243,6 +269,16 @@ if (-not (Test-Path -LiteralPath $InstallerExe)) {
 $fileInfo = Get-Item -LiteralPath $InstallerExe
 $sizeMb = [Math]::Round($fileInfo.Length / 1MB, 2)
 $hash = (Get-FileHash -LiteralPath $InstallerExe -Algorithm SHA256).Hash
+
+# 6. Limpiar carpetas temporales intermedias salvo que se solicite -KeepPortable
+if (-not $KeepPortable) {
+    Write-Step "Limpiando compilados intermedios (build y dist)"
+    foreach ($tempDir in @($BuildDir, $DistDir, $FrontendDistDir)) {
+        if (Test-Path -LiteralPath $tempDir) {
+            Remove-Item -LiteralPath $tempDir -Recurse -Force
+        }
+    }
+}
 
 Write-Host ""
 Write-Host "Instalador generado con exito:" -ForegroundColor Green
