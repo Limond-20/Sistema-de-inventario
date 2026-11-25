@@ -569,9 +569,9 @@ def run() -> None:
     respaldos_dir.mkdir(parents=True, exist_ok=True)
     evidencias_dir.mkdir(parents=True, exist_ok=True)
 
-    # Carpetas técnicas del sistema en %LOCALAPPDATA%\BinniStore
+    # Carpetas técnicas de la versión de demostración en %LOCALAPPDATA%\BinniStore-Demo
     local_appdata = Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local"))
-    appdata_root = local_appdata / "BinniStore"
+    appdata_root = local_appdata / "BinniStore-Demo"
     data_dir = appdata_root / "data"
     cert_dir = appdata_root / "certs"
     profile_dir = appdata_root / "navegador"
