@@ -101,13 +101,13 @@ python -m lansync --usb-dir /media/tienda/USB
 python -m lansync --sin-usb            # desactiva la copia a USB
 ```
 
-* La copia queda en la subcarpeta `BinniTech-Respaldos` de la unidad, con el mismo nombre `AAAAMMDD-HHMMSS.bak`.
+* La copia queda en la subcarpeta `BinniStore-Respaldos` de la unidad, con el mismo nombre `AAAAMMDD-HHMMSS.bak`.
   Se escribe primero a un archivo temporal, se verifica con SHA-256 contra el original y recién entonces se
   renombra: si sacan la USB a medias no queda un `.bak` incompleto.
 * **Cuándo copia:** al terminar cada `POST /api/respaldo` (en segundo plano, sin hacer esperar al tendero) y
   cada 5 minutos revisa si conectaron una USB. Una vez al día por destino: si cambian de memoria USB el mismo
   día, copia a la nueva.
-* **Limpieza:** dentro de `BinniTech-Respaldos` conserva los 30 `.bak` más recientes y borra temporales propios
+* **Limpieza:** dentro de `BinniStore-Respaldos` conserva los 30 `.bak` más recientes y borra temporales propios
   (`.tmp_*`). No toca ningún otro archivo de la memoria.
 * **Estado:** `GET /api/usb/estado` (solo desde la PC) devuelve `activo`, `unidadConectada`, `ultimaCopia` (UTC),
   `ultimoArchivo`, `diasDesdeUltimaCopia`, `aviso` (true si nunca se copió o pasaron más de 7 días) y
@@ -168,4 +168,12 @@ Pruebas del Bloque N:
 ```bash
 cd local-server
 python -m pytest -q tests/test_state_store.py
+```
+
+## Instalador de Windows (`BinniStore.exe`)
+
+Para generar el ejecutable autónomo y el instalador `.exe` de Windows (Angular + PyInstaller + Inno Setup 6) en un solo comando, consulta [installer/README.md](installer/README.md) o ejecuta desde la raíz del repositorio:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File local-server\installer\build-installer.ps1 -Version 1.0.0
 ```

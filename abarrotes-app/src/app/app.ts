@@ -18,9 +18,11 @@ import { canAccessRoute } from './domain/auth';
       <div class="h-screen w-screen overflow-y-auto flex items-center justify-center bg-brand-800 p-6 select-none" data-testid="storage-unlock-screen">
         <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-7 text-white shadow-2xl space-y-5">
           <div class="text-center space-y-2">
-            <div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-amber-400 text-slate-900 shadow-xs mb-3">
-              <app-icon [name]="recoveryMode() ? 'shield' : 'lock'" [size]="24" />
+            <div class="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-white/15 text-amber-400 shadow-md mb-3"
+              style="background: linear-gradient(145deg, #0e4a57 0%, #072b33 100%);">
+              <app-icon [name]="recoveryMode() ? 'shield' : 'logo'" [size]="26" />
             </div>
+            <p class="text-xs font-bold tracking-wide text-amber-400">BinniStore</p>
             <h1 class="text-xl font-bold tracking-tight">
               @if (recoveryMode()) {
                 Recuperar con un respaldo
@@ -164,10 +166,11 @@ import { canAccessRoute } from './domain/auth';
     } @else if (!inv.isHydrated()) {
       <!-- Pantalla de carga durante la hidratación desde IndexedDB -->
       <div class="h-screen w-screen flex flex-col items-center justify-center bg-brand-800 text-white select-none p-8" data-testid="hydration-loading-screen">
-        <div class="h-14 w-14 rounded-2xl bg-amber-400 text-slate-900 grid place-items-center shadow-xs mb-4">
-          <app-icon name="logo" [size]="28" />
+        <div class="h-16 w-16 rounded-2xl border border-white/15 text-amber-400 grid place-items-center shadow-md mb-4"
+          style="background: linear-gradient(145deg, #0e4a57 0%, #072b33 100%);">
+          <app-icon name="logo" [size]="30" />
         </div>
-        <h1 class="font-display text-2xl font-bold">Cargando datos de la tienda…</h1>
+        <h1 class="font-display text-2xl font-bold">BinniStore · Cargando datos de la tienda…</h1>
         <p class="text-sm text-brand-200 mt-1.5">Verificando historial de movimientos y existencias por producto</p>
       </div>
     } @else {
@@ -251,7 +254,7 @@ import { canAccessRoute } from './domain/auth';
               </div>
               <h2 class="text-xl font-bold tracking-tight">Terminal Bloqueada</h2>
               <p class="text-xs text-slate-400">
-                {{ inv.businessSettings().storeName }} · Ingresa tu PIN personal para continuar
+                {{ inv.businessSettings().storeName }} · BinniStore · Ingresa tu PIN personal para continuar
               </p>
             </div>
 

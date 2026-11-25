@@ -4669,32 +4669,33 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     const instId = service.regenerateInstallationId();
     expect(instId).toMatch(/^BT-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
 
+    const targetYear = Math.max(2027, new Date().getFullYear() + 1);
     const code = await signLicensePayload(
       {
         idInstalación: instId,
         plan: 'SEMESTRAL',
-        emitida: '2026-06-15',
-        vence: '2026-12-15',
+        emitida: `${targetYear}-06-15`,
+        vence: `${targetYear}-12-15`,
       },
       privateKeyJwk
     );
 
-    // 1) Activar a los 25 días antes de vencer (2026-11-20) -> ACTIVA sin aviso
-    const actRes = await service.activateLicenseCode(code, new Date(2026, 10, 20, 10, 0, 0));
+    // 1) Activar a los 25 días antes de vencer (20 de noviembre) -> ACTIVA sin aviso
+    const actRes = await service.activateLicenseCode(code, new Date(targetYear, 10, 20, 10, 0, 0));
     expect(actRes.ok).toBeTrue();
     expect(service.licenseEvaluation().status).toBe('ACTIVA');
     expect(service.isReadOnlyMode()).toBeFalse();
     expect(service.licenseWarningBanner()).toBeNull();
 
-    // 2) 15 días antes de vencer (2026-11-30) -> POR_VENCER con aviso, permite vender
-    const eval15d = await service.refreshLicenseState(new Date(2026, 10, 30, 10, 0, 0));
+    // 2) 15 días antes de vencer (30 de noviembre) -> POR_VENCER con aviso, permite vender
+    const eval15d = await service.refreshLicenseState(new Date(targetYear, 10, 30, 10, 0, 0));
     expect(eval15d.status).toBe('POR_VENCER');
     expect(eval15d.daysRemaining).toBe(15);
     expect(service.isReadOnlyMode()).toBeFalse();
     expect(service.licenseWarningBanner()).toContain('vence en 15 días');
 
-    // 3) 5 días después de vencer (2026-12-20) -> PERIODO_GRACIA (quedan 3 días de los 7), aún permite vender
-    const evalGrace = await service.refreshLicenseState(new Date(2026, 11, 20, 10, 0, 0));
+    // 3) 5 días después de vencer (20 de diciembre) -> PERIODO_GRACIA (quedan 3 días de los 7), aún permite vender
+    const evalGrace = await service.refreshLicenseState(new Date(targetYear, 11, 20, 10, 0, 0));
     expect(evalGrace.status).toBe('PERIODO_GRACIA');
     expect(evalGrace.graceDaysRemaining).toBe(3);
     expect(service.isReadOnlyMode()).toBeFalse();
@@ -4718,8 +4719,8 @@ describe('MockInventoryService Integración (Bloques C y D)', () => {
     );
     expect(saleDuringGrace.ok).toBeTrue();
 
-    // 4) 8 días después de vencer (2026-12-23, agotados los 7 días de gracia) -> VENCIDA en modo solo lectura
-    const evalExpired = await service.refreshLicenseState(new Date(2026, 11, 23, 10, 0, 0));
+    // 4) 8 días después de vencer (23 de diciembre, agotados los 7 días de gracia) -> VENCIDA en modo solo lectura
+    const evalExpired = await service.refreshLicenseState(new Date(targetYear, 11, 23, 10, 0, 0));
     expect(evalExpired.status).toBe('VENCIDA');
     expect(evalExpired.isReadOnly).toBeTrue();
     expect(service.isReadOnlyMode()).toBeTrue();

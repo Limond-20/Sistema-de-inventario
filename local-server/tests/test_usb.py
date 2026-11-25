@@ -194,7 +194,7 @@ def test_usb_dir_que_no_existe_se_trata_como_unidad_no_conectada(env):
 # ----------------------------------------------------------------- errores
 def test_error_de_copia_se_registra_y_se_reintenta_despues(env):
     make_backup(env["store"], 1)
-    # "BinniTech-Respaldos" existe como ARCHIVO: no se puede crear la carpeta -> la copia falla.
+    # "BinniStore-Respaldos" existe como ARCHIVO: no se puede crear la carpeta -> la copia falla.
     (env["usb"] / USB_SUBDIR).write_text("estorbo")
 
     result = env["copier"].maybe_copy()

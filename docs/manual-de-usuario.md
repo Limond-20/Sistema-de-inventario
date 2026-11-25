@@ -462,7 +462,7 @@ Toda la información de la tienda se guarda en archivos de respaldo `.bak` prote
 
 - **Automáticos:** se generan al cerrar cada turno y cada hora mientras operas el sistema si hubo cambios.
 - **Manuales:** abre el menú lateral (`≡`) → **`Respaldar ahora`** (disponible para Encargado y Administrador). Se conservan hasta los **30 respaldos más recientes**.
-- **Copia a USB:** si dejas conectada una memoria USB en la computadora, el sistema copia el respaldo más reciente del día automáticamente una vez al día dentro de la carpeta **`BinniTech-Respaldos`** de la memoria (verificando su integridad). También puedes pulsar **`Copiar a memoria USB (.bak)`** o **`USB`** en cualquier archivo de la lista.
+- **Copia a USB:** si dejas conectada una memoria USB en la computadora, el sistema copia el respaldo más reciente del día automáticamente una vez al día dentro de la carpeta **`BinniStore-Respaldos`** de la memoria (verificando su integridad). También puedes pulsar **`Copiar a memoria USB (.bak)`** o **`USB`** en cualquier archivo de la lista.
 
 ### 12.3 Restaurar o pasar la tienda a otra computadora
 
@@ -548,4 +548,4 @@ Disponible en el menú lateral (`≡`) → **Licencia**.
 - Para evitar cobros duplicados o daños al inventario, solo debes trabajar en **una ventana a la vez** en la computadora. Cierra la ventana repetida y actualiza la principal.
 
 ### ¿Qué pasa si se va la luz en la tienda?
-- Cada venta, abono y recepción se guarda al instante en el almacenamiento interno de la computadora. Al regresar la luz, abre nuevamente la aplicación desde su icono e ingresa tu PIN. Además, conserva siempre una memoria USB conectada para contar con copia diaria automática en la carpeta **`BinniTech-Respaldos`**.
+- Cada venta, abono y recepción se guarda al instante en el almacenamiento interno de la computadora. Al regresar la luz, abre nuevamente la aplicación desde su icono e ingresa tu PIN. Además, conserva siempre una memoria USB conectada para contar con copia diaria automática en la carpeta **`BinniStore-Respaldos`**.

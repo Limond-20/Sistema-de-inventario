@@ -44,7 +44,7 @@ export class LicenseViewComponent implements OnInit {
 
   async copyInstallationIdForWhatsApp(): Promise<void> {
     const id = this.inv.installationId();
-    const text = `Hola, solicito código de licencia para ${this.inv.storeName}. ID de Instalación: ${id}`;
+    const text = `Hola, solicito código de licencia de BinniStore para ${this.inv.storeName}. ID de Instalación: ${id}`;
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);

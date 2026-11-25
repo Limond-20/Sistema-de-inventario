@@ -34,3 +34,9 @@ local-server/tools/license-issuer/*private*
 local-server/tools/license-issuer/*.key
 local-server/tools/license-issuer/*.pem
 local-server/tools/license-issuer/keys/
+
+# Empaquetado e instalador de Windows (PyInstaller + Inno Setup)
+local-server/.venv/
+local-server/build/
+local-server/dist/
+local-server/installer/salida-instalador/

@@ -154,7 +154,7 @@ export async function issueLicenseCode(payloadInput, privateKeyJwk) {
   const code = `${LICENSE_TOKEN_PREFIX}.${payloadB64}.${sigB64}`;
 
   const whatsappMessage = [
-    `*Licencia BinniTech (${canonicalPayload.plan})*`,
+    `*Licencia BinniStore (${canonicalPayload.plan})*`,
     `Instalación: ${canonicalPayload.idInstalación}`,
     `Vigencia: ${canonicalPayload.emitida} al ${canonicalPayload.vence}`,
     `Código:`,
