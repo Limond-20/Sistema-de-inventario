@@ -16,11 +16,15 @@
     </button>
 
     <a routerLink="/" class="flex items-center gap-2.5 min-w-0" title="Ir al inicio">
-      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-400 text-slate-900">
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/15 bg-brand-900 text-amber-400 shadow-2xs"
+        style="background: linear-gradient(145deg, #0e4a57 0%, #072b33 100%);">
         <app-icon name="logo" [size]="20" />
       </span>
-      <span class="font-display text-base sm:text-lg font-bold leading-tight truncate">
-        {{ inv.storeName }}
+      <span class="flex flex-col min-w-0">
+        <span class="font-display text-base sm:text-lg font-bold leading-tight truncate">
+          {{ inv.storeName }}
+        </span>
+        <span class="text-[11px] font-semibold leading-none text-brand-200 truncate">BinniStore</span>
       </span>
     </a>
 
@@ -95,10 +99,14 @@
   <aside class="w-72 max-w-[85vw] h-full bg-brand-700 text-white flex flex-col px-5 py-5 shadow-2xl overflow-y-auto overscroll-contain">
     <div class="flex items-center justify-between gap-3 pb-4 border-b border-white/15">
       <a routerLink="/" (click)="closeDrawer()" class="flex items-center gap-2.5 min-w-0">
-        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-400 text-slate-900">
-          <app-icon name="logo" [size]="20" />
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/15 bg-brand-900 text-amber-400 shadow-2xs"
+          style="background: linear-gradient(145deg, #0e4a57 0%, #072b33 100%);">
+          <app-icon name="logo" [size]="21" />
         </span>
-        <span class="font-display text-lg font-bold leading-tight truncate">{{ inv.storeName }}</span>
+        <span class="flex flex-col min-w-0">
+          <span class="font-display text-lg font-bold leading-tight truncate">{{ inv.storeName }}</span>
+          <span class="text-[11px] font-semibold leading-none text-brand-200 truncate">BinniStore</span>
+        </span>
       </a>
       <button
         type="button"

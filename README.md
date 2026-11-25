@@ -1,6 +1,6 @@
-# Sistema Híbrido de Gestión de Inventario para Tiendas de Abarrotes 🏪🇲🇽
+# BinniStore · Sistema Híbrido de Punto de Venta e Inventario para Tiendas de Abarrotes 🏪🇲🇽
 
-Prototipo interactivo de alta usabilidad diseñado específicamente para usuarios con baja alfabetización digital (tenderos y dependientes de abarrotes en México), enfocado en pruebas simultáneas en **PC (escritorio)** y **Celular**.
+Sistema híbrido offline-first diseñado específicamente para usuarios con baja alfabetización digital (tenderos y dependientes de abarrotes en México), enfocado en la operación simultánea entre **PC (escritorio)** y **Celular** en red local.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Qué hace:
   * Cuando hay una unidad extraíble conectada (o se indicó una carpeta con --usb-dir), copia el
-    respaldo .bak MÁS RECIENTE una vez al día a la subcarpeta "BinniTech-Respaldos" de esa unidad.
+    respaldo .bak MÁS RECIENTE una vez al día a la subcarpeta "BinniStore-Respaldos" de esa unidad.
   * Solo copia el archivo YA CIFRADO (AES-256-GCM). Jamás recibe ni guarda la frase de respaldo.
   * Guarda en data/usb_estado.json cuándo fue la última copia, para que la app muestre
     "Última copia a USB: hace X" y avise si pasan más de 7 días.
@@ -32,10 +32,10 @@ from typing import Callable
 
 from .backup import BACKUP_FILENAME_RE, MAGIC_PREFIX, BackupStore
 
-USB_SUBDIR = "BinniTech-Respaldos"
+USB_SUBDIR = "BinniStore-Respaldos"
 STATE_FILENAME = "usb_estado.json"
 WARN_AFTER_DAYS = 7
-MAX_USB_BACKUPS = 30  # solo se podan archivos AAAAMMDD-HHMMSS.bak dentro de BinniTech-Respaldos
+MAX_USB_BACKUPS = 30  # solo se podan archivos AAAAMMDD-HHMMSS.bak dentro de BinniStore-Respaldos
 DRIVE_REMOVABLE = 2  # valor de GetDriveTypeW para unidades extraíbles
 RETRY_AFTER_ERROR_SECONDS = 300
 
@@ -279,7 +279,7 @@ class UsbBackupCopier:
                 old.unlink(missing_ok=True)
             except OSError:
                 pass
-        # Restos de copias interrumpidas (solo los .tmp_* propios dentro de BinniTech-Respaldos)
+        # Restos de copias interrumpidas (solo los .tmp_* propios dentro de BinniStore-Respaldos)
         for leftover in destination_dir.glob(".tmp_*"):
             try:
                 if leftover.is_file():

@@ -1,10 +1,10 @@
-"""Punto de entrada del ejecutable autónomo BinniTech-POS.exe (modo sin consola).
+"""Punto de entrada del ejecutable autónomo BinniStore.exe (modo sin consola).
 
 - Se ejecuta en modo GUI sin ventana negra de CMD (--noconsole).
 - Mantiene en la carpeta junto al ejecutable únicamente `Respaldos` y `Evidencias`,
   y oculta automáticamente `_internal` con el atributo Hidden de Windows.
 - Guarda las carpetas técnicas (`data`, `certs`, `navegador`, `inventory.sqlite3`
-  y `servidor.log`) en `%LOCALAPPDATA%\\BinniTech-POS`.
+  y `servidor.log`) en `%LOCALAPPDATA%\\BinniStore`.
 - Abre la ventana dedicada de la aplicación (`--app` + `--test-type`) sin robar
   el foco de los campos de texto y confirma el cierre a nivel nativo Win32.
 """
@@ -286,7 +286,7 @@ def ask_confirm_close(state: dict | None = None, app_hwnd: int = 0) -> bool:
             "¿Realmente deseas cerrar la aplicación?\n\n"
             "• Sí: Cierra el sistema y detiene el servidor local.\n"
             "• No: Mantiene abierta la aplicación.",
-            "Cerrar BinniTech POS",
+            "Cerrar BinniStore",
             flags,
         )
         return res == IDYES
@@ -305,7 +305,7 @@ def is_app_window(hwnd: int) -> bool:
     buf = ctypes.create_unicode_buffer(256)
     user32.GetWindowTextW(hwnd, buf, 256)
     title = buf.value or ""
-    markers = ("Sistema de Inventario", "Punto de Venta", "Mi Tiendita", "localhost:8443")
+    markers = ("BinniStore", "Sistema de Inventario", "Punto de Venta", "Mi Tiendita", "localhost:8443")
     return any(m in title for m in markers)
 
 
@@ -563,15 +563,15 @@ def run() -> None:
     if not static_dir.is_dir():
         static_dir = bundle_dir / "browser"
 
-    # Carpetas visibles para el cliente en la raíz junto a BinniTech-POS.exe
+    # Carpetas visibles para el cliente en la raíz junto a BinniStore.exe
     respaldos_dir = exe_dir / "Respaldos"
     evidencias_dir = exe_dir / "Evidencias"
     respaldos_dir.mkdir(parents=True, exist_ok=True)
     evidencias_dir.mkdir(parents=True, exist_ok=True)
 
-    # Carpetas técnicas del sistema en %LOCALAPPDATA%\BinniTech-POS
+    # Carpetas técnicas del sistema en %LOCALAPPDATA%\BinniStore
     local_appdata = Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local"))
-    appdata_root = local_appdata / "BinniTech-POS"
+    appdata_root = local_appdata / "BinniStore"
     data_dir = appdata_root / "data"
     cert_dir = appdata_root / "certs"
     profile_dir = appdata_root / "navegador"
